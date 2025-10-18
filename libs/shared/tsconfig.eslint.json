@@ -4,9 +4,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "tests/**/*.ts",
-    "tests/**/*.tsx",
-    "examples/**/*.ts",
-    "examples/**/*.tsx"
+    "tests/**/*.tsx"
   ],
   "exclude": ["dist", "node_modules"]
 }
