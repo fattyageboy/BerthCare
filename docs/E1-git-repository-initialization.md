@@ -81,7 +81,7 @@ Successfully restored and initialized the BerthCare monorepo with base scaffold 
 
 ✅ **Project Documentation** (`project-documentation/`)
 
-- architecture-output.md (v2.0.0 - comprehensive technical architecture)
+- architecture-output.md (v1.0.0 - comprehensive technical architecture)
 - mvp.md (MVP scope and features)
 - product-manager-output.md (product requirements)
 - task-plan.md (development task breakdown)
@@ -194,7 +194,7 @@ According to the task plan, the next tasks are:
 
 ## Reference Documentation
 
-- **Architecture Blueprint:** project-documentation/architecture-output.md v2.0.0
+- **Architecture Blueprint:** project-documentation/architecture-output.md v1.0.0
 - **Task Plan:** project-documentation/task-plan.md
 - **MVP Scope:** project-documentation/mvp.md
 

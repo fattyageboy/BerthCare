@@ -19,7 +19,7 @@ resource "aws_cloudfront_origin_access_control" "s3" {
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
-
+ 
 # CloudFront Distribution
 resource "aws_cloudfront_distribution" "main" {
   enabled             = true

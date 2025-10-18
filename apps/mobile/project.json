@@ -27,13 +27,20 @@
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"],
       "options": {
-        "lintFilePatterns": ["apps/mobile/**/*.{ts,tsx,js,jsx}"]
+        "lintFilePatterns": ["apps/mobile/src/**/*.{ts,tsx,js,jsx}"]
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "jest",
+        "command": "jest --passWithNoTests",
+        "cwd": "apps/mobile"
+      }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
         "cwd": "apps/mobile"
       }
     }

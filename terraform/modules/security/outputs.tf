@@ -17,7 +17,7 @@ output "ecs_tasks_security_group_id" {
   description = "ECS tasks security group ID"
   value       = aws_security_group.ecs_tasks.id
 }
-
+ 
 output "kms_key_id" {
   description = "KMS key ID"
   value       = aws_kms_key.main.id

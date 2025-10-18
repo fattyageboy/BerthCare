@@ -1,6 +1,11 @@
 /**
  * AWS S3 Client Configuration
  *
+ * Task B4: Set up S3 client
+ * Configure AWS SDK v3 for S3; implement pre-signed URL generation for uploads;
+ * create helper functions for photo storage (with compression metadata);
+ * configure lifecycle policies (archive after 7 years).
+ *
  * Provides S3 client for file storage operations with support for:
  * - Pre-signed URL generation for secure uploads/downloads
  * - Photo storage with compression metadata
@@ -8,6 +13,7 @@
  * - LocalStack support for local development
  * - Production-ready error handling
  *
+ * Reference: project-documentation/task-plan.md - Phase B – Backend Core Infrastructure
  * Reference: Architecture Blueprint - File Storage section
  */
 

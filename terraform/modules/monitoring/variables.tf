@@ -22,7 +22,7 @@ variable "error_rate_threshold" {
   type        = number
   default     = 10
 }
-
+ 
 variable "response_time_threshold_ms" {
   description = "Threshold for API response time alarm in milliseconds"
   type        = number

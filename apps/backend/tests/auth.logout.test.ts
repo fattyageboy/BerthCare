@@ -14,26 +14,27 @@ import crypto from 'crypto';
 
 import express, { Express } from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateAccessToken, generateRefreshToken } from '../../../libs/shared/src';
+import { generateAccessToken, generateRefreshToken } from '@berthcare/shared';
+
+import { createRedisClient, RedisClient } from '../src/cache/redis-client';
 import { createAuthRoutes } from '../src/routes/auth.routes';
 
 describe('POST /v1/auth/logout', () => {
   let app: Express;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
 
   beforeAll(async () => {
     // Initialize PostgreSQL connection
     pgPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL,
     });
 
     // Initialize Redis connection
-    redisClient = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
+    redisClient = createRedisClient({
+      url: process.env.TEST_REDIS_URL ?? process.env.REDIS_URL ?? 'redis://localhost:6379',
     });
     await redisClient.connect();
 
@@ -92,6 +93,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_test',
         });
         const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -107,6 +109,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_test',
           email: 'test-logout-1@example.com',
         });
 
@@ -192,6 +195,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_1',
         });
         const tokenHash1 = crypto.createHash('sha256').update(refreshToken1).digest('hex');
 
@@ -199,6 +203,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_2',
         });
         const tokenHash2 = crypto.createHash('sha256').update(refreshToken2).digest('hex');
 
@@ -215,6 +220,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_1',
           email: 'test-logout-3@example.com',
         });
 
@@ -261,8 +267,8 @@ describe('POST /v1/auth/logout', () => {
 
       expect(response.body).toEqual({
         error: {
-          code: 'MISSING_TOKEN',
-          message: 'Authorization header is required',
+          code: 'INVALID_TOKEN_FORMAT',
+          message: 'Authorization header must be in format: Bearer <token>',
           timestamp: expect.any(String),
           requestId: expect.any(String),
         },
@@ -362,6 +368,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_idempotent',
           email: 'test-logout-idempotent@example.com',
         });
 
@@ -404,6 +411,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_refresh',
         });
         const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -419,6 +427,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_refresh',
           email: 'test-logout-refresh@example.com',
         });
 

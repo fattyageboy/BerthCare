@@ -13,6 +13,10 @@
  * - Security requirements
  */
 
+import { generateKeyPairSync, randomUUID } from 'crypto';
+
+import jwt from 'jsonwebtoken';
+
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -20,7 +24,10 @@ import {
   decodeToken,
   getTokenExpiry,
   isTokenExpired,
-  type TokenOptions,
+  clearJwtKeyCache,
+  DEFAULT_DEVICE_ID,
+  initializeJwtKeyStore,
+  type AccessTokenOptions,
 } from '../src/jwt-utils';
 
 // Test RSA key pair (for testing only - DO NOT use in production)
@@ -66,19 +73,35 @@ PQIDAQAB
 beforeAll(() => {
   process.env.JWT_PRIVATE_KEY = TEST_PRIVATE_KEY;
   process.env.JWT_PUBLIC_KEY = TEST_PUBLIC_KEY;
+  process.env.JWT_KEY_ID = 'test-key';
+  clearJwtKeyCache();
 });
 
 afterAll(() => {
   delete process.env.JWT_PRIVATE_KEY;
   delete process.env.JWT_PUBLIC_KEY;
+  delete process.env.JWT_KEY_ID;
+  clearJwtKeyCache();
+});
+
+beforeEach(() => {
+  clearJwtKeyCache();
+});
+
+afterEach(() => {
+  delete process.env.JWT_KEYS_JSON;
+  delete process.env.JWT_PUBLIC_KEY_SET;
+  delete process.env.JWT_KEYS_SECRET_ARN;
+  clearJwtKeyCache();
 });
 
 describe('JWT Token Generation Utilities', () => {
-  const mockUser: TokenOptions = {
+  const mockUser: AccessTokenOptions = {
     userId: 'user_123',
     role: 'caregiver',
     zoneId: 'zone_456',
     email: 'caregiver@example.com',
+    deviceId: 'device_abc',
   };
 
   describe('generateAccessToken', () => {
@@ -135,10 +158,11 @@ describe('JWT Token Generation Utilities', () => {
     });
 
     it('should work without optional email field', () => {
-      const userWithoutEmail: TokenOptions = {
+      const userWithoutEmail: AccessTokenOptions = {
         userId: 'user_789',
         role: 'coordinator',
         zoneId: 'zone_123',
+        deviceId: 'device_without_email',
       };
 
       const token = generateAccessToken(userWithoutEmail);
@@ -150,17 +174,19 @@ describe('JWT Token Generation Utilities', () => {
     });
 
     it('should handle all user roles', () => {
-      const roles: Array<'caregiver' | 'coordinator' | 'admin'> = [
+      const roles: Array<'caregiver' | 'coordinator' | 'admin' | 'family'> = [
         'caregiver',
         'coordinator',
         'admin',
+        'family',
       ];
 
       roles.forEach((role) => {
-        const user: TokenOptions = {
+        const user: AccessTokenOptions = {
           userId: 'user_test',
           role,
           zoneId: 'zone_test',
+          deviceId: `device_${role}`,
         };
 
         const token = generateAccessToken(user);
@@ -168,6 +194,26 @@ describe('JWT Token Generation Utilities', () => {
 
         expect(decoded?.role).toBe(role);
       });
+    });
+
+    it('should include key id (kid) header', () => {
+      const token = generateAccessToken(mockUser);
+      const [headerSegment] = token.split('.');
+      const header = JSON.parse(Buffer.from(headerSegment, 'base64').toString());
+
+      expect(header.kid).toBe(process.env.JWT_KEY_ID || 'env-default');
+    });
+
+    it('should default deviceId when not provided', () => {
+      const token = generateAccessToken({
+        userId: 'no-device-user',
+        role: 'caregiver',
+        zoneId: 'zone_default',
+        email: 'nodevice@example.com',
+      });
+
+      const decoded = decodeToken(token);
+      expect(decoded?.deviceId).toBe(DEFAULT_DEVICE_ID);
     });
   });
 
@@ -188,6 +234,8 @@ describe('JWT Token Generation Utilities', () => {
       expect(decoded?.userId).toBe(mockUser.userId);
       expect(decoded?.role).toBe(mockUser.role);
       expect(decoded?.zoneId).toBe(mockUser.zoneId);
+      expect(decoded?.deviceId).toBe(mockUser.deviceId);
+      expect(decoded?.tokenId).toBeDefined();
     });
 
     it('should set correct expiration time (30 days)', () => {
@@ -211,6 +259,7 @@ describe('JWT Token Generation Utilities', () => {
 
       expect(decoded).toBeDefined();
       expect(decoded?.email).toBeUndefined();
+      expect(decoded?.tokenId).toBeDefined();
     });
 
     it('should generate different tokens for same user', async () => {
@@ -221,6 +270,30 @@ describe('JWT Token Generation Utilities', () => {
 
       expect(token1).not.toBe(token2);
     });
+
+    it('should assign unique tokenId values to refresh tokens', async () => {
+      const token1 = generateRefreshToken(mockUser);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const token2 = generateRefreshToken(mockUser);
+
+      const decoded1 = decodeToken(token1);
+      const decoded2 = decodeToken(token2);
+
+      expect(decoded1?.tokenId).toBeDefined();
+      expect(decoded2?.tokenId).toBeDefined();
+      expect(decoded1?.tokenId).not.toBe(decoded2?.tokenId);
+    });
+
+    it('should default deviceId to unknown when omitted', () => {
+      const token = generateRefreshToken({
+        userId: 'refresh-nodevice',
+        role: 'caregiver',
+        zoneId: 'zone_default',
+      });
+
+      const decoded = decodeToken(token);
+      expect(decoded?.deviceId).toBe(DEFAULT_DEVICE_ID);
+    });
   });
 
   describe('verifyToken', () => {
@@ -229,9 +302,11 @@ describe('JWT Token Generation Utilities', () => {
       const payload = verifyToken(token);
 
       expect(payload).toBeDefined();
+      expect(payload.sub).toBe(mockUser.userId);
       expect(payload.userId).toBe(mockUser.userId);
       expect(payload.role).toBe(mockUser.role);
       expect(payload.zoneId).toBe(mockUser.zoneId);
+      expect(payload.deviceId).toBe(mockUser.deviceId);
     });
 
     it('should verify a valid refresh token', () => {
@@ -239,7 +314,10 @@ describe('JWT Token Generation Utilities', () => {
       const payload = verifyToken(token);
 
       expect(payload).toBeDefined();
+      expect(payload.sub).toBe(mockUser.userId);
       expect(payload.userId).toBe(mockUser.userId);
+      expect(payload.deviceId).toBe(mockUser.deviceId);
+      expect(payload.tokenId).toBeDefined();
     });
 
     it('should throw error for invalid token', () => {
@@ -275,8 +353,10 @@ describe('JWT Token Generation Utilities', () => {
       const decoded = decodeToken(token);
 
       expect(decoded).toBeDefined();
+      expect(decoded?.sub).toBe(mockUser.userId);
       expect(decoded?.userId).toBe(mockUser.userId);
       expect(decoded?.role).toBe(mockUser.role);
+      expect(decoded?.deviceId).toBe(mockUser.deviceId);
     });
 
     it('should decode tampered token (no verification)', () => {
@@ -330,20 +410,75 @@ describe('JWT Token Generation Utilities', () => {
     it('should throw error when private key is missing', () => {
       const originalKey = process.env.JWT_PRIVATE_KEY;
       delete process.env.JWT_PRIVATE_KEY;
+      clearJwtKeyCache();
 
       expect(() => generateAccessToken(mockUser)).toThrow('JWT_PRIVATE_KEY not configured');
 
       process.env.JWT_PRIVATE_KEY = originalKey;
+      clearJwtKeyCache();
     });
 
     it('should throw error when public key is missing', () => {
       const originalKey = process.env.JWT_PUBLIC_KEY;
       delete process.env.JWT_PUBLIC_KEY;
+      clearJwtKeyCache();
 
-      const token = generateAccessToken(mockUser);
-      expect(() => verifyToken(token)).toThrow('JWT_PUBLIC_KEY not configured');
+      expect(() => generateAccessToken(mockUser)).toThrow('JWT_PUBLIC_KEY not configured');
 
       process.env.JWT_PUBLIC_KEY = originalKey;
+      clearJwtKeyCache();
+    });
+
+    it('should throw error when verifying with unknown kid', () => {
+      const originalPrivateKey = process.env.JWT_PRIVATE_KEY;
+      const originalPublicKey = process.env.JWT_PUBLIC_KEY;
+      const originalKeyId = process.env.JWT_KEY_ID;
+      const originalKeysJson = process.env.JWT_KEYS_JSON;
+
+      process.env.JWT_PRIVATE_KEY = ''; // force use of JWT_KEYS_JSON
+      process.env.JWT_PUBLIC_KEY = '';
+      process.env.JWT_KEY_ID = 'mismatch-key';
+      process.env.JWT_KEYS_JSON = JSON.stringify({
+        activeKid: 'mismatch-key',
+        keys: {
+          'mismatch-key': {
+            privateKey: TEST_PRIVATE_KEY,
+            publicKey: TEST_PUBLIC_KEY,
+          },
+        },
+      });
+      clearJwtKeyCache();
+
+      const token = generateAccessToken(mockUser);
+
+      // Simulate rotation removing the signing key before verification
+      const { privateKey: rotatedPrivateKey, publicKey: rotatedPublicKey } = generateKeyPairSync(
+        'rsa',
+        {
+          modulusLength: 2048,
+          privateKeyEncoding: { format: 'pem', type: 'pkcs1' },
+          publicKeyEncoding: { format: 'pem', type: 'spki' },
+        }
+      );
+
+      process.env.JWT_KEYS_JSON = JSON.stringify({
+        activeKid: 'new-key',
+        keys: {
+          'new-key': {
+            privateKey: rotatedPrivateKey,
+            publicKey: rotatedPublicKey,
+          },
+        },
+      });
+      clearJwtKeyCache();
+
+      expect(() => verifyToken(token)).toThrow('Invalid token: unknown key id');
+
+      process.env.JWT_PRIVATE_KEY = originalPrivateKey;
+      process.env.JWT_PUBLIC_KEY = originalPublicKey;
+      process.env.JWT_KEY_ID = originalKeyId;
+      process.env.JWT_KEYS_JSON = originalKeysJson;
+      clearJwtKeyCache();
     });
   });
 
@@ -380,6 +515,107 @@ describe('JWT Token Generation Utilities', () => {
     });
   });
 
+  describe('Key Management', () => {
+    it('should verify tokens signed with legacy key via JWT_KEYS_JSON', () => {
+      const { privateKey: legacyPrivateKey, publicKey: legacyPublicKey } = generateKeyPairSync(
+        'rsa',
+        {
+          modulusLength: 2048,
+          privateKeyEncoding: { format: 'pem', type: 'pkcs1' },
+          publicKeyEncoding: { format: 'pem', type: 'spki' },
+        }
+      );
+
+      process.env.JWT_KEYS_JSON = JSON.stringify({
+        activeKid: 'current-key',
+        keys: {
+          'current-key': {
+            privateKey: TEST_PRIVATE_KEY,
+            publicKey: TEST_PUBLIC_KEY,
+          },
+          'legacy-key': {
+            publicKey: legacyPublicKey,
+          },
+        },
+      });
+
+      clearJwtKeyCache();
+
+      const legacyToken = jwt.sign(
+        {
+          sub: 'legacy-user',
+          role: 'caregiver',
+          zoneId: 'legacy-zone',
+          deviceId: 'legacy-device',
+        },
+        legacyPrivateKey,
+        {
+          algorithm: 'RS256',
+          issuer: 'berthcare-api',
+          audience: 'berthcare-app',
+          keyid: 'legacy-key',
+          jwtid: randomUUID(),
+        }
+      );
+
+      const payload = verifyToken(legacyToken);
+
+      expect(payload.userId).toBe('legacy-user');
+      expect(payload.deviceId).toBe('legacy-device');
+    });
+
+    it('should load key configuration from Secrets Manager', async () => {
+      const { privateKey: rotatedPrivateKey, publicKey: rotatedPublicKey } = generateKeyPairSync(
+        'rsa',
+        {
+          modulusLength: 2048,
+          privateKeyEncoding: { format: 'pem', type: 'pkcs1' },
+          publicKeyEncoding: { format: 'pem', type: 'spki' },
+        }
+      );
+
+      const secretArn = 'arn:aws:secretsmanager:ca-central-1:123456789012:secret:jwt-rotation';
+      process.env.JWT_KEYS_SECRET_ARN = secretArn;
+
+      const secretString = JSON.stringify({
+        activeKid: 'rotation-2025',
+        keys: {
+          'rotation-2025': {
+            privateKey: rotatedPrivateKey,
+            publicKey: rotatedPublicKey,
+          },
+          'rotation-2024': {
+            publicKey: TEST_PUBLIC_KEY,
+          },
+        },
+      });
+
+      const mockClient = {
+        send: jest.fn().mockResolvedValue({ SecretString: secretString }),
+      };
+
+      await initializeJwtKeyStore({
+        secretArn,
+        region: 'ca-central-1',
+        client: mockClient,
+      });
+
+      const token = generateAccessToken({
+        userId: 'rotation-user',
+        role: 'admin',
+        zoneId: 'zone-rotation',
+        deviceId: 'rotation-device',
+        email: 'rotation@example.com',
+      });
+
+      const payload = verifyToken(token);
+
+      expect(payload.userId).toBe('rotation-user');
+      expect(payload.deviceId).toBe('rotation-device');
+      expect(mockClient.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('Real-world Scenarios', () => {
     it('should handle user login flow', () => {
       // User logs in
@@ -389,10 +625,13 @@ describe('JWT Token Generation Utilities', () => {
       // Verify access token
       const accessPayload = verifyToken(accessToken);
       expect(accessPayload.userId).toBe(mockUser.userId);
+      expect(accessPayload.deviceId).toBe(mockUser.deviceId);
 
       // Verify refresh token
       const refreshPayload = verifyToken(refreshToken);
       expect(refreshPayload.userId).toBe(mockUser.userId);
+      expect(refreshPayload.deviceId).toBe(mockUser.deviceId);
+      expect(refreshPayload.tokenId).toBeDefined();
     });
 
     it('should handle token refresh flow', () => {
@@ -404,21 +643,23 @@ describe('JWT Token Generation Utilities', () => {
 
       // Generate new access token
       const newAccessToken = generateAccessToken({
-        userId: payload.userId,
+        userId: payload.userId ?? payload.sub,
         role: payload.role,
         zoneId: payload.zoneId,
+        deviceId: payload.deviceId ?? mockUser.deviceId,
       });
 
       // Verify new access token
       const newPayload = verifyToken(newAccessToken);
       expect(newPayload.userId).toBe(mockUser.userId);
+      expect(newPayload.deviceId).toBe(payload.deviceId ?? mockUser.deviceId);
     });
 
     it('should handle multiple concurrent users', () => {
-      const users: TokenOptions[] = [
-        { userId: 'user_1', role: 'caregiver', zoneId: 'zone_1' },
-        { userId: 'user_2', role: 'coordinator', zoneId: 'zone_2' },
-        { userId: 'user_3', role: 'admin', zoneId: 'zone_3' },
+      const users: AccessTokenOptions[] = [
+        { userId: 'user_1', role: 'caregiver', zoneId: 'zone_1', deviceId: 'device_1' },
+        { userId: 'user_2', role: 'coordinator', zoneId: 'zone_2', deviceId: 'device_2' },
+        { userId: 'user_3', role: 'admin', zoneId: 'zone_3', deviceId: 'device_3' },
       ];
 
       const tokens = users.map((user) => ({
@@ -434,6 +675,9 @@ describe('JWT Token Generation Utilities', () => {
 
         expect(accessPayload.userId).toBe(user.userId);
         expect(refreshPayload.userId).toBe(user.userId);
+        expect(accessPayload.deviceId).toBe(user.deviceId);
+        expect(refreshPayload.deviceId).toBe(user.deviceId);
+        expect(refreshPayload.tokenId).toBeDefined();
       });
 
       // All tokens should be unique

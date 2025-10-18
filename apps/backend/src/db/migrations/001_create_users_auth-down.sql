@@ -13,14 +13,12 @@
 DROP TRIGGER IF EXISTS update_refresh_tokens_updated_at ON refresh_tokens;
 DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 
--- Drop function
-DROP FUNCTION IF EXISTS update_updated_at_column();
-
 -- Drop indexes (will be automatically dropped with tables, but explicit for clarity)
 DROP INDEX IF EXISTS idx_refresh_tokens_expires_at;
 DROP INDEX IF EXISTS idx_refresh_tokens_device_id;
 DROP INDEX IF EXISTS idx_refresh_tokens_token_hash;
 DROP INDEX IF EXISTS idx_refresh_tokens_user_id;
+DROP INDEX IF EXISTS idx_users_active;
 DROP INDEX IF EXISTS idx_users_zone_role;
 DROP INDEX IF EXISTS idx_users_role;
 DROP INDEX IF EXISTS idx_users_zone_id;

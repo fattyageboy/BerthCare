@@ -26,7 +26,22 @@ export {
   decodeToken,
   getTokenExpiry,
   isTokenExpired,
+  initializeJwtKeyStore,
+  clearJwtKeyCache,
+  DEFAULT_DEVICE_ID,
   type UserRole,
   type JWTPayload,
-  type TokenOptions,
+  type AccessTokenOptions,
+  type RefreshTokenOptions,
+  type InitializeJwtKeyStoreOptions,
 } from './jwt-utils';
+
+// Export authorization helpers
+export {
+  ROLE_PERMISSIONS,
+  getRolePermissions,
+  hasRole,
+  hasPermission,
+  type Permission,
+  type AuthorizableUser,
+} from './authorization';

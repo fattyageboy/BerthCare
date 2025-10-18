@@ -6,6 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STAGING_DIR="${SCRIPT_DIR}/../environments/staging"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 echo "🚀 Deploying BerthCare Staging Infrastructure"
 echo "=============================================="
@@ -17,7 +18,7 @@ if ! command -v terraform &> /dev/null; then
 fi
 
 echo "✅ Terraform installed: $(terraform version | head -n 1)"
-
+ 
 # Navigate to staging directory
 cd "${STAGING_DIR}"
 
@@ -75,6 +76,21 @@ echo ""
 echo "📊 Infrastructure Outputs:"
 echo "=========================="
 terraform output
+
+# Persist outputs for verification checklist
+VERIFICATION_DIR="${PROJECT_ROOT}/docs/infra-verification"
+mkdir -p "${VERIFICATION_DIR}"
+OUTPUT_FILE="${VERIFICATION_DIR}/staging-$(date +%Y%m%d-%H%M%S).json"
+terraform output -json > "${OUTPUT_FILE}"
+
+if [ ! -s "${OUTPUT_FILE}" ]; then
+  echo "❌ terraform output failed: ${OUTPUT_FILE} is missing or empty." >&2
+  exit 1
+fi
+
+echo ""
+echo "📝 Saved raw outputs to ${OUTPUT_FILE}"
+echo "   Update docs/E5-aws-infrastructure-setup.md verification table with these values."
 
 echo ""
 echo "✅ Deployment completed successfully!"

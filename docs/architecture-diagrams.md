@@ -291,8 +291,8 @@ Visual representations of the BerthCare system architecture.
 │  │  S3                  │  │  Secrets Manager     │                     │
 │  │  • Encryption at rest│  │  • KMS encryption    │                     │
 │  │  • Bucket policies   │  │  • IAM policies      │                     │
-│  │  • Versioning        │  │  • Rotation policies │                     │ 
-│  │  • Access logging    │  │  • Audit logging     │                     │ 
+│  │  • Versioning        │  │  • Rotation policies │                     │
+│  │  • Access logging    │  │  • Audit logging     │                     │
 │  └──────────────────────┘  └──────────────────────┘                     │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -307,7 +307,7 @@ Visual representations of the BerthCare system architecture.
 │                                                                         │
 │  ┌──────────────────────┐  ┌──────────────────────┐                     │
 │  │  Mobile App          │  │  Backend API         │                     │
-│  │  • Sentry errors     │  │  • Sentry errors     │                     │ 
+│  │  • Sentry errors     │  │  • Sentry errors     │                     │
 │  │  • Performance       │  │  • Performance       │                     │
 │  │  • Breadcrumbs       │  │  • Structured logs   │                     │
 │  └──────────────────────┘  └──────────────────────┘                     │
@@ -319,7 +319,7 @@ Visual representations of the BerthCare system architecture.
 │  ┌──────────────────────┐  ┌──────────────────────┐                     │
 │  │  Sentry              │  │  CloudWatch          │                     │
 │  │  • Error tracking    │  │  • Metrics           │                     │
-│  │  • Performance       │  │  • Logs              │                     │ 
+│  │  • Performance       │  │  • Logs              │                     │
 │  │  • Release health    │  │  • Alarms            │                     │
 │  │  • User feedback     │  │  • Dashboards        │                     │
 │  └──────────────────────┘  └──────────────────────┘                     │
@@ -330,7 +330,7 @@ Visual representations of the BerthCare system architecture.
 │                                                                         │
 │  ┌──────────────────────┐  ┌──────────────────────┐                     │
 │  │  SNS Topic           │  │  Sentry Alerts       │                     │
-│  │  • Email             │  │  • Email             │                     │ 
+│  │  • Email             │  │  • Email             │                     │
 │  │  • Slack (optional)  │  │  • Slack             │                     │
 │  │  • PagerDuty (prod)  │  │  • Issue tracking    │                     │
 │  └──────────────────────┘  └──────────────────────┘                     │

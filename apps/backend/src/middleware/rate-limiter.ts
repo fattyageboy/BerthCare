@@ -20,34 +20,26 @@
 
 import { Request, Response, NextFunction } from 'express';
 
+import { RedisClient } from '../cache/redis-client';
+
 interface RateLimitConfig {
   windowMs: number; // Time window in milliseconds
   maxAttempts: number; // Maximum attempts per window
   keyPrefix: string; // Redis key prefix for this limiter
 }
 
-/**
- * Create rate limiter middleware
- *
- * @param redisClient - Redis client for storing rate limit counters
- * @param config - Rate limit configuration
- * @returns Express middleware function
- */
-export function createRateLimiter(
-  redisClient: ReturnType<typeof import('redis').createClient>,
-  config: RateLimitConfig
-) {
+export function createRateLimiter(redisClient: RedisClient, config: RateLimitConfig) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       // Get client IP address - handle test environment
       // In tests, req.ip might be undefined, so we use a combination of sources
       let ip = req.ip || req.socket.remoteAddress || 'unknown';
-      
+
       // Normalize IPv6 localhost to IPv4 for consistency
       if (ip === '::1' || ip === '::ffff:127.0.0.1') {
         ip = '127.0.0.1';
       }
-      
+
       const key = `${config.keyPrefix}:${ip}`;
 
       // Get current count
@@ -102,9 +94,7 @@ export function createRateLimiter(
 /**
  * Registration rate limiter: 5 attempts per hour per IP
  */
-export function createRegistrationRateLimiter(
-  redisClient: ReturnType<typeof import('redis').createClient>
-) {
+export function createRegistrationRateLimiter(redisClient: RedisClient) {
   return createRateLimiter(redisClient, {
     windowMs: 60 * 60 * 1000, // 1 hour
     maxAttempts: 5,
@@ -115,9 +105,7 @@ export function createRegistrationRateLimiter(
 /**
  * Login rate limiter: 10 attempts per 15 minutes per IP
  */
-export function createLoginRateLimiter(
-  redisClient: ReturnType<typeof import('redis').createClient>
-) {
+export function createLoginRateLimiter(redisClient: RedisClient) {
   return createRateLimiter(redisClient, {
     windowMs: 15 * 60 * 1000, // 15 minutes
     maxAttempts: 10,

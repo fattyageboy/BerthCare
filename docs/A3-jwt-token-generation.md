@@ -30,25 +30,33 @@ Implemented JWT token generation utilities using RS256 algorithm with support fo
 ### Token Types
 
 #### Access Token
+
 - **Expiry:** 1 hour (3600 seconds)
 - **Purpose:** API authentication and authorization
 - **Payload:**
-  - `userId`: Unique user identifier
+  - `sub`: Subject — mirrors `userId` for JWT spec compliance
+  - `userId`: Unique user identifier (legacy compatibility)
   - `role`: User role (caregiver, coordinator, admin)
   - `zoneId`: Geographic zone for data access control
+  - `deviceId`: Device identifier binding the session
   - `email`: User email (optional)
   - `iat`: Issued at timestamp (automatic)
   - `exp`: Expiration timestamp (automatic)
   - `iss`: Issuer (berthcare-api)
   - `aud`: Audience (berthcare-app)
+  - `kid` (header): Key identifier for verification
 
 #### Refresh Token
+
 - **Expiry:** 30 days (2,592,000 seconds)
 - **Purpose:** Obtain new access tokens without re-authentication
 - **Payload:**
-  - `userId`: Unique user identifier
+  - `sub`: Subject (user id)
+  - `userId`: Unique user identifier (legacy compatibility)
   - `role`: User role
   - `zoneId`: Geographic zone
+  - `deviceId`: Device identifier (matches database session)
+  - `tokenId`: Unique identifier for revocation and rotation
   - `iat`: Issued at timestamp (automatic)
   - `exp`: Expiration timestamp (automatic)
   - `iss`: Issuer (berthcare-api)
@@ -69,16 +77,15 @@ Implemented JWT token generation utilities using RS256 algorithm with support fo
    - Tamper detection
 
 3. **Key Management**
-   - Development: Environment variables
-   - Production: AWS Secrets Manager (planned)
-   - Base64 encoding support for environment variables
-   - Key rotation support via versioned secrets
+   - Development: Environment variables (`JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, optional `JWT_KEY_ID`)
+   - Production: AWS Secrets Manager via `initializeJwtKeyStore()` for automatic rotation
+   - Advanced: `JWT_KEYS_JSON` / `JWT_PUBLIC_KEY_SET` for staged key rollouts and legacy support
 
 ## API Reference
 
 ### Core Functions
 
-#### `generateAccessToken(options: TokenOptions): string`
+#### `generateAccessToken(options: AccessTokenOptions): string`
 
 Generates a short-lived access token for API authentication.
 
@@ -87,11 +94,12 @@ const accessToken = generateAccessToken({
   userId: 'user_123',
   role: 'caregiver',
   zoneId: 'zone_456',
-  email: 'caregiver@example.com'
+  deviceId: 'device_ios_01',
+  email: 'caregiver@example.com',
 });
 ```
 
-#### `generateRefreshToken(options: TokenOptions): string`
+#### `generateRefreshToken(options: RefreshTokenOptions): string`
 
 Generates a long-lived refresh token for obtaining new access tokens.
 
@@ -99,7 +107,8 @@ Generates a long-lived refresh token for obtaining new access tokens.
 const refreshToken = generateRefreshToken({
   userId: 'user_123',
   role: 'caregiver',
-  zoneId: 'zone_456'
+  zoneId: 'zone_456',
+  deviceId: 'device_ios_01',
 });
 ```
 
@@ -137,6 +146,30 @@ if (isTokenExpired(token)) {
 }
 ```
 
+#### `initializeJwtKeyStore(options?: InitializeJwtKeyStoreOptions): Promise<void>`
+
+Loads RSA key material from AWS Secrets Manager (or a provided Secrets Manager client) and stores
+it in-memory for signing and verification. When `JWT_KEYS_SECRET_ARN` is configured the server will
+fail fast if the secret cannot be retrieved, preventing tokens from being issued without a
+matching verification key.
+
+```typescript
+await initializeJwtKeyStore({
+  secretArn: process.env.JWT_KEYS_SECRET_ARN,
+  region: process.env.AWS_REGION,
+});
+```
+
+#### `clearJwtKeyCache(): void`
+
+Clears the cached key configuration. This is handy in test environments or when reloading keys
+without restarting the process.
+
+#### `DEFAULT_DEVICE_ID`
+
+Constant fallback (`'unknown-device'`) used when callers omit `deviceId`. It keeps JWT payloads
+consistent while encouraging explicit device identifiers for every session.
+
 #### `getTokenExpiry(tokenType: 'access' | 'refresh'): number`
 
 Returns token expiry time in seconds.
@@ -159,11 +192,23 @@ JWT_PRIVATE_KEY=-----BEGIN RSA PRIVATE KEY-----
 ...
 -----END RSA PRIVATE KEY-----
 
+# Optional: Key identifier appended to JWT header (kid)
+JWT_KEY_ID=current-dev-key
+
 # JWT Public Key (for verifying tokens)
 # Generate with: openssl rsa -in private_key.pem -pubout -out public_key.pem
 JWT_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----
 ...
 -----END PUBLIC KEY-----
+
+# Optional: Additional public keys for rotated tokens (JSON)
+JWT_PUBLIC_KEY_SET={}
+
+# Optional: Inline key set override (activeKid + keys JSON)
+JWT_KEYS_JSON=
+
+# Optional: AWS Secrets Manager ARN storing key set (overrides env vars)
+JWT_KEYS_SECRET_ARN=
 
 # Optional: Token expiry times (defaults shown)
 JWT_ACCESS_TOKEN_EXPIRY=1h
@@ -225,7 +270,7 @@ const user = {
   userId: 'user_123',
   role: 'caregiver',
   zoneId: 'zone_456',
-  email: 'caregiver@example.com'
+  email: 'caregiver@example.com',
 };
 
 // Generate tokens
@@ -239,8 +284,8 @@ res.json({
   user: {
     id: user.userId,
     email: user.email,
-    role: user.role
-  }
+    role: user.role,
+  },
 });
 ```
 
@@ -283,7 +328,7 @@ app.post('/auth/refresh', (req, res) => {
     const newAccessToken = generateAccessToken({
       userId: payload.userId,
       role: payload.role,
-      zoneId: payload.zoneId
+      zoneId: payload.zoneId,
     });
 
     res.json({ accessToken: newAccessToken });

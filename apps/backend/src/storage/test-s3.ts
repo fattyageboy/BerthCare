@@ -12,8 +12,6 @@
  *   npm run test:s3 --prefix apps/backend
  */
 
-/* eslint-disable no-console */
-
 import dotenv from 'dotenv';
 
 import { logError, logInfo } from '../config/logger';

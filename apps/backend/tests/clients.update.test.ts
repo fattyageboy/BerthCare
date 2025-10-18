@@ -27,16 +27,17 @@ import crypto from 'crypto';
 
 import { Express } from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateAccessToken } from '../../../libs/shared/src';
+import { generateAccessToken } from '@berthcare/shared';
+
+import { RedisClient } from '../src/cache/redis-client';
 
 import { createTestApp, setupTestConnections, teardownTestConnections } from './test-helpers';
 
 let app: Express;
 let pgPool: Pool;
-let redisClient: ReturnType<typeof createClient>;
+let redisClient: RedisClient;
 
 describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
   let adminToken: string;
@@ -185,7 +186,7 @@ describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.error.code).toBe('FORBIDDEN');
+      expect(response.body.error.code).toBe('AUTH_INSUFFICIENT_ROLE');
     });
 
     it('should reject coordinator updating client in different zone', async () => {
@@ -197,8 +198,8 @@ describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.error.code).toBe('FORBIDDEN');
-      expect(response.body.error.message).toContain('your zone');
+      expect(response.body.error.code).toBe('AUTH_ZONE_ACCESS_DENIED');
+      expect(response.body.error.message).toContain('access to this zone');
     });
 
     it('should allow coordinator to update client in same zone', async () => {
@@ -233,7 +234,7 @@ describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.error.code).toBe('FORBIDDEN');
+      expect(response.body.error.code).toBe('AUTH_INSUFFICIENT_ROLE');
       expect(response.body.error.message).toContain('Only admins');
     });
 
@@ -508,10 +509,22 @@ describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
 
   describe('Cache Invalidation', () => {
     it('should invalidate cache on update', async () => {
-      // First, populate cache by fetching client
+      // Prime detail cache
       await request(app)
         .get(`/api/v1/clients/${testClientId}`)
         .set('Authorization', `Bearer ${adminToken}`);
+
+      // Prime list cache for all zones
+      const listPrimeResponse = await request(app)
+        .get('/api/v1/clients')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(listPrimeResponse.status).toBe(200);
+      const cachedClient = listPrimeResponse.body.data.clients.find(
+        (clientSummary: { id: string }) => clientSummary.id === testClientId
+      );
+      if (!cachedClient) {
+        throw new Error('Expected client to be present in cached list response');
+      }
 
       // Update client
       const updateResponse = await request(app)
@@ -523,13 +536,26 @@ describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
 
       expect(updateResponse.status).toBe(200);
 
-      // Fetch again - should get updated data (not cached)
+      // Fetch detail again - should get updated data (not cached)
       const fetchResponse = await request(app)
         .get(`/api/v1/clients/${testClientId}`)
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(fetchResponse.status).toBe(200);
       expect(fetchResponse.body.data.firstName).toBe('CacheTest');
+
+      // Fetch list again - should reflect updated first name
+      const listFetchResponse = await request(app)
+        .get('/api/v1/clients')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(listFetchResponse.status).toBe(200);
+      const updatedClient = listFetchResponse.body.data.clients.find(
+        (clientSummary: { id: string; firstName: string }) => clientSummary.id === testClientId
+      );
+      if (!updatedClient) {
+        throw new Error('Expected updated client to be present in list response');
+      }
+      expect(updatedClient.firstName).toBe('CacheTest');
 
       // Restore
       await request(app)

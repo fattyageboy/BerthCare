@@ -46,17 +46,21 @@ Implemented the POST /v1/auth/register endpoint with complete validation, securi
 POST /api/v1/auth/register
 ```
 
+### Authentication
+
+- Requires admin access token in `Authorization: Bearer <token>` header
+
 ### Request Body
 
 ```typescript
 {
-  email: string;          // Required, valid email format
-  password: string;       // Required, min 8 chars, 1 uppercase, 1 number
-  firstName: string;      // Required
-  lastName: string;       // Required
-  role: 'caregiver' | 'coordinator' | 'admin';  // Required
-  zoneId: string;         // Required for non-admin roles
-  deviceId: string;       // Required for token generation
+  email: string; // Required, valid email format
+  password: string; // Required, min 8 chars, 1 uppercase, 1 number
+  firstName: string; // Required
+  lastName: string; // Required
+  role: 'caregiver' | 'coordinator' | 'admin'; // Required
+  zoneId: string; // Required for non-admin roles
+  deviceId: string; // Required for token generation
 }
 ```
 
@@ -65,8 +69,8 @@ POST /api/v1/auth/register
 ```typescript
 {
   data: {
-    accessToken: string;    // JWT, expires in 1 hour
-    refreshToken: string;   // JWT, expires in 30 days
+    accessToken: string; // JWT, expires in 1 hour
+    refreshToken: string; // JWT, expires in 30 days
     user: {
       id: string;
       email: string;
@@ -91,17 +95,20 @@ POST /api/v1/auth/register
 ## Security Features
 
 ### 1. Password Security
+
 - **Bcrypt hashing** with cost factor 12 (~200ms)
 - Passwords never stored in plaintext
 - Automatic salt generation
 
 ### 2. Rate Limiting
+
 - **5 attempts per hour per IP**
 - Redis-backed for distributed systems
 - Clear error messages with retry information
 - Rate limit headers included in responses
 
 ### 3. Input Validation
+
 - Email format validation
 - Password strength requirements:
   - Minimum 8 characters
@@ -111,6 +118,7 @@ POST /api/v1/auth/register
 - Role validation
 
 ### 4. Token Security
+
 - JWT tokens with RS256 algorithm
 - Access tokens expire in 1 hour
 - Refresh tokens expire in 30 days
@@ -118,6 +126,7 @@ POST /api/v1/auth/register
 - Device tracking for multi-device support
 
 ### 5. Data Security
+
 - Email normalization (lowercase)
 - SQL injection prevention (parameterized queries)
 - XSS prevention (input sanitization)
@@ -129,17 +138,20 @@ POST /api/v1/auth/register
 ## Validation Rules
 
 ### Email Validation
-- Must be valid email format (user@domain.tld)
+
+- Must be valid email format (`user@domain.tld`)
 - Case-insensitive duplicate detection
 - Normalized to lowercase before storage
 
 ### Password Validation
+
 - Minimum 8 characters
 - At least 1 uppercase letter (A-Z)
 - At least 1 number (0-9)
 - No maximum length (bcrypt handles long passwords)
 
 ### Role Validation
+
 - Must be one of: `caregiver`, `coordinator`, `admin`
 - Zone ID required for `caregiver` and `coordinator`
 - Zone ID optional for `admin`
@@ -149,6 +161,7 @@ POST /api/v1/auth/register
 ## Database Operations
 
 ### Users Table
+
 ```sql
 INSERT INTO users (
   email,
@@ -162,6 +175,7 @@ INSERT INTO users (
 ```
 
 ### Refresh Tokens Table
+
 ```sql
 INSERT INTO refresh_tokens (
   user_id,
@@ -176,12 +190,14 @@ INSERT INTO refresh_tokens (
 ## Rate Limiting Implementation
 
 ### Configuration
+
 - **Window:** 1 hour (3600 seconds)
 - **Max Attempts:** 5 per IP address
 - **Storage:** Redis with automatic expiry
 - **Key Format:** `ratelimit:register:{ip_address}`
 
 ### Headers
+
 ```
 X-RateLimit-Limit: 5
 X-RateLimit-Remaining: 4
@@ -189,6 +205,7 @@ X-RateLimit-Reset: 2025-10-10T15:30:00.000Z
 ```
 
 ### Error Response (429)
+
 ```json
 {
   "error": {
@@ -214,26 +231,31 @@ X-RateLimit-Reset: 2025-10-10T15:30:00.000Z
 **Total Test Cases:** 70+
 
 #### Successful Registration (4 tests)
+
 - ✅ Register caregiver successfully
 - ✅ Register coordinator successfully
 - ✅ Register admin successfully (no zoneId required)
 - ✅ Email normalization to lowercase
 
 #### Duplicate Email Validation (2 tests)
+
 - ✅ Return 409 for duplicate email
 - ✅ Case-insensitive duplicate detection
 
 #### Email Format Validation (3 tests)
+
 - ✅ Reject invalid email format
 - ✅ Reject email without domain
 - ✅ Reject email without @
 
 #### Password Strength Validation (3 tests)
+
 - ✅ Reject password < 8 characters
 - ✅ Reject password without uppercase
 - ✅ Reject password without number
 
 #### Required Field Validation (8 tests)
+
 - ✅ Reject missing email
 - ✅ Reject missing password
 - ✅ Reject missing firstName
@@ -244,11 +266,13 @@ X-RateLimit-Reset: 2025-10-10T15:30:00.000Z
 - ✅ Reject missing zoneId for coordinator
 
 #### Rate Limiting (3 tests)
+
 - ✅ Allow 5 registration attempts
 - ✅ Block 6th attempt with 429
 - ✅ Include rate limit headers
 
 #### Security (2 tests)
+
 - ✅ Hash password before storing
 - ✅ Hash refresh token before storing
 
@@ -274,6 +298,7 @@ npm run test:watch
 ### Test Environment
 
 Tests require:
+
 - PostgreSQL test database: `berthcare_test`
 - Redis test instance: database 1
 - Environment variables configured
@@ -286,6 +311,7 @@ Tests require:
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "caregiver@example.com",
@@ -299,6 +325,7 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
 ```
 
 Response:
+
 ```json
 {
   "data": {
@@ -320,6 +347,7 @@ Response:
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "invalid-email",
@@ -332,6 +360,7 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
 ```
 
 Response (400):
+
 ```json
 {
   "error": {
@@ -351,6 +380,7 @@ Response (400):
 ```bash
 # Second registration with same email
 curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "existing@example.com",
@@ -363,6 +393,7 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
 ```
 
 Response (409):
+
 ```json
 {
   "error": {
@@ -382,11 +413,13 @@ Response (409):
 ```bash
 # 6th attempt within 1 hour
 curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{...}'
 ```
 
 Response (429):
+
 ```json
 {
   "error": {
@@ -408,6 +441,7 @@ Response (429):
 ## Performance Characteristics
 
 ### Response Times
+
 - **Successful registration:** ~250ms
   - Password hashing: ~200ms (bcrypt cost 12)
   - Database insert: ~30ms
@@ -420,11 +454,13 @@ Response (429):
   - Single database query with index
 
 ### Database Queries
+
 1. Check existing email: `SELECT id FROM users WHERE email = $1`
 2. Insert user: `INSERT INTO users (...) VALUES (...)`
 3. Insert refresh token: `INSERT INTO refresh_tokens (...) VALUES (...)`
 
 ### Redis Operations
+
 1. Get rate limit count: `GET ratelimit:register:{ip}`
 2. Increment counter: `INCR ratelimit:register:{ip}`
 3. Set expiry: `SETEX ratelimit:register:{ip} 3600 1`
@@ -434,6 +470,7 @@ Response (429):
 ## Monitoring and Logging
 
 ### Logged Events
+
 - Registration attempts (success/failure)
 - Validation errors
 - Rate limit violations
@@ -441,6 +478,7 @@ Response (429):
 - Token generation
 
 ### Metrics to Track
+
 - Registration success rate
 - Average response time
 - Rate limit hit rate
@@ -452,6 +490,7 @@ Response (429):
 ## Future Enhancements
 
 ### Phase 2 (Post-MVP)
+
 - [ ] Email verification flow
 - [ ] CAPTCHA for rate limit protection
 - [ ] Admin approval workflow
@@ -460,6 +499,7 @@ Response (429):
 - [ ] Account activation emails
 
 ### Phase 3 (Scale)
+
 - [ ] Distributed rate limiting (Redis Cluster)
 - [ ] Geolocation-based rate limiting
 - [ ] Advanced fraud detection
@@ -471,6 +511,7 @@ Response (429):
 ## Dependencies
 
 ### Runtime Dependencies
+
 - `express` - Web framework
 - `pg` - PostgreSQL client
 - `redis` - Redis client
@@ -479,6 +520,7 @@ Response (429):
 - `crypto` - Token hashing
 
 ### Development Dependencies
+
 - `jest` - Test framework
 - `supertest` - HTTP testing
 - `ts-jest` - TypeScript support for Jest
@@ -535,6 +577,7 @@ Response (429):
 ---
 
 **Next Steps:**
+
 - Task A5: Implement POST /v1/auth/login endpoint
 - Task A6: Implement POST /v1/auth/refresh endpoint
 - Task A7: Implement authentication middleware

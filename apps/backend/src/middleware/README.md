@@ -13,33 +13,46 @@ Provides JWT token verification and role-based access control.
 **Usage:**
 
 ```typescript
-import { authenticateJWT, requireRole, AuthenticatedRequest } from './middleware/auth';
+import { authenticateJWT, authorize, requireRole, AuthenticatedRequest } from './middleware/auth';
 
 // Protect a route (any authenticated user)
-router.get('/protected', 
-  authenticateJWT(redisClient), 
+router.get('/protected', authenticateJWT(redisClient), (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.userId;
+  res.json({ userId });
+});
+
+// Protect a route (specific roles only)
+router.post(
+  '/admin/users',
+  authenticateJWT(redisClient),
+  authorize(['admin'], ['create:user']),
   (req: AuthenticatedRequest, res) => {
-    const userId = req.user?.userId;
-    res.json({ userId });
+    res.json({ message: 'User created' });
   }
 );
 
-// Protect a route (specific roles only)
-router.get('/admin', 
+// Config-object invocation with custom zone resolver
+router.patch(
+  '/zones/:zoneId/settings',
   authenticateJWT(redisClient),
-  requireRole(['admin']),
-  (req: AuthenticatedRequest, res) => {
-    res.json({ message: 'Admin only' });
-  }
+  authorize({
+    roles: ['coordinator', 'admin'],
+    permissions: ['update:schedule'],
+    zoneResolver: (req) => req.params.zoneId,
+  }),
+  updateZoneSettingsHandler
 );
 ```
 
 **Features:**
+
 - JWT signature verification
 - Token expiration checking
 - Token blacklist support (logout)
-- User context attachment to request
-- Role-based authorization
+- User context attachment (role, zone, permissions)
+- Role + permission enforcement with shared helpers
+- Zone-aware access control (admin bypass configurable)
+- Standardized `AUTH_*` error payloads
 
 **See:** `docs/A7-jwt-auth-middleware.md` for complete documentation
 
@@ -64,6 +77,7 @@ router.post('/register', createRegistrationRateLimiter(redisClient), registerHan
 ```
 
 **Features:**
+
 - Per-IP rate limiting
 - Configurable time windows and max attempts
 - Redis-backed for multi-instance support
@@ -88,6 +102,7 @@ router.post('/refresh', validateRefreshToken, refreshHandler);
 ```
 
 **Features:**
+
 - Email format validation
 - Password strength validation
 - Clear error messages
@@ -102,17 +117,18 @@ When using multiple middleware, apply them in this order:
 1. **Rate Limiting** - Reject abusive requests early
 2. **Validation** - Validate input format
 3. **Authentication** - Verify JWT token
-4. **Authorization** - Check user role
+4. **Authorization** - Check role/permissions/zone
 5. **Business Logic** - Execute route handler
 
 **Example:**
 
 ```typescript
-router.post('/protected-endpoint',
-  createRateLimiter(redisClient, config),  // 1. Rate limiting
-  validateRequest,                          // 2. Validation
-  authenticateJWT(redisClient),            // 3. Authentication
-  requireRole(['admin']),                  // 4. Authorization
+router.post(
+  '/protected-endpoint',
+  createRateLimiter(redisClient, config), // 1. Rate limiting
+  validateRequest, // 2. Validation
+  authenticateJWT(redisClient), // 3. Authentication
+  authorize(['admin'], ['update:client']), // 4. Authorization
   async (req: AuthenticatedRequest, res) => {
     // 5. Business logic
     res.json({ success: true });

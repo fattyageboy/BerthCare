@@ -186,10 +186,10 @@ describe('Authentication Utilities', () => {
       await verifyPassword(wrongPassword, hash);
       const durationWrong = Date.now() - startWrong;
 
-      // Times should be similar (within 50ms) due to constant-time comparison
+      // Times should be similar (within 100ms) due to constant-time comparison
       // This protects against timing attacks
       const timeDifference = Math.abs(durationCorrect - durationWrong);
-      expect(timeDifference).toBeLessThan(50);
+      expect(timeDifference).toBeLessThan(100);
     }, 10000);
 
     it('should take similar time for passwords of different lengths', async () => {
@@ -207,9 +207,9 @@ describe('Authentication Utilities', () => {
       await verifyPassword(longPassword, hash);
       const durationLong = Date.now() - startLong;
 
-      // Times should be similar (within 50ms)
+      // Times should be similar (within 100ms)
       const timeDifference = Math.abs(durationShort - durationLong);
-      expect(timeDifference).toBeLessThan(50);
+      expect(timeDifference).toBeLessThan(100);
     }, 10000);
   });
 

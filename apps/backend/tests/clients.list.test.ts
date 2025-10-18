@@ -24,11 +24,15 @@
 
 import express from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateAccessToken } from '../../../libs/shared/src/jwt-utils';
+import { generateAccessToken } from '@berthcare/shared';
+
+import { createRedisClient, RedisClient } from '../src/cache/redis-client';
 import { createClientRoutes } from '../src/routes/clients.routes';
+
+const LAST_VISIT_COMPLETED_AT = '2025-01-01T10:05:00.000Z';
+const NEXT_VISIT_SCHEDULED_AT = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
 // Test configuration
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -41,7 +45,7 @@ if (!TEST_DATABASE_URL || !TEST_REDIS_URL) {
 describe('GET /api/v1/clients', () => {
   let app: express.Application;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
 
   // Test data
   let testZoneId1: string;
@@ -61,7 +65,7 @@ describe('GET /api/v1/clients', () => {
     });
 
     // Create Redis connection
-    redisClient = createClient({
+    redisClient = createRedisClient({
       url: TEST_REDIS_URL,
     });
     await redisClient.connect();
@@ -82,6 +86,15 @@ describe('GET /api/v1/clients', () => {
         role VARCHAR(20) NOT NULL CHECK (role IN ('caregiver', 'coordinator', 'admin')),
         zone_id UUID,
         is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP WITH TIME ZONE
+      );
+
+      CREATE TABLE IF NOT EXISTS zones (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(100) NOT NULL,
+        region VARCHAR(100) NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP WITH TIME ZONE
@@ -117,6 +130,46 @@ describe('GET /api/v1/clients', () => {
         updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
         deleted_at TIMESTAMP WITH TIME ZONE
       );
+
+      CREATE TABLE IF NOT EXISTS visits (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        client_id UUID NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+        staff_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+        scheduled_start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+        check_in_time TIMESTAMP WITH TIME ZONE,
+        check_in_latitude DECIMAL(10, 8) CHECK (check_in_latitude BETWEEN -90 AND 90),
+        check_in_longitude DECIMAL(11, 8) CHECK (check_in_longitude BETWEEN -180 AND 180),
+        check_out_time TIMESTAMP WITH TIME ZONE,
+        check_out_latitude DECIMAL(10, 8) CHECK (check_out_latitude BETWEEN -90 AND 90),
+        check_out_longitude DECIMAL(11, 8) CHECK (check_out_longitude BETWEEN -180 AND 180),
+        status VARCHAR(50) NOT NULL DEFAULT 'scheduled'
+          CHECK (status IN ('scheduled', 'in_progress', 'completed', 'cancelled')),
+        duration_minutes INTEGER CHECK (duration_minutes >= 0 AND duration_minutes <= 10000),
+        copied_from_visit_id UUID REFERENCES visits(id) ON DELETE SET NULL,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        synced_at TIMESTAMP WITH TIME ZONE,
+        CONSTRAINT check_times_logical CHECK (
+          check_out_time IS NULL OR 
+          check_in_time IS NULL OR 
+          check_out_time >= check_in_time
+        ),
+        CONSTRAINT check_out_requires_check_in CHECK (
+          check_out_time IS NULL OR check_in_time IS NOT NULL
+        ),
+        CONSTRAINT check_out_latitude_requires_times CHECK (
+          check_out_latitude IS NULL OR check_out_time IS NOT NULL
+        ),
+        CONSTRAINT check_out_longitude_requires_times CHECK (
+          check_out_longitude IS NULL OR check_out_time IS NOT NULL
+        ),
+        CONSTRAINT duration_requires_times CHECK (
+          duration_minutes IS NULL OR (
+            check_in_time IS NOT NULL
+            AND check_out_time IS NOT NULL
+          )
+        )
+      );
     `);
   });
 
@@ -132,11 +185,13 @@ describe('GET /api/v1/clients', () => {
     try {
       await client.query('BEGIN');
       // Clear database tables in correct order
+      await client.query('DELETE FROM visits');
       await client.query('DELETE FROM care_plans');
       await client.query('DELETE FROM clients');
       await client.query(
         "DELETE FROM users WHERE email LIKE '%@test.com' OR email LIKE '%@example.com'"
       );
+      await client.query('DELETE FROM zones');
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -151,6 +206,12 @@ describe('GET /api/v1/clients', () => {
     // Create test zones
     testZoneId1 = '11111111-1111-1111-1111-111111111111';
     testZoneId2 = '22222222-2222-2222-2222-222222222222';
+
+    await pgPool.query(
+      `INSERT INTO zones (id, name, region)
+       VALUES ($1, $2, $3), ($4, $5, $6)`,
+      [testZoneId1, 'Zone 1', 'Region 1', testZoneId2, 'Zone 2', 'Region 2']
+    );
 
     // Create test users with unique emails
     const timestamp = Date.now();
@@ -244,6 +305,37 @@ describe('GET /api/v1/clients', () => {
         'Mobility assistance required',
       ]
     );
+
+    // Create visits for last/next visit calculations
+    await pgPool.query(
+      `INSERT INTO visits (
+         client_id,
+         staff_id,
+         scheduled_start_time,
+         check_in_time,
+         check_out_time,
+         status
+       )
+       VALUES ($1, $2, $3, $4, $5, 'completed')`,
+      [
+        testClient1Id,
+        testUserId1,
+        '2025-01-01T09:00:00.000Z',
+        '2025-01-01T09:05:00.000Z',
+        LAST_VISIT_COMPLETED_AT,
+      ]
+    );
+
+    await pgPool.query(
+      `INSERT INTO visits (
+         client_id,
+         staff_id,
+         scheduled_start_time,
+         status
+       )
+       VALUES ($1, $2, $3, 'scheduled')`,
+      [testClient1Id, testUserId1, NEXT_VISIT_SCHEDULED_AT]
+    );
   });
 
   describe('Authentication', () => {
@@ -298,7 +390,7 @@ describe('GET /api/v1/clients', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
 
-      expect(response.body.error.code).toBe('FORBIDDEN');
+      expect(response.body.error.code).toBe('AUTH_ZONE_ACCESS_DENIED');
     });
 
     it('should allow admin to access all zones', async () => {
@@ -526,6 +618,27 @@ describe('GET /api/v1/clients', () => {
         (c: { firstName: string }) => c.firstName === 'Alice'
       );
       expect(aliceClient.carePlanSummary).toBe('Requires assistance with daily activities');
+    });
+
+    it('should include last visit and next scheduled visit when available', async () => {
+      const token = generateAccessToken({
+        userId: testUserId1,
+        role: 'caregiver',
+        zoneId: testZoneId1,
+        email: 'caregiver1@test.com',
+      });
+
+      const response = await request(app)
+        .get('/api/v1/clients')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const aliceClient = response.body.data.clients.find(
+        (c: { firstName: string }) => c.firstName === 'Alice'
+      );
+
+      expect(aliceClient.lastVisitDate).toBe(LAST_VISIT_COMPLETED_AT);
+      expect(aliceClient.nextScheduledVisit).toBe(NEXT_VISIT_SCHEDULED_AT);
     });
 
     it('should sort by last name then first name', async () => {

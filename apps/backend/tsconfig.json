@@ -4,7 +4,7 @@
     "module": "CommonJS",
     "target": "ES2021",
     "lib": ["ES2021"],
-    "outDir": "dist",
+    "outDir": "../../dist/apps/backend",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -12,9 +12,11 @@
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "isolatedModules": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+  "exclude": ["node_modules", "../../dist/apps/backend", "**/*.spec.ts"]
 }

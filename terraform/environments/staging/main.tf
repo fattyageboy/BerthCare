@@ -14,7 +14,7 @@ terraform {
       version = "~> 3.5"
     }
   }
-
+ 
   # Backend configuration for state management
   # Uncomment after creating S3 bucket and DynamoDB table for state locking
   # backend "s3" {

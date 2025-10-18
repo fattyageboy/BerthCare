@@ -1,282 +1,393 @@
-#!/usr/bin/env node
-/**
- * Database Migration Runner
- *
- * Simple migration tool for running SQL migration files against PostgreSQL.
- * Supports both forward migrations and rollbacks.
- *
- * Usage:
- *   npm run migrate:up              # Run all pending migrations
- *   npm run migrate:up 001          # Run specific migration
- *   npm run migrate:down 001        # Rollback specific migration
- *
- * Philosophy: Keep it simple. SQL files are the source of truth.
- */
+import { promises as fs } from 'fs';
+import path from 'path';
 
-/* eslint-disable no-console */
+import dotenv from 'dotenv';
+import { Client } from 'pg';
 
-import { readFileSync } from 'fs';
-import { join } from 'path';
+type MigrationFile = {
+  code: string;
+  baseName: string;
+  fileName: string;
+  fullPath: string;
+  isDown: boolean;
+};
 
-import { Pool, PoolClient } from 'pg';
+const moduleDir = __dirname;
 
-// Database connection configuration
-const pool = new Pool({
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT || '5432'),
-  database: process.env.POSTGRES_DB || 'berthcare_dev',
-  user: process.env.POSTGRES_USER || 'berthcare',
-  password: process.env.POSTGRES_PASSWORD || 'berthcare_dev_password',
-});
+const envPath = path.resolve(moduleDir, '../../.env');
+dotenv.config({ path: envPath });
 
-// Migration file paths
-const MIGRATIONS_DIR = join(__dirname, 'migrations');
+const directionArg = process.argv[2] ?? 'up';
+const direction = directionArg === 'down' ? 'down' : 'up';
+const target = process.argv[3];
 
-/**
- * Ensure schema_migrations table exists
- */
-async function ensureMigrationsTable(): Promise<void> {
-  const client = await pool.connect();
+ensureDatabaseUrl();
+
+const migrationsDir = path.resolve(moduleDir, 'migrations');
+
+void (async () => {
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+  });
+  let exitCode = 0;
+
   try {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS schema_migrations (
-        version VARCHAR(10) PRIMARY KEY,
-        applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-  } finally {
-    client.release();
-  }
-}
+    await client.connect();
+    await ensureMigrationsTable(client);
 
-/**
- * Get list of applied migrations
- */
-async function getAppliedMigrations(): Promise<Set<string>> {
-  const client = await pool.connect();
-  try {
-    const result = await client.query('SELECT version FROM schema_migrations ORDER BY version');
-    return new Set(result.rows.map((row) => row.version));
-  } finally {
-    client.release();
-  }
-}
+    const allMigrations = await loadMigrationFiles(migrationsDir);
+    const upMigrations = allMigrations
+      .filter((migration) => !migration.isDown)
+      .sort(compareMigrationsAsc);
 
-/**
- * Record migration as applied
- */
-async function recordMigration(version: string, client: PoolClient): Promise<void> {
-  await client.query('INSERT INTO schema_migrations (version) VALUES ($1)', [version]);
-}
-
-/**
- * Remove migration record
- */
-async function removeMigrationRecord(version: string, client: PoolClient): Promise<void> {
-  await client.query('DELETE FROM schema_migrations WHERE version = $1', [version]);
-}
-
-/**
- * Execute SQL migration file
- */
-async function executeMigration(
-  filename: string,
-  version: string,
-  isRollback = false
-): Promise<void> {
-  const filePath = join(MIGRATIONS_DIR, filename);
-  const sql = readFileSync(filePath, 'utf-8');
-
-  console.log(`\n📄 Executing migration: ${filename}`);
-  console.log('─'.repeat(60));
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(sql);
-
-    // Update migration state
-    if (isRollback) {
-      await removeMigrationRecord(version, client);
-    } else {
-      await recordMigration(version, client);
-    }
-
-    await client.query('COMMIT');
-    console.log('✅ Migration completed successfully');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('❌ Migration failed:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Run migration up (apply changes)
- */
-async function migrateUp(migrationNumber?: string): Promise<void> {
-  console.log('\n🚀 Running migrations...\n');
-
-  // Ensure migrations tracking table exists
-  await ensureMigrationsTable();
-
-  // Get already applied migrations
-  const appliedMigrations = await getAppliedMigrations();
-
-  // Define all available migrations
-  const allMigrations = [
-    { version: '001', filename: '001_create_users_auth.sql' },
-    { version: '002', filename: '002_create_clients.sql' },
-    { version: '003', filename: '003_create_care_plans.sql' },
-  ];
-
-  if (migrationNumber) {
-    // Run specific migration
-    const migration = allMigrations.find((m) => m.version === migrationNumber);
-    if (!migration) {
-      throw new Error(`Migration ${migrationNumber} not found`);
-    }
-
-    if (appliedMigrations.has(migration.version)) {
-      console.log(`⏭️  Migration ${migration.version} already applied, skipping...`);
-    } else {
-      await executeMigration(migration.filename, migration.version);
-    }
-  } else {
-    // Run all pending migrations in order
-    let appliedCount = 0;
-    for (const migration of allMigrations) {
-      if (appliedMigrations.has(migration.version)) {
-        console.log(`⏭️  Migration ${migration.version} already applied, skipping...`);
-      } else {
-        await executeMigration(migration.filename, migration.version);
-        appliedCount++;
-      }
-    }
-
-    if (appliedCount === 0) {
-      console.log('\n✨ No pending migrations to run. Database is up to date!\n');
+    if (upMigrations.length === 0) {
+      console.log('No migration files found.');
       return;
     }
+
+    if (direction === 'up') {
+      await runMigrateUp(client, upMigrations, target);
+    } else {
+      await runMigrateDown(client, allMigrations, upMigrations, target);
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    exitCode = 1;
+  } finally {
+    try {
+      await client.end();
+    } catch (endError) {
+      console.error('Failed to close database connection.', endError);
+      exitCode = 1;
+    }
+    process.exitCode = exitCode;
   }
+})();
 
-  console.log('\n✨ All migrations completed successfully!\n');
-}
+async function runMigrateUp(client: Client, upMigrations: MigrationFile[], targetArg?: string) {
+  const executed = await loadExecutedMigrations(client);
+  const pending = upMigrations.filter((migration) => !executed.has(migration.baseName));
 
-/**
- * Run migration down (rollback changes)
- */
-async function migrateDown(migrationNumber: string): Promise<void> {
-  console.log('\n⏪ Rolling back migration...\n');
-
-  // Ensure migrations tracking table exists
-  await ensureMigrationsTable();
-
-  // Get already applied migrations
-  const appliedMigrations = await getAppliedMigrations();
-
-  // Check if migration was applied
-  if (!appliedMigrations.has(migrationNumber)) {
-    console.log(`⏭️  Migration ${migrationNumber} was not applied, nothing to rollback.`);
+  if (pending.length === 0) {
+    console.log('No pending migrations to apply.');
     return;
   }
 
-  // Define ordered list of all migrations
-  const orderedMigrations = ['001', '002', '003'];
+  const selected = selectUpMigrations(pending, upMigrations, targetArg);
 
-  // Check for dependent migrations (migrations applied after the target)
-  const targetIndex = orderedMigrations.indexOf(migrationNumber);
-  if (targetIndex === -1) {
-    throw new Error(`Migration ${migrationNumber} not found in migration list`);
+  if (selected.length === 0) {
+    console.log('No migrations selected for execution.');
+    return;
   }
 
-  const dependentMigrations = orderedMigrations
-    .slice(targetIndex + 1)
-    .filter((version) => appliedMigrations.has(version));
+  for (const migration of selected) {
+    await applySqlFile(client, migration, 'up');
+  }
 
-  if (dependentMigrations.length > 0) {
-    console.error(`❌ Cannot rollback migration ${migrationNumber}`);
-    console.error(`   The following dependent migrations are still applied:`);
-    dependentMigrations.forEach((version) => {
-      console.error(`   - ${version}`);
-    });
-    console.error(`\n   Please rollback these migrations first, in reverse order.`);
+  console.log('Migrations complete!');
+}
+
+async function runMigrateDown(
+  client: Client,
+  allMigrations: MigrationFile[],
+  upMigrations: MigrationFile[],
+  targetArg?: string
+) {
+  const executedList = await loadExecutedList(client);
+
+  if (executedList.length === 0) {
+    console.log('No migrations have been applied yet.');
+    return;
+  }
+
+  const orderIndex = new Map<string, number>();
+  upMigrations.forEach((migration, index) => {
+    orderIndex.set(migration.baseName, index);
+  });
+
+  const downMap = new Map<string, MigrationFile>();
+  for (const migration of allMigrations) {
+    if (migration.isDown) {
+      downMap.set(migration.baseName, migration);
+    }
+  }
+
+  const planned = selectDownMigrations(executedList, orderIndex, downMap, targetArg);
+
+  if (planned.length === 0) {
+    console.log('No migrations selected for rollback.');
+    return;
+  }
+
+  for (const migration of planned) {
+    await applySqlFile(client, migration, 'down');
+  }
+
+  console.log('Rollback complete!');
+}
+
+async function ensureMigrationsTable(client: Client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name TEXT PRIMARY KEY,
+      run_on TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'schema_migrations'::regclass
+          AND conname = 'schema_migrations_name_key'
+      ) THEN
+        ALTER TABLE schema_migrations
+        ADD CONSTRAINT schema_migrations_name_key UNIQUE (name);
+      END IF;
+    END
+    $$;
+  `);
+}
+
+async function loadMigrationFiles(dir: string): Promise<MigrationFile[]> {
+  const entries = await fs.readdir(dir);
+  const migrations: MigrationFile[] = [];
+
+  for (const fileName of entries) {
+    if (!fileName.endsWith('.sql')) {
+      continue;
+    }
+
+    const parsed = parseMigrationFile(fileName, dir);
+    if (parsed) {
+      migrations.push(parsed);
+    }
+  }
+
+  return migrations;
+}
+
+function parseMigrationFile(fileName: string, dir: string): MigrationFile | null {
+  const match = /^(\d{3})_(.+)\.sql$/.exec(fileName);
+  if (!match) {
+    return null;
+  }
+
+  const [, code, remainder] = match;
+  const downSuffix = '-down';
+  const isDown = remainder.endsWith(downSuffix);
+  const tail = isDown ? remainder.slice(0, -downSuffix.length) : remainder;
+  const baseName = `${code}_${tail}`;
+
+  return {
+    code,
+    baseName,
+    fileName,
+    fullPath: path.join(dir, fileName),
+    isDown,
+  };
+}
+
+function selectUpMigrations(
+  pending: MigrationFile[],
+  orderedAll: MigrationFile[],
+  targetArg?: string
+): MigrationFile[] {
+  if (!targetArg || targetArg.toLowerCase() === 'all') {
+    return pending;
+  }
+
+  if (/^\d+$/.test(targetArg) && targetArg.length !== 3) {
+    const count = Number.parseInt(targetArg, 10);
+    return pending.slice(0, Math.max(count, 0));
+  }
+
+  const resolvedName = resolveMigrationName(targetArg, orderedAll);
+  const limitIndex = orderedAll.findIndex((migration) => migration.baseName === resolvedName);
+
+  if (limitIndex === -1) {
+    throw new Error(`Unknown migration target: ${targetArg}`);
+  }
+
+  const allowed = new Set(
+    orderedAll.slice(0, limitIndex + 1).map((migration) => migration.baseName)
+  );
+
+  return pending.filter((migration) => allowed.has(migration.baseName));
+}
+
+function resolveMigrationName(input: string, orderedAll: MigrationFile[]): string {
+  if (/^\d+$/.test(input) && input.length === 3) {
+    const match = orderedAll.find((migration) => migration.code === input);
+    if (match) {
+      return match.baseName;
+    }
+  }
+
+  const normalized = input.endsWith('.sql') ? input.slice(0, -'.sql'.length) : input;
+  const match = orderedAll.find(
+    (migration) => migration.baseName === normalized || migration.fileName === `${normalized}.sql`
+  );
+
+  if (!match) {
+    throw new Error(`Unknown migration target: ${input}`);
+  }
+
+  return match.baseName;
+}
+
+function selectDownMigrations(
+  executed: string[],
+  orderIndex: Map<string, number>,
+  downMap: Map<string, MigrationFile>,
+  targetArg?: string
+): MigrationFile[] {
+  const executedSorted = Array.from(new Set(executed))
+    .filter((name) => orderIndex.has(name))
+    .sort((a, b) => (orderIndex.get(b) ?? 0) - (orderIndex.get(a) ?? 0));
+
+  if (executedSorted.length === 0) {
+    return [];
+  }
+
+  if (!targetArg) {
+    return collectDownMigrations(executedSorted.slice(0, 1), downMap);
+  }
+
+  if (targetArg.toLowerCase() === 'all' || targetArg === '0') {
+    return collectDownMigrations(executedSorted, downMap);
+  }
+
+  if (/^\d+$/.test(targetArg) && targetArg.length !== 3) {
+    const count = Number.parseInt(targetArg, 10);
+    return collectDownMigrations(executedSorted.slice(0, Math.max(count, 0)), downMap);
+  }
+
+  const resolvedName = resolveTargetForDown(targetArg, orderIndex);
+  const targetIndex = orderIndex.get(resolvedName);
+
+  if (targetIndex === undefined) {
+    throw new Error(`Unknown migration target: ${targetArg}`);
+  }
+
+  const namesToRollback = executedSorted.filter(
+    (name) => (orderIndex.get(name) ?? -1) >= targetIndex
+  );
+
+  return collectDownMigrations(namesToRollback, downMap);
+}
+
+function resolveTargetForDown(input: string, orderIndex: Map<string, number>): string {
+  if (/^\d+$/.test(input) && input.length === 3) {
+    const candidates = Array.from(orderIndex.entries()).filter(([name]) =>
+      name.startsWith(`${input}_`)
+    );
+    if (candidates.length === 0) {
+      throw new Error(`Unknown migration target: ${input}`);
+    }
+
+    candidates.sort((a, b) => b[1] - a[1]);
+    return candidates[0][0];
+  }
+
+  const normalized = input.endsWith('.sql') ? input.slice(0, -'.sql'.length) : input;
+
+  if (!orderIndex.has(normalized)) {
+    throw new Error(`Unknown migration target: ${input}`);
+  }
+
+  return normalized;
+}
+
+function collectDownMigrations(
+  names: string[],
+  downMap: Map<string, MigrationFile>
+): MigrationFile[] {
+  const selected: MigrationFile[] = [];
+
+  for (const name of names) {
+    const migration = downMap.get(name);
+    if (!migration) {
+      throw new Error(
+        `Missing rollback SQL file for migration "${name}". Expected "<code>_<name>-down.sql"`
+      );
+    }
+    selected.push(migration);
+  }
+
+  return selected;
+}
+
+async function applySqlFile(client: Client, migration: MigrationFile, mode: 'up' | 'down') {
+  const sql = await fs.readFile(migration.fullPath, 'utf8');
+  console.log(`${mode === 'up' ? 'Applying' : 'Reverting'} ${migration.fileName}`);
+
+  await client.query('BEGIN');
+  try {
+    await client.query(sql);
+
+    if (mode === 'up') {
+      await client.query(
+        `
+          INSERT INTO schema_migrations (name, run_on)
+          VALUES ($1, NOW())
+          ON CONFLICT (name) DO NOTHING
+        `,
+        [migration.baseName]
+      );
+    } else {
+      await client.query('DELETE FROM schema_migrations WHERE name = $1', [migration.baseName]);
+    }
+
+    await client.query('COMMIT');
+    console.log(`✔ ${migration.baseName} ${mode === 'up' ? 'applied' : 'reverted'}`);
+  } catch (error) {
+    await client.query('ROLLBACK');
     throw new Error(
-      `Cannot rollback migration ${migrationNumber}: dependent migrations ${dependentMigrations.join(', ')} are still applied`
+      `Migration "${migration.fileName}" failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   }
-
-  const rollbackFiles: Record<string, string> = {
-    '001': '001_create_users_auth_rollback.sql',
-    '002': '002_create_clients_rollback.sql',
-    '003': '003_create_care_plans_rollback.sql',
-  };
-
-  const filename = rollbackFiles[migrationNumber];
-  if (!filename) {
-    throw new Error(`Rollback for migration ${migrationNumber} not found`);
-  }
-  await executeMigration(filename, migrationNumber, true);
-
-  console.log('\n✨ Rollback completed successfully!\n');
 }
 
-/**
- * Verify database connection
- */
-async function verifyConnection(): Promise<void> {
-  try {
-    const client = await pool.connect();
-    const result = await client.query('SELECT version()');
-    console.log('✅ Database connection successful');
-    console.log(`📊 PostgreSQL version: ${result.rows[0].version.split(',')[0]}`);
-    client.release();
-  } catch (error) {
-    console.error('❌ Database connection failed:', error);
-    throw error;
-  }
+async function loadExecutedMigrations(client: Client): Promise<Set<string>> {
+  const result = await client.query<{ name: string }>('SELECT name FROM schema_migrations');
+  return new Set(result.rows.map((row) => row.name));
 }
 
-/**
- * Main execution
- */
-async function main() {
-  const command = process.argv[2]; // 'up' or 'down'
-  const migrationNumber = process.argv[3]; // Optional migration number
-
-  try {
-    // Verify database connection first
-    await verifyConnection();
-
-    // Execute migration command
-    if (command === 'up') {
-      await migrateUp(migrationNumber);
-    } else if (command === 'down') {
-      if (!migrationNumber) {
-        console.error('❌ Migration number required for rollback');
-        console.log('Usage: npm run migrate:down <migration_number>');
-        process.exit(1);
-      }
-      await migrateDown(migrationNumber);
-    } else {
-      console.error('❌ Invalid command. Use "up" or "down"');
-      console.log('Usage:');
-      console.log('  npm run migrate:up              # Run all migrations');
-      console.log('  npm run migrate:up 001          # Run specific migration');
-      console.log('  npm run migrate:down 001        # Rollback migration');
-      process.exit(1);
-    }
-  } catch (error) {
-    console.error('\n❌ Migration failed:', error);
-    process.exit(1);
-  } finally {
-    await pool.end();
-  }
+async function loadExecutedList(client: Client): Promise<string[]> {
+  const result = await client.query<{ name: string }>(
+    'SELECT name FROM schema_migrations ORDER BY run_on DESC, name DESC'
+  );
+  return result.rows.map((row) => row.name);
 }
 
-// Run if executed directly
-if (require.main === module) {
-  main();
+function compareMigrationsAsc(a: MigrationFile, b: MigrationFile): number {
+  if (a.code !== b.code) {
+    return Number.parseInt(a.code, 10) - Number.parseInt(b.code, 10);
+  }
+
+  return a.baseName.localeCompare(b.baseName);
+}
+
+function ensureDatabaseUrl() {
+  if (process.env.DATABASE_URL) {
+    return;
+  }
+
+  const user = process.env.POSTGRES_USER ?? 'berthcare';
+  const password = process.env.POSTGRES_PASSWORD ?? 'berthcare_dev_password';
+  const host = process.env.POSTGRES_HOST ?? 'localhost';
+  const port = process.env.POSTGRES_PORT ?? '5432';
+  const database = process.env.POSTGRES_DB ?? 'berthcare_dev';
+
+  const auth =
+    password.length > 0
+      ? `${encodeURIComponent(user)}:${encodeURIComponent(password)}`
+      : encodeURIComponent(user);
+
+  process.env.DATABASE_URL = `postgresql://${auth}@${host}:${port}/${database}`;
 }

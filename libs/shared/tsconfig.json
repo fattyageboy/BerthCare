@@ -2,10 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "module": "commonjs",
+    "rootDir": "src",
     "outDir": "../../dist/libs/shared",
     "declaration": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "tests/auth-utils.test.ts", "tests/index.test.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "jest.config.ts", "**/*.spec.ts", "**/*.test.ts"]
 }

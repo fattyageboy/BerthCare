@@ -22,7 +22,7 @@ resource "random_password" "db_password" {
   # Exclude characters that might cause issues in connection strings
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
-
+ 
 # Store database credentials in AWS Secrets Manager
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-${var.environment}-db-credentials"

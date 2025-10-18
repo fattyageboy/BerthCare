@@ -16,11 +16,13 @@
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
     "ecmaVersion": 2022,
-    "sourceType": "module"
+    "sourceType": "module",
+    "projectService": true
   },
   "plugins": ["@typescript-eslint", "import", "jest", "prettier"],
   "rules": {
     "prettier/prettier": "error",
+    "import/no-named-as-default-member": "off",
     "@typescript-eslint/no-unused-vars": [
       "error",
       {
@@ -35,6 +37,14 @@
       "error",
       {
         "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
+        "pathGroups": [
+          {
+            "pattern": "@berthcare/**",
+            "group": "internal",
+            "position": "before"
+          }
+        ],
+        "pathGroupsExcludedImportTypes": ["builtin"],
         "newlines-between": "always",
         "alphabetize": {
           "order": "asc",
@@ -51,10 +61,17 @@
   },
   "settings": {
     "import/resolver": {
+      "typescript": {
+        "alwaysTryTypes": true,
+        "project": ["tsconfig.base.json", "apps/*/tsconfig.json", "libs/*/tsconfig.json"],
+        "noWarnOnMultipleProjects": true
+      },
       "node": {
         "extensions": [".js", ".jsx", ".ts", ".tsx"]
       }
-    }
+    },
+    "import/core-modules": ["ioredis", "connect-redis", "express-session"],
+    "import/internal-regex": "^@berthcare/"
   },
   "ignorePatterns": [
     "node_modules/",
@@ -64,5 +81,32 @@
     "*.config.js",
     "*.config.ts",
     ".nx/"
+  ],
+  "overrides": [
+    {
+      "files": ["**/db/migrate.ts", "**/db/seed.ts", "**/db/verify-schema.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": [
+        "**/tests/**/*.{ts,tsx,js,jsx}",
+        "**/*.test.{ts,tsx,js,jsx}",
+        "**/*.spec.{ts,tsx,js,jsx}"
+      ],
+      "env": {
+        "jest": true
+      },
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/examples/**/*.{ts,tsx,js,jsx}"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
   ]
 }

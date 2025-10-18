@@ -20,10 +20,11 @@ import crypto from 'crypto';
 
 import express from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateRefreshToken } from '../../../libs/shared/src/jwt-utils';
+import { generateRefreshToken } from '@berthcare/shared';
+
+import { createRedisClient, RedisClient } from '../src/cache/redis-client';
 import { createAuthRoutes } from '../src/routes/auth.routes';
 
 // Test configuration
@@ -36,7 +37,7 @@ const TEST_REDIS_URL =
 describe('POST /v1/auth/refresh', () => {
   let app: express.Application;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
   let testUserId: string;
   let validRefreshToken: string;
   let validTokenHash: string;
@@ -50,7 +51,7 @@ describe('POST /v1/auth/refresh', () => {
     });
 
     // Create Redis connection
-    redisClient = createClient({
+    redisClient = createRedisClient({
       url: TEST_REDIS_URL,
     });
     await redisClient.connect();
@@ -133,6 +134,7 @@ describe('POST /v1/auth/refresh', () => {
       userId: testUserId,
       role: 'caregiver',
       zoneId: '123e4567-e89b-12d3-a456-426614174000',
+      deviceId: 'test-device',
     });
 
     // Hash the token for database storage
@@ -156,8 +158,32 @@ describe('POST /v1/auth/refresh', () => {
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('data');
       expect(response.body.data).toHaveProperty('accessToken');
+      expect(response.body.data).toHaveProperty('refreshToken');
       expect(typeof response.body.data.accessToken).toBe('string');
+      expect(typeof response.body.data.refreshToken).toBe('string');
       expect(response.body.data.accessToken.split('.')).toHaveLength(3); // JWT format
+      expect(response.body.data.refreshToken.split('.')).toHaveLength(3); // JWT format
+      expect(response.body.data.refreshToken).not.toBe(validRefreshToken);
+
+      const newTokenHash = crypto
+        .createHash('sha256')
+        .update(response.body.data.refreshToken)
+        .digest('hex');
+
+      const newTokenResult = await pgPool.query(
+        'SELECT revoked_at, device_id FROM refresh_tokens WHERE token_hash = $1',
+        [newTokenHash]
+      );
+      expect(newTokenResult.rows).toHaveLength(1);
+      expect(newTokenResult.rows[0].revoked_at).toBeNull();
+      expect(newTokenResult.rows[0].device_id).toBe('test-device');
+
+      const oldTokenResult = await pgPool.query(
+        'SELECT revoked_at FROM refresh_tokens WHERE token_hash = $1',
+        [validTokenHash]
+      );
+      expect(oldTokenResult.rows).toHaveLength(1);
+      expect(oldTokenResult.rows[0].revoked_at).not.toBeNull();
     });
 
     it('should return new access token with correct user information', async () => {
@@ -175,6 +201,23 @@ describe('POST /v1/auth/refresh', () => {
       expect(payload.role).toBe('caregiver');
       expect(payload.zoneId).toBe('123e4567-e89b-12d3-a456-426614174000');
       expect(payload.email).toBe('refresh-test@example.com');
+    });
+
+    it('should allow subsequent refresh with rotated refresh token', async () => {
+      const firstResponse = await request(app).post('/v1/auth/refresh').send({
+        refreshToken: validRefreshToken,
+      });
+
+      expect(firstResponse.status).toBe(200);
+      const rotatedRefreshToken = firstResponse.body.data.refreshToken;
+
+      const secondResponse = await request(app).post('/v1/auth/refresh').send({
+        refreshToken: rotatedRefreshToken,
+      });
+
+      expect(secondResponse.status).toBe(200);
+      expect(secondResponse.body.data.refreshToken).not.toBe(rotatedRefreshToken);
+      expect(secondResponse.body.data.refreshToken.split('.')).toHaveLength(3);
     });
   });
 
@@ -232,6 +275,7 @@ describe('POST /v1/auth/refresh', () => {
         userId: testUserId,
         role: 'caregiver',
         zoneId: 'zone_123',
+        deviceId: 'test-device',
       });
 
       const response = await request(app).post('/v1/auth/refresh').send({
@@ -258,6 +302,34 @@ describe('POST /v1/auth/refresh', () => {
       expect(response.body).toHaveProperty('error');
       expect(response.body.error.code).toBe('TOKEN_REVOKED');
       expect(response.body.error.message).toBe('Refresh token has been revoked');
+    });
+
+    it('should return 401 when device id does not match stored session', async () => {
+      const mismatchedToken = generateRefreshToken({
+        userId: testUserId,
+        role: 'caregiver',
+        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        deviceId: 'other-device',
+      });
+
+      const mismatchedHash = crypto.createHash('sha256').update(mismatchedToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      await pgPool.query(
+        `INSERT INTO refresh_tokens (user_id, token_hash, device_id, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [testUserId, mismatchedHash, 'test-device', expiresAt]
+      );
+
+      const response = await request(app).post('/v1/auth/refresh').send({
+        refreshToken: mismatchedToken,
+      });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.code).toBe('DEVICE_MISMATCH');
+      expect(response.body.error.message).toBe(
+        'Refresh token device does not match active session'
+      );
     });
 
     it('should return 401 for expired token', async () => {
@@ -335,21 +407,19 @@ describe('POST /v1/auth/refresh', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle multiple refresh attempts with same token', async () => {
-      // First refresh
-      const response1 = await request(app).post('/v1/auth/refresh').send({
+    it('should reject reuse of old refresh token after rotation', async () => {
+      // Initial refresh rotates the token
+      const firstResponse = await request(app).post('/v1/auth/refresh').send({
         refreshToken: validRefreshToken,
       });
-      expect(response1.status).toBe(200);
+      expect(firstResponse.status).toBe(200);
 
-      // Second refresh with same token should still work
-      const response2 = await request(app).post('/v1/auth/refresh').send({
+      // Reusing the original token should be rejected after rotation
+      const reuseResponse = await request(app).post('/v1/auth/refresh').send({
         refreshToken: validRefreshToken,
       });
-      expect(response2.status).toBe(200);
-
-      // Both should return different access tokens
-      expect(response1.body.data.accessToken).not.toBe(response2.body.data.accessToken);
+      expect(reuseResponse.status).toBe(401);
+      expect(reuseResponse.body.error.code).toBe('TOKEN_REVOKED');
     });
 
     it('should handle refresh token for different user roles', async () => {
@@ -372,6 +442,7 @@ describe('POST /v1/auth/refresh', () => {
         userId: coordResult.rows[0].id,
         role: 'coordinator',
         zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        deviceId: 'coord-device',
       });
 
       const coordTokenHash = crypto.createHash('sha256').update(coordToken).digest('hex');

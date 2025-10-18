@@ -1,6 +1,6 @@
 # BerthCare Technical Architecture Blueprint
 
-**Version:** 2.0.0  
+**Version:** 1.0.0  
 **Last Updated:** October 7, 2025  
 **Philosophy:** Simplicity is the ultimate sophistication
 
@@ -229,7 +229,7 @@ The system manages:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Mobile App (React Native)                     │
+│                    Mobile App (React Native)                    │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  UI Layer: Invisible Technology                          │   │
 │  │  - Auto-save (no save buttons)                           │   │
@@ -256,7 +256,7 @@ The system manages:
                     HTTPS/WSS (Encrypted, Compressed)
                                   ↕
 ┌─────────────────────────────────────────────────────────────────┐
-│                    API Gateway (AWS API Gateway)                 │
+│                    API Gateway (AWS API Gateway)                │
 │  - JWT authentication (stateless, scalable)                     │
 │  - Rate limiting (prevent abuse)                                │
 │  - Request validation (fail fast)                               │
@@ -265,7 +265,7 @@ The system manages:
 └─────────────────────────────────────────────────────────────────┘
                                   ↕
 ┌─────────────────────────────────────────────────────────────────┐
-│                Backend Services (Node.js + Express)              │
+│                Backend Services (Node.js + Express)             │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  REST API (Simple, Cacheable, Well-Understood)           │   │
 │  │  - Visit documentation endpoints                         │   │
@@ -633,6 +633,7 @@ Request:
 Response (200):
 {
   accessToken: string;    // New JWT, expires in 1 hour
+  refreshToken: string;   // Rotated refresh token, expires in 30 days
 }
 
 Errors:
@@ -5119,13 +5120,13 @@ caregiver → Mobile App → API → Alert Service → WebSocket Server
 
 ### Technology Decision Matrix
 
-| Criteria             | React Native | Native | PWA    | Score                    |
-| -------------------- | ------------ | ------ | ------ | ------------------------ |
-| Time to Market       | 9            | 4      | 10     | RN: 9                    |
-| Offline Support      | 8            | 10     | 5      | RN: 8                    |
-| Performance          | 7            | 10     | 6      | RN: 7                    |
-| Developer Experience | 9            | 6      | 8      | RN: 9                    |
-| Maintenance Cost     | 8            | 5      | 9      | RN: 8                    |
+| Criteria             | React Native | Native | PWA    | Score|
+| ---------------------| ------------ | ------ | ------ | ---- |
+| Time to Market       | 9            | 4      | 10     | RN: 9|
+| Offline Support      | 8            | 10     | 5      | RN: 8|
+| Performance          | 7            | 10     | 6      | RN: 7|
+| Developer Experience | 9            | 6      | 8      | RN: 9|
+| Maintenance Cost     | 8            | 5      | 9      | RN: 8|
 | **Total**            | **41**       | **35** | **38** | **Winner: React Native** |
 
 ### Contact & Support
@@ -5153,7 +5154,7 @@ caregiver → Mobile App → API → Alert Service → WebSocket Server
 
 ## Document History
 
-**Version 2.0.0** (October 7, 2025)
+**Version 1.0.0** (October 7, 2025)
 
 - Complete redesign integrating design philosophy throughout
 - Added "Philosophy in Practice" comprehensive conclusion
@@ -5171,7 +5172,7 @@ caregiver → Mobile App → API → Alert Service → WebSocket Server
 
 ---
 
-**Document Version:** 2.0.0  
+**Document Version:** 1.0.0  
 **Last Updated:** October 7, 2025  
 **Next Review:** November 7, 2025  
 **Owner:** System Architect  

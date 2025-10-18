@@ -14,7 +14,7 @@ terraform {
 # IAM Role for ECS Task Execution (pulls images, writes logs)
 resource "aws_iam_role" "ecs_task_execution" {
   name = "${var.project_name}-${var.environment}-ecs-task-execution"
-
+ 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

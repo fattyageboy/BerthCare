@@ -58,8 +58,24 @@ VHc9rnG8BVSMTwPmPG7grCM+uqrgEOYMyV64XcY+MBXZlgJSlcRdqfx47I1k3P5j
 ZQIDAQAB
 -----END PUBLIC KEY-----`;
 
-// Increase test timeout for integration tests (database operations can be slow)
-jest.setTimeout(60000);
+process.env.JWT_KEY_ID = 'test-suite-key';
+
+// Set timeout for integration tests (database setup can take time)
+jest.setTimeout(20000);
+
+// Initialize global cleanup registry for deterministic teardown
+declare global {
+  // eslint-disable-next-line no-var
+  var __TEST_CLEANUPS__: Array<() => Promise<void>>;
+}
+
+global.__TEST_CLEANUPS__ = [];
+
+// Suppress console errors during tests (optional - remove if you want to see all errors)
+// global.console = {
+//   ...console,
+//   error: jest.fn(),
+// };
 
 // Global test utilities
 export const TEST_ZONE_ID = '123e4567-e89b-12d3-a456-426614174000';

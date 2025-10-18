@@ -18,7 +18,7 @@ variable "s3_bucket_arns" {
   type        = list(string)
   default     = []
 }
-
+ 
 variable "logs_bucket_arn" {
   description = "Logs S3 bucket ARN"
   type        = string

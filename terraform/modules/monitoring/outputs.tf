@@ -19,7 +19,7 @@ output "application_log_group_arn" {
   description = "CloudWatch log group ARN for application logs"
   value       = aws_cloudwatch_log_group.application_logs.arn
 }
-
+ 
 output "dashboard_name" {
   description = "CloudWatch dashboard name"
   value       = aws_cloudwatch_dashboard.api_performance.dashboard_name
