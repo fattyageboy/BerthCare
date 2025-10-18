@@ -145,7 +145,7 @@ See `.env.example` for complete configuration options.
 - `getBcryptCostFactor(): number` - Get the bcrypt cost factor
 - `getEstimatedHashingTime(): number` - Get estimated hashing time
 
--### JWT Utilities
+### JWT Utilities
 
 - `generateAccessToken(options: AccessTokenOptions): string` - Generate access token
 - `generateRefreshToken(options: RefreshTokenOptions): string` - Generate refresh token
