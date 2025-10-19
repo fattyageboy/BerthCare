@@ -1,10 +1,10 @@
 import type { Pool } from 'pg';
-import type { RedisClient } from '../../src/cache/redis-client';
 
 import {
   ZoneAssignmentError,
   ZoneAssignmentService,
 } from '../../src/services/zone-assignment.service';
+import type { RedisClient } from '../../src/cache/redis-client';
 
 type RedisStub = Pick<RedisClient, 'get' | 'setEx' | 'del'> & {
   get: jest.Mock;

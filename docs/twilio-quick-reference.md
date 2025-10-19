@@ -52,6 +52,15 @@ aws secretsmanager get-secret-value \
   --region ca-central-1 \
   --query SecretString \
   --output text | jq .
+
+# Example output (redacted):
+# {
+#   "account_sid": "AC********************",
+#   "auth_token": "********************************",
+#   "phone_number": "+1XXXXXXXXXX",
+#   "voice_url": "https://api-staging.berthcare.ca/v1/twilio/voice",
+#   "sms_url": "https://api-staging.berthcare.ca/v1/twilio/sms"
+# }
 ```
 
 ### Retrieve Production Credentials
@@ -62,6 +71,15 @@ aws secretsmanager get-secret-value \
   --region ca-central-1 \
   --query SecretString \
   --output text | jq .
+
+# Example output (redacted):
+# {
+#   "account_sid": "AC********************",
+#   "auth_token": "********************************",
+#   "phone_number": "+1XXXXXXXXXX",
+#   "voice_url": "https://api.berthcare.ca/v1/twilio/voice",
+#   "sms_url": "https://api.berthcare.ca/v1/twilio/sms"
+# }
 ```
 
 ### Update Credentials
@@ -258,15 +276,28 @@ ngrok http 3000
 
 ### Validate Webhook Signatures
 
+Always validate using the exact URL Twilio called. When running behind load balancers or ngrok tunnels, Twilio’s request passes the original protocol/host via proxy headers. Configure Express with `app.set('trust proxy', true)` (in local tests, ngrok already sends `https`), respect `X-Forwarded-Proto`/`X-Forwarded-Host`, and ensure the Host header stays accurate; otherwise signatures will fail.
+
 ```javascript
 // In your webhook handler
 const twilio = require('twilio');
 
+// e.g., placed in your app bootstrap when running behind a proxy / load balancer
+app.set('trust proxy', true);
+
 app.post('/v1/twilio/voice', (req, res) => {
   const signature = req.headers['x-twilio-signature'];
-  const url = `https://${req.headers.host}${req.url}`;
 
-  const isValid = twilio.validateRequest(process.env.TWILIO_AUTH_TOKEN, signature, url, req.body);
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const originalUrl = `${protocol}://${host}${req.originalUrl}`;
+
+  const isValid = twilio.validateRequest(
+    process.env.TWILIO_AUTH_TOKEN,
+    signature,
+    originalUrl,
+    req.body
+  );
 
   if (!isValid) {
     return res.status(403).send('Invalid signature');

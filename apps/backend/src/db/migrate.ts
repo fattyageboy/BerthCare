@@ -144,7 +144,9 @@ async function loadMigrationFiles(dir: string): Promise<MigrationFile[]> {
     }
   } catch (error) {
     const message =
-      error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT'
+      error instanceof Error &&
+      'code' in error &&
+      (error as NodeJS.ErrnoException).code === 'ENOENT'
         ? `Migrations directory not found: ${dir}`
         : `Unable to access migrations directory at ${dir}: ${error instanceof Error ? error.message : String(error)}`;
     throw new Error(message);

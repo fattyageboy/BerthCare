@@ -218,7 +218,9 @@ curl -X POST http://localhost:3000/v1/auth/refresh \
     "refreshToken": "ORIGINAL_REFRESH_TOKEN"
   }'
 
-# Update stored refresh token with the value returned in this response
+# Update stored refresh token with the value returned in this response.
+# Parse the JSON body (e.g., jq -r '.refreshToken') and replace ORIGINAL_REFRESH_TOKEN
+# with that new value before the next refresh call to prove rotation end-to-end.
 
 # 3. Verify new access token works
 curl -X GET http://localhost:3000/v1/clients \

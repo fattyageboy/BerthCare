@@ -29,9 +29,40 @@ const ALLOWLIST = new Set([
 const auditArgs = ['audit', '--omit=dev', '--workspace=@berthcare/mobile', '--json'];
 const result = spawnSync('npm', auditArgs, { encoding: 'utf-8' });
 
-if (result.error) {
-  console.error('Failed to run npm audit:', result.error);
-  process.exit(1);
+const exitStatus = typeof result.status === 'number' ? result.status : undefined;
+const exitCode = typeof result.code === 'number' ? result.code : undefined;
+const terminatedBySignal = Boolean(result.signal);
+const spawnFailed = Boolean(result.error);
+const nonZeroExit =
+  (exitStatus !== undefined && exitStatus !== 0) || (exitCode !== undefined && exitCode !== 0);
+
+if (spawnFailed || nonZeroExit || terminatedBySignal) {
+  if (spawnFailed) {
+    console.error('Failed to run npm audit:', result.error);
+  } else if (terminatedBySignal) {
+    console.error(`npm audit terminated by signal: ${result.signal}`);
+  } else if (exitStatus !== undefined) {
+    console.error(`npm audit exited with status ${exitStatus}`);
+  } else if (exitCode !== undefined) {
+    console.error(`npm audit exited with code ${exitCode}`);
+  } else {
+    console.error('npm audit failed for an unknown reason.');
+  }
+
+  const stderrOutput = result.stderr?.trim();
+  const stdoutOutput = result.stdout?.trim();
+
+  if (stderrOutput) {
+    console.error('npm audit stderr:\n', stderrOutput);
+  } else if (stdoutOutput) {
+    console.error('npm audit stdout:\n', stdoutOutput);
+  }
+
+  const codeToExit =
+    (exitStatus !== undefined && exitStatus !== 0 ? exitStatus : undefined) ??
+    (exitCode !== undefined && exitCode !== 0 ? exitCode : undefined) ??
+    1;
+  process.exit(codeToExit);
 }
 
 const output = result.stdout?.trim();

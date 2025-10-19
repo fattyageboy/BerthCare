@@ -9,10 +9,11 @@
 
 import path from 'path';
 
-import { Client } from 'pg';
 import dotenv from 'dotenv';
+import { Client } from 'pg';
 
 import { createRedisClient } from '../src/cache/redis-client';
+
 import { registerCleanup } from './test-helpers';
 import { getWorkerContext } from './worker-context';
 

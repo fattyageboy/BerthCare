@@ -573,6 +573,30 @@ describe('Signature Upload Endpoints', () => {
     });
 
     describe('Cache Invalidation', () => {
+      const waitForCondition = async <T>(
+        check: () => Promise<T | null | undefined>,
+        { timeoutMs = 2000, intervalMs = 50 } = {}
+      ): Promise<T> => {
+        const start = Date.now();
+        const deadline = start + timeoutMs;
+        let lastError: Error | undefined;
+
+        while (Date.now() <= deadline) {
+          try {
+            const result = await check();
+            if (result !== null && result !== undefined) {
+              return result;
+            }
+          } catch (error) {
+            lastError = error as Error;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+
+        throw lastError ?? new Error('Condition not met within timeout');
+      };
+
       it('should invalidate visit cache after adding signature', async () => {
         // Create a new visit for this test to avoid interference
         const testVisitId = await createTestVisit(pgPool, {
@@ -600,18 +624,25 @@ describe('Signature Upload Endpoints', () => {
           })
           .expect(200);
 
-        // Small delay to ensure cache invalidation completes
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Fetch visit details again - should have signature once cache invalidation completes
+        const response = await waitForCondition(async () => {
+          const visitResponse = await request(app)
+            .get(`/api/v1/visits/${testVisitId}`)
+            .set('Authorization', `Bearer ${caregiverToken}`)
+            .expect(200);
 
-        // Fetch visit details again - should have signature
-        const response = await request(app)
-          .get(`/api/v1/visits/${testVisitId}`)
-          .set('Authorization', `Bearer ${caregiverToken}`)
-          .expect(200);
+          const signatureUrl = visitResponse.body.data?.documentation?.signatureUrl;
+          if (signatureUrl && signatureUrl.includes(testSignatureKey)) {
+            return visitResponse;
+          }
+
+          return null;
+        });
 
         // Should have signature URL in documentation
-        expect(response.body.data?.documentation?.signatureUrl).toBeDefined();
-        expect(response.body.data?.documentation?.signatureUrl).toContain(testSignatureKey);
+        const signatureUrl = response.body.data?.documentation?.signatureUrl;
+        expect(signatureUrl).toBeDefined();
+        expect(signatureUrl).toContain(testSignatureKey);
       });
     });
   });

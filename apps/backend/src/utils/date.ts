@@ -6,8 +6,7 @@ const MAX_FUTURE_OFFSET_MS = 20 * YEAR_IN_MS;
 
 function isWithinWindow(timestamp: number, reference: number): boolean {
   return (
-    timestamp >= reference - MAX_PAST_OFFSET_MS &&
-    timestamp <= reference + MAX_FUTURE_OFFSET_MS
+    timestamp >= reference - MAX_PAST_OFFSET_MS && timestamp <= reference + MAX_FUTURE_OFFSET_MS
   );
 }
 
@@ -26,8 +25,7 @@ function parseNumericTimestamp(value: number): Date | null {
   const secondsValid = !Number.isNaN(secondsDate.getTime());
 
   const now = Date.now();
-  const millisecondsInWindow =
-    millisecondsValid && isWithinWindow(millisecondsDate.getTime(), now);
+  const millisecondsInWindow = millisecondsValid && isWithinWindow(millisecondsDate.getTime(), now);
   const secondsInWindow = secondsValid && isWithinWindow(secondsDate.getTime(), now);
 
   if (millisecondsInWindow && secondsInWindow) {

@@ -28,7 +28,7 @@ CREATE TABLE visit_photos (
   thumbnail_s3_key TEXT,
   file_name VARCHAR(255),
   file_size INTEGER CHECK (file_size > 0),
-  mime_type VARCHAR(100),
+  mime_type VARCHAR(100) NOT NULL,
   uploaded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT unique_s3_key UNIQUE (s3_key)
 );
@@ -45,7 +45,7 @@ CREATE TABLE visit_photos (
 | `thumbnail_s3_key` | TEXT         | NULL     | S3 object key for thumbnail (320px) |
 | `file_name`        | VARCHAR(255) | NULL     | Original filename from upload       |
 | `file_size`        | INTEGER      | NULL     | File size in bytes                  |
-| `mime_type`        | VARCHAR(100) | NULL     | MIME type (e.g., image/jpeg)        |
+| `mime_type`        | VARCHAR(100) | NOT NULL | MIME type (e.g., image/jpeg)        |
 | `uploaded_at`      | TIMESTAMP    | NOT NULL | Upload timestamp                    |
 
 ---

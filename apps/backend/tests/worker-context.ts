@@ -4,10 +4,7 @@ import crypto from 'crypto';
  * Redis logical database ceiling. Redis exposes 16 logical databases (0-15) by default.
  * Allow overriding via TEST_REDIS_DB_LIMIT for custom deployments.
  */
-export const REDIS_LOGICAL_DB_LIMIT = Number.parseInt(
-  process.env.TEST_REDIS_DB_LIMIT ?? '16',
-  10
-);
+export const REDIS_LOGICAL_DB_LIMIT = Number.parseInt(process.env.TEST_REDIS_DB_LIMIT ?? '16', 10);
 
 export type WorkerIsolationContext = {
   workerId: number;
@@ -21,11 +18,11 @@ export type WorkerIsolationContext = {
 
 declare global {
   // eslint-disable-next-line no-var
+  var __TEST_WORKER_CONTEXT__: WorkerIsolationContext | undefined;
+declare global {
+  // eslint-disable-next-line no-var
   var __TEST_WORKER_CONTEXT__?: WorkerIsolationContext;
 }
-
-function ensureEnv(variable: string, value: string | undefined): string {
-  if (!value) {
     throw new Error(`${variable} environment variable is required for test execution`);
   }
   return value;

@@ -24,13 +24,13 @@ Implemented the photo upload flow using S3 pre-signed URLs for secure, direct-to
 
 **POST /api/v1/visits/:visitId/photos/upload-url**
 
-### Authentication
+### Authentication (Upload URL)
 
 - **Required:** Yes (JWT Bearer token)
 - **Role:** Caregiver (or coordinator/admin)
 - **Authorization:** Caregiver must own the visit
 
-### Request Body
+### Request Body (Upload URL)
 
 ```typescript
 {
@@ -54,13 +54,13 @@ Implemented the photo upload flow using S3 pre-signed URLs for secure, direct-to
 
 **POST /api/v1/visits/:visitId/photos**
 
-### Authentication
+### Authentication (Metadata)
 
 - **Required:** Yes (JWT Bearer token)
 - **Role:** Caregiver (or coordinator/admin)
 - **Authorization:** Caregiver must own the visit
 
-### Request Body
+### Request Body (Metadata)
 
 ```typescript
 {
@@ -430,7 +430,7 @@ npm run test:coverage
 
 ### Test Results
 
-```
+```text
 PASS  apps/backend/tests/visits.photos.test.ts
   Photo Upload Endpoints
     POST /v1/visits/:visitId/photos/upload-url
@@ -482,7 +482,7 @@ Tests:       29 passed, 29 total
 
 ### File Structure
 
-```
+```text
 apps/backend/src/
   ├── routes/
   │   └── visits.routes.ts          # Photo upload endpoints
@@ -575,7 +575,7 @@ async function recordPhotoMetadata(
 
 **Flow:**
 
-```
+```text
 1. Mobile app requests pre-signed URL
 2. Backend validates and generates URL
 3. Mobile app uploads directly to S3
@@ -650,13 +650,13 @@ fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
 
 **Key Format:**
 
-```
+```text
 visits/{visitId}/photos/{timestamp}-{sanitizedFileName}
 ```
 
 **Example:**
 
-```
+```text
 visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba/photos/1760246409476-wound-photo.jpg
 ```
 

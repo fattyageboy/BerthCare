@@ -86,11 +86,9 @@ export function createRateLimiter(redisClient: RedisClient, config: RateLimitCon
     } catch (error) {
       // If Redis fails, log error but allow request through
       // (graceful degradation - don't block users if rate limiting fails)
-      logError(
-        'Rate limiter error',
-        error instanceof Error ? error : new Error(String(error)),
-        { keyPrefix: config.keyPrefix },
-      );
+      logError('Rate limiter error', error instanceof Error ? error : new Error(String(error)), {
+        keyPrefix: config.keyPrefix,
+      });
       next();
     }
   };

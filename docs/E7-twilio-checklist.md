@@ -131,7 +131,10 @@ Quick checklist for completing Twilio account configuration.
 
 - [ ] Test outbound voice call successful
 - [ ] Test outbound SMS successful
-- [ ] Webhooks configured (will test after backend deployment)
+- [ ] Test inbound voice webhook (after backend deployment)
+- [ ] Test inbound SMS webhook (after backend deployment)
+- [ ] Test voice call status callback
+- [ ] Test SMS delivery status callback
 
 ---
 

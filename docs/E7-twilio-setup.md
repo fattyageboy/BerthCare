@@ -37,14 +37,15 @@ Before starting, gather:
 ### 2. Budget Planning
 
 **Estimated Monthly Costs (Canada Region - ca-central-1):**
-Rates may vary by region; verify current pricing via [Twilio's pricing page](https://www.twilio.com/en-ca/pricing) before budgeting.
 
-| Service       | Usage                            | Cost           |
-| ------------- | -------------------------------- | -------------- |
-| Phone Numbers | 2 numbers (staging + production) | $2.00/month    |
-| Voice Calls   | ~500 calls/month @ 1 min avg     | $25.00/month   |
-| SMS Messages  | ~1,000 messages/month            | $7.50/month    |
-| **Total**     |                                  | **~$35/month** |
+> **Note:** Prices are shown in CAD and are subject to change by region and over time. Always confirm the latest rates at [Twilio's pricing page](https://www.twilio.com/en-ca/pricing) before budgeting.
+
+| Service       | Usage                            | Cost               |
+| ------------- | -------------------------------- | ------------------ |
+| Phone Numbers | 2 numbers (staging + production) | CAD $2.00/month    |
+| Voice Calls   | ~500 calls/month @ 1 min avg     | CAD $25.00/month   |
+| SMS Messages  | ~1,000 messages/month            | CAD $7.50/month    |
+| **Total**     |                                  | **~CAD $35/month** |
 
 ---
 
@@ -264,18 +265,26 @@ Message Status Changes: https://api.berthcare.ca/v1/twilio/sms/status
 
 ### 5.1 Staging Credentials
 
+> **Security tip:** Avoid inline JSON to prevent shell-escaping differences between shells and credential leakage in command history. Write the payload to a temporary file with restrictive permissions, use the `file://` flag, then remove the file.
+
 ```bash
-# Create secret for staging Twilio credentials
+# Create a temporary JSON file (restrict permissions so only your user can read it)
+cat <<'EOF' > /tmp/berthcare-twilio-staging.json
+{
+  "account_sid": "AC...",
+  "auth_token": "your_auth_token",
+  "phone_number": "+1234567890",
+  "voice_url": "https://api-staging.berthcare.ca/v1/twilio/voice",
+  "sms_url": "https://api-staging.berthcare.ca/v1/twilio/sms"
+}
+EOF
+chmod 600 /tmp/berthcare-twilio-staging.json
+
+# Create secret for staging Twilio credentials using file-based payload
 aws secretsmanager create-secret \
   --name berthcare/staging/twilio \
   --description "Twilio credentials for BerthCare staging environment" \
-  --secret-string '{
-    "account_sid": "AC...",
-    "auth_token": "your_auth_token",
-    "phone_number": "+1234567890",
-    "voice_url": "https://api-staging.berthcare.ca/v1/twilio/voice",
-    "sms_url": "https://api-staging.berthcare.ca/v1/twilio/sms"
-  }' \
+  --secret-string file:///tmp/berthcare-twilio-staging.json \
   --region ca-central-1
 
 # Add tags for organization
@@ -283,6 +292,9 @@ aws secretsmanager tag-resource \
   --secret-id berthcare/staging/twilio \
   --tags Key=Environment,Value=staging Key=Service,Value=twilio \
   --region ca-central-1
+
+# Remove the temporary file once the secret is stored
+rm /tmp/berthcare-twilio-staging.json
 ```
 
 **Replace placeholders:**
@@ -294,17 +306,23 @@ aws secretsmanager tag-resource \
 ### 5.2 Production Credentials
 
 ```bash
-# Create secret for production Twilio credentials
+# Create a temporary JSON file for production credentials (restrict permissions)
+cat <<'EOF' > /tmp/berthcare-twilio-production.json
+{
+  "account_sid": "AC...",
+  "auth_token": "your_auth_token",
+  "phone_number": "+1234567890",
+  "voice_url": "https://api.berthcare.ca/v1/twilio/voice",
+  "sms_url": "https://api.berthcare.ca/v1/twilio/sms"
+}
+EOF
+chmod 600 /tmp/berthcare-twilio-production.json
+
+# Create secret for production Twilio credentials using file-based payload
 aws secretsmanager create-secret \
   --name berthcare/production/twilio \
   --description "Twilio credentials for BerthCare production environment" \
-  --secret-string '{
-    "account_sid": "AC...",
-    "auth_token": "your_auth_token",
-    "phone_number": "+1234567890",
-    "voice_url": "https://api.berthcare.ca/v1/twilio/voice",
-    "sms_url": "https://api.berthcare.ca/v1/twilio/sms"
-  }' \
+  --secret-string file:///tmp/berthcare-twilio-production.json \
   --region ca-central-1
 
 # Add tags
@@ -312,6 +330,9 @@ aws secretsmanager tag-resource \
   --secret-id berthcare/production/twilio \
   --tags Key=Environment,Value=production Key=Service,Value=twilio \
   --region ca-central-1
+
+# Remove the temporary file once the secret is stored
+rm /tmp/berthcare-twilio-production.json
 ```
 
 ### 5.3 Verify Secrets
@@ -503,6 +524,7 @@ Restrict calls/SMS to Canada and US only (security + cost control):
 ### 8.3 Enable Call Recording (Optional)
 
 **Important:** Call recording has privacy and compliance implications:
+
 - **PIPEDA (Canada):** Must obtain explicit written consent from all parties before recording
 - **GDPR (if applicable):** Requires legal basis and explicit consent
 - **Healthcare Privacy:** Coordinate with Privacy Officer before implementing
@@ -554,6 +576,7 @@ Prevent abuse and control costs:
 - [ ] Test SMS successful
 - [ ] Geo permissions configured (Canada + US only)
 - [ ] Billing alerts configured
+  - Alert thresholds depend on expected usage—values above assume light-to-moderate load; adjust based on your volume projections.
 - [ ] Rate limits configured
 
 ---
