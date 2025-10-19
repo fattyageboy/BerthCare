@@ -18,7 +18,10 @@
  * - Graceful fallback for edge cases
  */
 
-import { createClient } from 'redis';
+import { Pool } from 'pg';
+
+import { RedisClient } from '../cache/redis-client';
+import { logWarn } from '../config/logger';
 
 /**
  * Zone data
@@ -26,6 +29,7 @@ import { createClient } from 'redis';
 export interface Zone {
   id: string;
   name: string;
+  region: string;
   centerLatitude: number;
   centerLongitude: number;
 }
@@ -52,7 +56,34 @@ export class ZoneAssignmentError extends Error {
 export class ZoneAssignmentService {
   private cacheTTL: number = 3600; // 1 hour
 
-  constructor(private redisClient: ReturnType<typeof createClient>) {}
+  constructor(
+    private pgPool: Pool,
+    private redisClient: RedisClient
+  ) {}
+
+  private parseCoordinate(value: unknown, min?: number, max?: number): number | null {
+    let parsed: number | null = null;
+
+    if (typeof value === 'number') {
+      parsed = Number.isFinite(value) ? value : null;
+    } else if (typeof value === 'string') {
+      const floatValue = Number.parseFloat(value);
+      parsed = Number.isNaN(floatValue) ? null : floatValue;
+    }
+
+    if (parsed === null) {
+      return null;
+    }
+
+    if (
+      (typeof min === 'number' && parsed < min) ||
+      (typeof max === 'number' && parsed > max)
+    ) {
+      return null;
+    }
+
+    return parsed;
+  }
 
   /**
    * Assign a zone based on latitude/longitude
@@ -135,30 +166,46 @@ export class ZoneAssignmentService {
       console.warn('Zone cache read error:', cacheError);
     }
 
-    // Query database
-    // Note: For MVP, we'll create a simple zones table
-    // For now, return hardcoded zones for development
-    // TODO: Replace with actual database query when zones table exists
-    const zones: Zone[] = [
-      {
-        id: '00000000-0000-0000-0000-000000000001',
-        name: 'North Zone',
-        centerLatitude: 45.5017,
-        centerLongitude: -73.5673, // Montreal area
-      },
-      {
-        id: '00000000-0000-0000-0000-000000000002',
-        name: 'South Zone',
-        centerLatitude: 43.6532,
-        centerLongitude: -79.3832, // Toronto area
-      },
-      {
-        id: '00000000-0000-0000-0000-000000000003',
-        name: 'West Zone',
-        centerLatitude: 49.2827,
-        centerLongitude: -123.1207, // Vancouver area
-      },
-    ];
+    // Query database for active zones with coordinates
+    const { rows } = await this.pgPool.query(
+      `
+        SELECT
+          id,
+          name,
+          region,
+          center_latitude,
+          center_longitude
+        FROM zones
+        WHERE deleted_at IS NULL
+          AND center_latitude IS NOT NULL
+          AND center_longitude IS NOT NULL
+      `
+    );
+
+    const zones: Zone[] = [];
+
+    for (const row of rows) {
+      const lat = this.parseCoordinate(row.center_latitude, -90, 90);
+      const lng = this.parseCoordinate(row.center_longitude, -180, 180);
+
+      if (lat === null || lng === null) {
+        logWarn('Zone skipped due to invalid coordinates', {
+          zoneId: row.id,
+          zoneName: row.name,
+          rawLatitude: row.center_latitude,
+          rawLongitude: row.center_longitude,
+        });
+        continue;
+      }
+
+      zones.push({
+        id: row.id,
+        name: row.name,
+        region: row.region,
+        centerLatitude: lat,
+        centerLongitude: lng,
+      });
+    }
 
     // Cache zones
     try {
@@ -214,8 +261,18 @@ export class ZoneAssignmentService {
    * @returns true if zone exists
    */
   async validateZoneId(zoneId: string): Promise<boolean> {
-    const zones = await this.getAllZones();
-    return zones.some((zone) => zone.id === zoneId);
+    const result = await this.pgPool.query(
+      `
+        SELECT 1
+        FROM zones
+        WHERE id = $1
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [zoneId]
+    );
+
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**

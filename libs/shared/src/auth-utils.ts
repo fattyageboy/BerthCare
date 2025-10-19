@@ -1,6 +1,11 @@
 /**
  * Authentication Utilities
  *
+ * Task A2: Implement password hashing
+ * Create auth utility module using bcrypt (cost factor 12);
+ * implement hashPassword() and verifyPassword() functions;
+ * add unit tests (valid password, invalid password, timing attack resistance).
+ *
  * Provides secure password hashing and verification using bcrypt.
  *
  * Security Features:
@@ -9,6 +14,7 @@
  * - Timing attack resistance via constant-time comparison
  * - Industry-standard password security
  *
+ * Reference: project-documentation/task-plan.md - Phase A – Authentication & Authorization
  * Reference: Architecture Blueprint - Security section
  *
  * Philosophy: "Uncompromising Security"

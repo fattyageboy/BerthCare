@@ -17,7 +17,7 @@ variable "private_subnet_ids" {
   description = "List of private subnet IDs for RDS"
   type        = list(string)
 }
-
+ 
 variable "allowed_security_groups" {
   description = "List of security group IDs allowed to access RDS"
   type        = list(string)
@@ -102,6 +102,32 @@ variable "enable_performance_insights" {
   default     = true
 }
 
+variable "enable_secret_rotation" {
+  description = "Enable automatic rotation for the database credentials secret"
+  type        = bool
+  default     = false
+}
+
+variable "secret_rotation_lambda_arn" {
+  description = "ARN of the Lambda function that performs Secrets Manager rotation (required if rotation enabled)"
+  type        = string
+  default     = null
+  validation {
+    condition     = var.enable_secret_rotation ? var.secret_rotation_lambda_arn != null && length(var.secret_rotation_lambda_arn) > 0 : true
+    error_message = "secret_rotation_lambda_arn must be provided when enable_secret_rotation is true."
+  }
+}
+
+variable "secret_rotation_automatically_after_days" {
+  description = "Number of days after which the secret is automatically rotated"
+  type        = number
+  default     = 30
+  validation {
+    condition     = var.secret_rotation_automatically_after_days >= 1 && var.secret_rotation_automatically_after_days <= 365
+    error_message = "secret_rotation_automatically_after_days must be between 1 and 365 days."
+  }
+}
+
 variable "max_connections" {
   description = "Maximum number of database connections"
   type        = number
@@ -124,4 +150,34 @@ variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)
   default     = {}
+}
+
+variable "create_secret_access_role" {
+  description = "Create an IAM role with permissions to read the database credentials secret"
+  type        = bool
+  default     = true
+}
+
+variable "secret_access_role_name" {
+  description = "Name of the IAM role to create for accessing the database secret (only used when creating the role)"
+  type        = string
+  default     = null
+}
+
+variable "secret_access_role_service_principals" {
+  description = "Service principals allowed to assume the generated secret access role"
+  type        = list(string)
+  default     = ["ecs-tasks.amazonaws.com"]
+}
+
+variable "existing_secret_access_role_name" {
+  description = "Name of an existing IAM role that should be granted read access to the database secret"
+  type        = string
+  default     = null
+}
+
+variable "existing_secret_access_role_arn" {
+  description = "ARN of an existing IAM role that should be granted read access to the database secret (optional if name is provided)"
+  type        = string
+  default     = null
 }

@@ -1,0 +1,277 @@
+name: Backend CI
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+# Cancel in-progress runs when a new workflow with the same group name is triggered
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Code Quality Checks
+  code-quality:
+    name: Code Quality (Lint & Format)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint (backend only)
+        run: npx nx run backend:lint
+        continue-on-error: false
+
+      - name: Run Prettier check
+        run: npm run format:check
+        continue-on-error: false
+
+  # Job 2: Type Checking
+  type-check:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript type check (backend only)
+        run: npx nx run backend:type-check
+        continue-on-error: false
+
+  # Job 3: Unit Tests
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: berthcare_test
+          POSTGRES_USER: berthcare
+          POSTGRES_PASSWORD: berthcare_test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate ephemeral JWT keys for testing
+        run: |
+          # Generate RSA key pair for JWT testing
+          openssl genrsa -out /tmp/jwt_private.pem 2048
+          openssl rsa -in /tmp/jwt_private.pem -pubout -out /tmp/jwt_public.pem
+
+          # Export as base64-encoded environment variables
+          echo "JWT_PRIVATE_KEY=base64:$(base64 -w 0 /tmp/jwt_private.pem)" >> "$GITHUB_ENV"
+          echo "JWT_PUBLIC_KEY=base64:$(base64 -w 0 /tmp/jwt_public.pem)" >> "$GITHUB_ENV"
+
+          # Clean up key files
+          rm /tmp/jwt_private.pem /tmp/jwt_public.pem
+
+      - name: Run database migrations
+        run: npx ts-node --project apps/backend/tsconfig.json apps/backend/src/db/migrate.ts up
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: berthcare_test
+          POSTGRES_USER: berthcare
+          POSTGRES_PASSWORD: berthcare_test_password
+
+      - name: Run tests with coverage (backend only)
+        run: timeout 10m npx nx run backend:test --ci --coverage
+        continue-on-error: false
+        env:
+          TEST_DATABASE_URL: postgresql://berthcare:berthcare_test_password@localhost:5432/berthcare_test
+          TEST_REDIS_URL: redis://localhost:6379
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  # Job 4: Security Scanning (SAST)
+  security-sast:
+    name: Security Scan (SAST)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Snyk security scan
+        if: env.SNYK_TOKEN != ''
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ env.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --all-projects
+
+      - name: Skip Snyk (token missing)
+        if: env.SNYK_TOKEN == ''
+        run: echo "SNYK_TOKEN not configured; skipping Snyk scan."
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'
+
+  # Job 5: Dependency Audit (Backend Only)
+  dependency-audit:
+    name: Dependency Audit (Backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit backend production dependencies
+        run: |
+          # Audit only production dependencies used by backend
+          npm audit --audit-level=high --omit=dev --workspace=@berthcare/backend
+        continue-on-error: false
+
+      - name: Check for outdated backend dependencies
+        run: npm outdated --workspace=@berthcare/backend || true
+
+  # Job 6: Build Verification
+  build:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npx nx run backend:build
+        continue-on-error: false
+
+      - name: Check build artifacts
+        run: |
+          if [ ! -d "dist" ] && [ ! -d "apps/backend/dist" ]; then
+            echo "::error::No build artifacts found"
+            exit 1
+          fi
+
+  # Job 7: CI Summary
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [code-quality, type-check, test, security-sast, dependency-audit, build]
+    if: always()
+
+    steps:
+      - name: Check all jobs status
+        run: |
+          echo "Code Quality: ${{ needs.code-quality.result }}"
+          echo "Type Check: ${{ needs.type-check.result }}"
+          echo "Tests: ${{ needs.test.result }}"
+          echo "Security SAST: ${{ needs.security-sast.result }}"
+          echo "Dependency Audit: ${{ needs.dependency-audit.result }}"
+          echo "Build: ${{ needs.build.result }}"
+
+      - name: Fail if any required job failed
+        if: |
+          needs.code-quality.result == 'failure' ||
+          needs.type-check.result == 'failure' ||
+          needs.test.result == 'failure' ||
+          needs.security-sast.result == 'failure' ||
+          needs.dependency-audit.result == 'failure' ||
+          needs.build.result == 'failure'
+        run: exit 1

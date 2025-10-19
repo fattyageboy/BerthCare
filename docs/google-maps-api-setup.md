@@ -42,6 +42,7 @@ The BerthCare backend uses Google Maps Geocoding API to convert client addresses
 ### 4. Restrict API Key (Recommended)
 
 **Application Restrictions:**
+
 1. Select "IP addresses"
 2. Add your server IP addresses:
    - Development: `127.0.0.1` (localhost)
@@ -50,11 +51,13 @@ The BerthCare backend uses Google Maps Geocoding API to convert client addresses
 3. Click "Done"
 
 **API Restrictions:**
+
 1. Select "Restrict key"
 2. Select "Geocoding API" from the dropdown
 3. Click "Save"
 
 **Why restrict?**
+
 - Prevents unauthorized use of your API key
 - Reduces risk of quota abuse
 - Limits potential costs if key is compromised
@@ -62,12 +65,14 @@ The BerthCare backend uses Google Maps Geocoding API to convert client addresses
 ### 5. Configure Environment Variables
 
 **Development (.env):**
+
 ```bash
 GOOGLE_MAPS_API_KEY=AIzaSyD...your_actual_key_here
 GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400
 ```
 
 **Staging/Production:**
+
 - Store API key in AWS Secrets Manager
 - Reference secret in environment configuration
 - Never commit API keys to version control
@@ -75,6 +80,7 @@ GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400
 ### 6. Verify Setup
 
 **Test geocoding service:**
+
 ```bash
 # Start backend server
 npm run dev
@@ -95,11 +101,13 @@ curl -X POST http://localhost:3000/v1/clients \
 ```
 
 **Expected response:**
+
 - Status: 201 Created
 - Response includes `latitude` and `longitude` fields
 - Address is formatted by Google Maps
 
 **If geocoding fails:**
+
 - Check API key is correct in `.env`
 - Verify Geocoding API is enabled
 - Check API key restrictions
@@ -110,6 +118,7 @@ curl -X POST http://localhost:3000/v1/clients \
 ### Free Tier
 
 Google Maps provides a generous free tier:
+
 - **$200 USD credit per month**
 - **40,000 geocoding requests per month** (at $5 per 1,000 requests)
 - Credit resets monthly
@@ -117,14 +126,17 @@ Google Maps provides a generous free tier:
 ### Cost Calculation
 
 **Geocoding API Pricing:**
+
 - $5.00 per 1,000 requests
 - First $200 USD free each month
 
 **Example Usage:**
+
 - 100 clients created per month = 100 requests
 - Cost: $0.50 (covered by free tier)
 
 **With Caching:**
+
 - Duplicate addresses use cache (no API call)
 - 24 hour cache TTL reduces API calls by ~80%
 - Effective cost: ~$0.10 per month for typical usage
@@ -138,6 +150,7 @@ Google Maps provides a generous free tier:
 5. View usage metrics and quotas
 
 **Set up billing alerts:**
+
 1. Go to "Billing" → "Budgets & alerts"
 2. Create budget: $10 USD per month
 3. Set alert at 50%, 90%, 100%
@@ -148,6 +161,7 @@ Google Maps provides a generous free tier:
 ### API Key Protection
 
 **DO:**
+
 - ✅ Store API key in environment variables
 - ✅ Use AWS Secrets Manager for production
 - ✅ Restrict API key to specific IPs
@@ -156,6 +170,7 @@ Google Maps provides a generous free tier:
 - ✅ Monitor API usage for anomalies
 
 **DON'T:**
+
 - ❌ Commit API keys to version control
 - ❌ Share API keys in Slack/email
 - ❌ Use same API key for multiple environments
@@ -165,12 +180,14 @@ Google Maps provides a generous free tier:
 ### Key Rotation
 
 **When to rotate:**
+
 - Every 90 days (recommended)
 - If key is compromised
 - When team member leaves
 - After security incident
 
 **How to rotate:**
+
 1. Create new API key in Google Cloud Console
 2. Update environment variables with new key
 3. Deploy updated configuration
@@ -183,17 +200,20 @@ Google Maps provides a generous free tier:
 ### Common Errors
 
 **Error: `CONFIGURATION_ERROR`**
+
 - **Cause:** API key not set in environment variables
 - **Solution:** Add `GOOGLE_MAPS_API_KEY` to `.env` file
 
 **Error: `REQUEST_DENIED`**
+
 - **Cause:** API key restrictions or Geocoding API not enabled
-- **Solution:** 
+- **Solution:**
   - Verify Geocoding API is enabled
   - Check API key restrictions (IP addresses, API restrictions)
   - Ensure billing is enabled on Google Cloud project
 
 **Error: `OVER_QUERY_LIMIT`**
+
 - **Cause:** Exceeded free tier quota (40,000 requests/month)
 - **Solution:**
   - Wait for monthly quota reset
@@ -201,22 +221,26 @@ Google Maps provides a generous free tier:
   - Increase cache TTL to reduce API calls
 
 **Error: `INVALID_REQUEST`**
+
 - **Cause:** Invalid address format
 - **Solution:** Provide full street address with city and postal code
 
 **Error: `ZERO_RESULTS`**
+
 - **Cause:** Address not found by Google Maps
 - **Solution:** Verify address is correct and complete
 
 ### Debugging
 
 **Enable debug logging:**
+
 ```bash
 # In .env
 LOG_LEVEL=debug
 ```
 
 **Check logs:**
+
 ```bash
 # View backend logs
 docker-compose logs -f backend
@@ -226,6 +250,7 @@ grep "Geocoding" logs/backend.log
 ```
 
 **Test geocoding directly:**
+
 ```bash
 # Test Google Maps API directly
 curl "https://maps.googleapis.com/maps/api/geocode/json?address=100+Queen+St+W,+Toronto,+ON&key=YOUR_API_KEY"
@@ -236,6 +261,7 @@ curl "https://maps.googleapis.com/maps/api/geocode/json?address=100+Queen+St+W,+
 For development without Google Maps API, you can mock the geocoding service:
 
 **Create mock service:**
+
 ```typescript
 // apps/backend/src/services/geocoding.service.mock.ts
 export class MockGeocodingService {
@@ -252,14 +278,17 @@ export class MockGeocodingService {
 ```
 
 **Use mock in development:**
+
 ```typescript
 // apps/backend/src/routes/clients.routes.ts
-const geocodingService = process.env.NODE_ENV === 'development'
-  ? new MockGeocodingService()
-  : new GeocodingService(redisClient);
+const geocodingService =
+  process.env.NODE_ENV === 'development'
+    ? new MockGeocodingService()
+    : new GeocodingService(redisClient);
 ```
 
 **Limitations:**
+
 - All addresses return same coordinates
 - No address validation
 - No formatted address
@@ -269,21 +298,25 @@ const geocodingService = process.env.NODE_ENV === 'development'
 
 ### AWS Secrets Manager
 
+Replace the region in the commands below with your AWS region.
+
 **Store API key:**
+
 ```bash
 aws secretsmanager create-secret \
   --name berthcare/google-maps-api-key \
   --secret-string "AIzaSyD...your_actual_key_here" \
-  --region ca-central-1
+  --region ${AWS_REGION}
 ```
 
 **Reference in ECS task definition:**
+
 ```json
 {
   "secrets": [
     {
       "name": "GOOGLE_MAPS_API_KEY",
-      "valueFrom": "arn:aws:secretsmanager:ca-central-1:ACCOUNT_ID:secret:berthcare/google-maps-api-key"
+      "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:ACCOUNT_ID:secret:berthcare/google-maps-api-key"
     }
   ]
 }
@@ -292,12 +325,14 @@ aws secretsmanager create-secret \
 ### Monitoring
 
 **CloudWatch Metrics:**
+
 - Geocoding API response time
 - Geocoding API error rate
 - Cache hit rate
 - API quota usage
 
 **Alerts:**
+
 - Geocoding error rate > 5%
 - API quota usage > 80%
 - Response time > 2 seconds
@@ -326,4 +361,3 @@ aws secretsmanager create-secret \
 ---
 
 **Setup Complete!** You're now ready to use Google Maps Geocoding API with BerthCare.
-

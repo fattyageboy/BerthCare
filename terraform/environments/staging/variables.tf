@@ -9,7 +9,7 @@ variable "environment" {
   type        = string
   default     = "staging"
 }
-
+ 
 variable "aws_region" {
   description = "AWS region for Canadian data residency"
   type        = string

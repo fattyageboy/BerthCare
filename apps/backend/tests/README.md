@@ -5,6 +5,7 @@ Integration tests for the BerthCare backend API endpoints.
 ## Overview
 
 These tests verify the complete functionality of API endpoints including:
+
 - Request validation
 - Database operations
 - Authentication and authorization
@@ -26,15 +27,17 @@ tests/
 Before running tests, ensure you have:
 
 1. **PostgreSQL test database** running:
+
    ```bash
-   # Database should be available at:
-   # postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test
+   # Database should be available at (set these env vars first):
+   # postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}_test
    ```
 
 2. **Redis test instance** running:
+
    ```bash
-   # Redis should be available at:
-   # redis://:berthcare_redis_password@localhost:6379/1
+   # Redis should be available at (set REDIS_PASSWORD/REDIS_PORT/REDIS_DB):
+   # redis://:${REDIS_PASSWORD}@${REDIS_HOST:-localhost}:${REDIS_PORT:-6379}/${REDIS_DB:-1}
    ```
 
 3. **Environment variables** configured in `.env` file
@@ -47,42 +50,58 @@ Before running tests, ensure you have:
 ## Running Tests
 
 ### Run all tests
+
 ```bash
 npm test
 ```
 
 ### Run tests in watch mode
+
 ```bash
 npm run test:watch
 ```
 
 ### Run tests with coverage
+
 ```bash
 npm run test:coverage
 ```
 
 ### Run specific test file
+
 ```bash
 npm test -- auth.register.test.ts
 ```
 
 ### Run specific test suite
+
 ```bash
 npm test -- --testNamePattern="Successful Registration"
 ```
+
+## Worker Isolation & Parallelism
+
+- Jest workers derive an isolated PostgreSQL schema and Redis logical database from `JEST_WORKER_ID`. The default Redis ceiling is 16 logical DBs (`0-15`); override with `TEST_REDIS_DB_LIMIT` if your Redis deployment exposes a different count.
+- `tests/setup.ts` flushes the worker-specific Redis DB before the first suite and again at global teardown. Each suite still calls `flushDb` in `setupTestConnections` to ensure clean state between tests.
+- PostgreSQL schemas are created per worker with unique suffixes and dropped after each suite; any leftover schemas with the `test_schema_w{worker}_*` prefix are removed automatically during teardown.
+- CI pipelines must ensure `JEST_WORKER_ID` is exported when invoking Jest manually. Jest sets this automatically per worker, so explicit exports are only required when overriding the worker count or running through custom wrappers.
 
 ## Test Database Setup
 
 The tests automatically create required tables if they don't exist. However, for best results:
 
 1. **Create a dedicated test database**:
+
    ```sql
    CREATE DATABASE berthcare_test;
    ```
 
 2. **Run migrations on test database**:
+
    ```bash
-   DATABASE_URL=postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test npm run migrate:up
+   # Ensure DATABASE_URL is exported prior to running this command
+   # e.g. DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}_test"
+   DATABASE_URL="${DATABASE_URL}" npm run migrate:up
    ```
 
 3. **Tests will clean up data** between runs (DELETE operations, not DROP)
@@ -124,9 +143,7 @@ describe('Feature Name', () => {
 
   describe('Specific Scenario', () => {
     it('should do something specific', async () => {
-      const response = await request(app)
-        .post('/v1/endpoint')
-        .send({ data });
+      const response = await request(app).post('/v1/endpoint').send({ data });
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({ expected });
@@ -147,16 +164,19 @@ describe('Feature Name', () => {
 ## Debugging Tests
 
 ### Enable verbose output
+
 ```bash
 npm test -- --verbose
 ```
 
 ### Run single test
+
 ```bash
 npm test -- --testNamePattern="should register a new caregiver successfully"
 ```
 
 ### Debug with Node inspector
+
 ```bash
 node --inspect-brk node_modules/.bin/jest --runInBand
 ```
@@ -175,23 +195,27 @@ Tests are designed to run in CI/CD pipelines:
 ## Troubleshooting
 
 ### "Connection refused" errors
+
 - Ensure PostgreSQL and Redis are running
 - Check connection strings in `.env` file
 - Verify network connectivity
 
 ### "Table does not exist" errors
+
 - Run migrations on test database
 - Check database permissions
 - Verify test database exists
 
 ### "Rate limit exceeded" errors
+
 - Tests clean Redis between runs
 - If running tests multiple times quickly, wait or flush Redis manually:
   ```bash
-  redis-cli -a berthcare_redis_password -n 1 FLUSHDB
+  REDISCLI_AUTH="${REDIS_PASSWORD}" redis-cli -n "${REDIS_DB:-1}" FLUSHDB
   ```
 
 ### Timeout errors
+
 - Increase Jest timeout in `setup.ts`
 - Check database query performance
 - Verify network latency

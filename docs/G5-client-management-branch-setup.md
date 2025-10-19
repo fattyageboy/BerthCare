@@ -18,11 +18,13 @@ Successfully created the feature branch for client management implementation and
 ## Actions Completed
 
 ### 1. Branch Creation
+
 - ✅ Created branch `feat/client-management` from `main`
 - ✅ Pushed branch to remote repository
 - ✅ Branch is clean and up to date with main
 
 ### 2. PR Template Creation
+
 - ✅ Created comprehensive PR template at `.github/PULL_REQUEST_TEMPLATE/client-management-pr.md`
 - ✅ Included detailed checklist for all tasks (C1-C7)
 - ✅ Added testing instructions and manual test commands
@@ -34,12 +36,14 @@ Successfully created the feature branch for client management implementation and
 The PR template includes comprehensive checklists for:
 
 #### Database Schema (C1, C2)
+
 - Clients table migration with all required fields
 - Care plans table migration with JSONB support
 - Proper indexes and foreign key constraints
 - Rollback migrations
 
 #### API Endpoints (C3-C7)
+
 - **GET /v1/clients** - List with pagination, filtering, caching
 - **GET /v1/clients/:clientId** - Details with authorization
 - **POST /v1/clients** - Create with geocoding integration
@@ -47,6 +51,7 @@ The PR template includes comprehensive checklists for:
 - **POST /v1/care-plans** - Create/update with versioning
 
 #### Security & Quality
+
 - JWT authentication on all endpoints
 - Zone-based authorization
 - Role-based authorization (admin, coordinator)
@@ -60,10 +65,13 @@ The PR template includes comprehensive checklists for:
 
 ### To Create the Draft PR on GitHub:
 
-1. **Visit the PR creation URL:**
+1. **Start the PR creation flow in GitHub:** Use the template link below (or navigate via GitHub → Pull requests → New) to open the "New pull request" page for this branch.
+
    ```
    https://github.com/fattyageboy/BerthCare/pull/new/feat/client-management
    ```
+
+   This is a helper link; once the PR exists, replace it with the real PR URL in this doc.
 
 2. **Configure the PR:**
    - Title: `[DRAFT] feat: Client Management API`
@@ -72,7 +80,7 @@ The PR template includes comprehensive checklists for:
    - Mark as **Draft PR**
    - Link to issue #3 in the description
 
-3. **The PR template will auto-populate** with the comprehensive checklist
+3. **Ensure the PR template can auto-populate:** GitHub only fills the checklist when `.github/PULL_REQUEST_TEMPLATE/client-management-pr.md` exists (example path: `.github/PULL_REQUEST_TEMPLATE/client-management-pr.md`); otherwise, paste the checklist manually.
 
 4. **Add labels:**
    - `feature`
@@ -90,23 +98,27 @@ The PR template includes comprehensive checklists for:
 Following the task plan, the implementation will proceed in this order:
 
 ### Phase 1: Database Schema (0.5d each)
+
 1. **C1:** Create clients table migration
 2. **C2:** Create care_plans table migration
 3. Run migrations and verify schema
 
 ### Phase 2: Read Endpoints (3.5d total)
+
 4. **C3:** Implement GET /v1/clients (list with pagination) - 2d
 5. **C4:** Implement GET /v1/clients/:clientId (details) - 1.5d
 
 ### Phase 3: Write Endpoints (5d total)
+
 6. **C5:** Implement POST /v1/clients (create with geocoding) - 2d
 7. **C6:** Implement PATCH /v1/clients/:clientId (update) - 1.5d
 8. **C7:** Implement POST /v1/care-plans (create/update) - 1.5d
 
-### Phase 4: Testing & Review (0.25d)
-9. **G6:** CI checks, code review, merge
+### Phase 4: Testing & Review (0.5d)
 
-**Total Estimated Effort:** 8.5 days
+9. **G6:** CI checks, code review, merge (buffer for CI reruns and review feedback)
+
+**Total Estimated Effort:** 8.75 days
 
 ---
 
@@ -115,6 +127,7 @@ Following the task plan, the implementation will proceed in this order:
 ### Database Schema
 
 #### Clients Table
+
 ```sql
 CREATE TABLE clients (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -138,6 +151,7 @@ CREATE INDEX idx_clients_last_name ON clients(last_name);
 ```
 
 #### Care Plans Table
+
 ```sql
 CREATE TABLE care_plans (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -156,18 +170,18 @@ CREATE INDEX idx_care_plans_client_id ON care_plans(client_id);
 
 ### API Endpoints
 
-| Method | Endpoint | Auth | Role | Description |
-|--------|----------|------|------|-------------|
-| GET | /v1/clients | JWT | Any | List clients with pagination |
-| GET | /v1/clients/:clientId | JWT | Zone-based | Get client details |
-| POST | /v1/clients | JWT | Admin | Create new client |
-| PATCH | /v1/clients/:clientId | JWT | Coordinator/Admin | Update client |
-| POST | /v1/care-plans | JWT | Coordinator/Admin | Create/update care plan |
+| Method | Endpoint              | Auth | Role              | Description                  |
+| ------ | --------------------- | ---- | ----------------- | ---------------------------- |
+| GET    | /v1/clients           | JWT  | Any               | List clients with pagination |
+| GET    | /v1/clients/:clientId | JWT  | Zone-based        | Get client details           |
+| POST   | /v1/clients           | JWT  | Admin             | Create new client            |
+| PATCH  | /v1/clients/:clientId | JWT  | Coordinator/Admin | Update client                |
+| POST   | /v1/care-plans        | JWT  | Coordinator/Admin | Create/update care plan      |
 
 ### External Dependencies
 
 - **Google Maps Geocoding API** - For address to lat/long conversion
-- **Redis** - For caching client data
+- **Redis** - For caching client data (client profile reads cached 5–30m; geocode responses cached 1–24h; invalidate on client update/delete, address changes, or cache-bust job; see `docs/cache-config.md` and `config/redis.yml` for exact TTLs, invalidation hooks, and eventual-consistency notes)
 - **PostgreSQL** - Primary data store
 
 ---
@@ -211,4 +225,6 @@ The feature will be considered complete when:
 
 The branch has been pushed and CI will automatically run on the first commit. The draft PR should be created on GitHub to track progress through the checklist.
 
-**GitHub PR URL:** https://github.com/fattyageboy/BerthCare/pull/new/feat/client-management
+**GitHub PR template URL:** https://github.com/fattyageboy/BerthCare/pull/new/feat/client-management
+
+Open this to start a new PR; after the PR is created, update this document with the actual PR link.

@@ -1,6 +1,10 @@
 # BerthCare Local Development Environment
 # Docker Compose configuration for PostgreSQL, Redis, and LocalStack (S3 emulation)
-# 
+#
+# Task E4: Set up local development environment
+# Create Docker Compose file for local development: PostgreSQL 15, Redis 7, LocalStack (S3 emulation)
+# Reference: project-documentation/task-plan.md - Phase E – Environment & Tooling
+#
 # Quick Start:
 #   1. Copy .env.example to .env
 #   2. Run: docker-compose up -d
@@ -24,12 +28,13 @@ services:
       POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-scram-sha-256}
       POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:---auth-host=scram-sha-256}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      - './scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro'
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-berthcare} -d ${POSTGRES_DB:-berthcare_dev}"]
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-berthcare} -d ${POSTGRES_DB:-berthcare_dev}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,12 +47,14 @@ services:
     container_name: berthcare-redis
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD:-berthcare_redis_password} --appendonly yes
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-berthcare_redis_password}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ['CMD', 'redis-cli', 'PING']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -67,11 +74,12 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       DOCKER_HOST: unix:///var/run/docker.sock
     ports:
-      - "${LOCALSTACK_PORT:-4566}:4566"
+      - '${LOCALSTACK_PORT:-4566}:4566'
     volumes:
-      - "./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh:ro"
+      - './scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh:ro'
+      - localstack_data:/var/lib/localstack
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:4566/_localstack/health']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -89,7 +97,7 @@ services:
       PGADMIN_CONFIG_SERVER_MODE: 'False'
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:
-      - "${PGADMIN_PORT:-5050}:80"
+      - '${PGADMIN_PORT:-5050}:80'
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:
@@ -108,7 +116,7 @@ services:
     environment:
       REDIS_HOSTS: local:redis:6379:0:${REDIS_PASSWORD:-berthcare_redis_password}
     ports:
-      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+      - '${REDIS_COMMANDER_PORT:-8081}:8081'
     depends_on:
       redis:
         condition: service_healthy
@@ -124,6 +132,8 @@ volumes:
   redis_data:
     driver: local
   pgadmin_data:
+    driver: local
+  localstack_data:
     driver: local
 
 # Network for service communication

@@ -24,7 +24,7 @@ jest.mock('../src/storage/s3-client', () => ({
   FILE_CONFIGS: {
     PHOTO: {
       maxSize: 10 * 1024 * 1024,
-      allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
+      allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
       bucket: 'berthcare-photos-test',
     },
   },

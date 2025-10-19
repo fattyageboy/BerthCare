@@ -22,7 +22,7 @@ resource "random_password" "db_password" {
   # Exclude characters that might cause issues in connection strings
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
-
+ 
 # Store database credentials in AWS Secrets Manager
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-${var.environment}-db-credentials"
@@ -41,6 +41,79 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
     port     = aws_db_instance.main.port
     dbname   = var.db_name
   })
+}
+
+locals {
+  secret_access_role_effective_name = var.existing_secret_access_role_name != null ? var.existing_secret_access_role_name : coalesce(var.secret_access_role_name, "${var.project_name}-${var.environment}-db-secret-role")
+  should_create_secret_access_role  = var.create_secret_access_role && var.existing_secret_access_role_name == null
+}
+
+data "aws_iam_policy_document" "secret_access_assume_role" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = var.secret_access_role_service_principals
+    }
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+data "aws_iam_policy_document" "db_credentials_access" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:DescribeSecret"
+    ]
+    resources = [
+      aws_secretsmanager_secret.db_credentials.arn,
+      "${aws_secretsmanager_secret.db_credentials.arn}:*"
+    ]
+  }
+}
+
+resource "aws_iam_policy" "db_credentials_access" {
+  name        = "${var.project_name}-${var.environment}-db-secret-access"
+  description = "Allows read access to the ${var.project_name} ${var.environment} database credentials secret"
+  policy      = data.aws_iam_policy_document.db_credentials_access.json
+  tags        = var.tags
+}
+
+resource "aws_iam_role" "secret_access" {
+  count              = local.should_create_secret_access_role ? 1 : 0
+  name               = local.secret_access_role_effective_name
+  assume_role_policy = data.aws_iam_policy_document.secret_access_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "secret_access_created_role" {
+  count      = local.should_create_secret_access_role ? 1 : 0
+  role       = aws_iam_role.secret_access[0].name
+  policy_arn = aws_iam_policy.db_credentials_access.arn
+}
+
+resource "aws_iam_role_policy_attachment" "secret_access_existing_role" {
+  count      = var.existing_secret_access_role_name != null ? 1 : 0
+  role       = var.existing_secret_access_role_name
+  policy_arn = aws_iam_policy.db_credentials_access.arn
+}
+
+data "aws_iam_role" "existing_secret_access" {
+  count = var.existing_secret_access_role_name != null && var.existing_secret_access_role_arn == null ? 1 : 0
+  name  = var.existing_secret_access_role_name
+}
+
+resource "aws_secretsmanager_secret_rotation" "db_credentials" {
+  count              = var.enable_secret_rotation ? 1 : 0
+  secret_id          = aws_secretsmanager_secret.db_credentials.id
+  rotation_lambda_arn = var.secret_rotation_lambda_arn
+
+  rotation_rules {
+    automatically_after_days = var.secret_rotation_automatically_after_days
+  }
+
+  depends_on = [aws_secretsmanager_secret_version.db_credentials]
 }
 
 # DB Subnet Group

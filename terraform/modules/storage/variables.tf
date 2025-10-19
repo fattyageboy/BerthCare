@@ -19,7 +19,7 @@ variable "allowed_origins" {
   type        = list(string)
   default     = ["*"]
 }
-
+ 
 variable "cloudfront_distribution_arn" {
   description = "CloudFront distribution ARN for bucket policy"
   type        = string

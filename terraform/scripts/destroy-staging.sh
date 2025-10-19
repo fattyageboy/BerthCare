@@ -18,7 +18,7 @@ echo "  - VPC and networking resources"
 echo "  - CloudFront distribution"
 echo "  - IAM roles and security groups"
 echo ""
-
+ 
 # Ask for confirmation
 read -p "Are you ABSOLUTELY SURE you want to destroy staging? Type 'destroy-staging' to confirm: " CONFIRM
 

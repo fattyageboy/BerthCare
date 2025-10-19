@@ -14,15 +14,24 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import helmet from 'helmet';
-import { Pool } from 'pg';
-import { createClient } from 'redis';
 
-import { logInfo, logError, logRequest } from './config/logger';
+import { initializeJwtKeyStore } from '@berthcare/shared';
+
+import { redisClient } from './cache/redis-client';
+import { logInfo, logError, logRequest, logWarn } from './config/logger';
 import {
   initSentry,
   configureSentryMiddleware,
   configureSentryErrorHandler,
+  captureMessage,
 } from './config/sentry';
+import {
+  primaryPool,
+  replicaPool,
+  getReplicaHealth,
+  markReplicaHealthy,
+  markReplicaUnhealthy,
+} from './db/pool';
 
 // Load environment variables
 dotenv.config();
@@ -35,7 +44,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 initSentry({
   dsn: process.env.SENTRY_DSN || '',
   environment: NODE_ENV,
-  release: process.env.APP_VERSION || '2.0.0',
+  release: process.env.APP_VERSION || '1.0.0',
   tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || '0.1'),
   profilesSampleRate: parseFloat(process.env.SENTRY_PROFILES_SAMPLE_RATE || '0.1'),
 });
@@ -66,29 +75,27 @@ app.use((req, res, next) => {
 });
 
 // PostgreSQL connection
-const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: parseInt(process.env.DB_POOL_MAX || '10'),
-  min: parseInt(process.env.DB_POOL_MIN || '2'),
-  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT_MS || '30000'),
-  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT_MS || '2000'),
-});
+const pgPool = primaryPool;
 
-// Redis connection
-const redisClient = createClient({
-  url: process.env.REDIS_URL,
-});
+if (replicaPool) {
+  logInfo('Read replica connection pool initialised', {
+    maxConnections: replicaPool.options?.max,
+  });
+} else {
+  logInfo('Read replica not configured; routing read queries to primary database pool');
+}
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
-    version: process.env.APP_VERSION || '2.0.0',
+    version: process.env.APP_VERSION || '1.0.0',
     environment: NODE_ENV,
     services: {
       postgres: 'unknown',
       redis: 'unknown',
+      readReplica: replicaPool ? 'unknown' : 'not_configured',
     },
   };
 
@@ -112,6 +119,10 @@ app.get('/health', async (_req, res) => {
     logError('Redis health check failed', error as Error);
   }
 
+  if (replicaPool) {
+    health.services.readReplica = getReplicaHealth();
+  }
+
   const statusCode = health.status === 'ok' ? 200 : 503;
   res.status(statusCode).json(health);
 });
@@ -120,7 +131,7 @@ app.get('/health', async (_req, res) => {
 app.get('/api/v1', (_req, res) => {
   res.json({
     name: 'BerthCare API',
-    version: process.env.APP_VERSION || '2.0.0',
+    version: process.env.APP_VERSION || '1.0.0',
     environment: NODE_ENV,
     endpoints: {
       health: '/health',
@@ -167,6 +178,26 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 // Initialize connections and start server
 async function startServer() {
   try {
+    try {
+      await initializeJwtKeyStore();
+      logInfo('JWT key store initialised', {
+        source: process.env.JWT_KEYS_SECRET_ARN ? 'secrets-manager' : 'environment',
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+
+      if (process.env.JWT_KEYS_SECRET_ARN) {
+        logError('Failed to initialise JWT key store from Secrets Manager', err, {
+          secretArn: process.env.JWT_KEYS_SECRET_ARN,
+        });
+        throw err;
+      }
+
+      logWarn('JWT key store not initialised from Secrets Manager; using environment keys', {
+        reason: err.message,
+      });
+    }
+
     // Test PostgreSQL connection
     logInfo('Connecting to PostgreSQL...');
     const pgResult = await pgPool.query('SELECT NOW() as time, version() as version');
@@ -184,12 +215,29 @@ async function startServer() {
       version: redisVersion,
     });
 
+    if (replicaPool) {
+      try {
+        await replicaPool.query('SELECT 1');
+        markReplicaHealthy();
+        logInfo('Read replica connectivity verified');
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        markReplicaUnhealthy();
+        logWarn('Read replica verification failed; routing read traffic to primary', {
+          error: errorMessage,
+        });
+        captureMessage('Read replica connectivity verification failed', 'warning', {
+          error: errorMessage,
+        });
+      }
+    }
+
     // Start Express server
     app.listen(PORT, () => {
       logInfo('BerthCare Backend Server started', {
         port: PORT,
         environment: NODE_ENV,
-        version: process.env.APP_VERSION || '2.0.0',
+        version: process.env.APP_VERSION || '1.0.0',
         healthEndpoint: `http://localhost:${PORT}/health`,
         apiEndpoint: `http://localhost:${PORT}/api/v1`,
       });

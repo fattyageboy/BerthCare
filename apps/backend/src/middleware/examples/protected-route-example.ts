@@ -7,11 +7,11 @@
  */
 
 import { Router } from 'express';
-import { createClient } from 'redis';
 
-import { authenticateJWT, requireRole, AuthenticatedRequest } from '../auth';
+import { RedisClient } from '../../cache/redis-client';
+import { authenticateJWT, authorize, AuthenticatedRequest } from '../auth';
 
-export function createProtectedRoutes(redisClient: ReturnType<typeof createClient>): Router {
+export function createProtectedRoutes(redisClient: RedisClient): Router {
   const router = Router();
 
   /**
@@ -43,7 +43,7 @@ export function createProtectedRoutes(redisClient: ReturnType<typeof createClien
   router.get(
     '/reports',
     authenticateJWT(redisClient),
-    requireRole(['coordinator', 'admin']),
+    authorize(['coordinator', 'admin'], ['read:visits']),
     async (req: AuthenticatedRequest, res) => {
       const { zoneId, role } = req.user!;
 
@@ -66,7 +66,7 @@ export function createProtectedRoutes(redisClient: ReturnType<typeof createClien
   router.post(
     '/users',
     authenticateJWT(redisClient),
-    requireRole(['admin']),
+    authorize(['admin'], ['create:user']),
     async (req: AuthenticatedRequest, res) => {
       const { body } = req;
 
@@ -110,7 +110,7 @@ export function createProtectedRoutes(redisClient: ReturnType<typeof createClien
     // Rate limiting would go here
     // Validation would go here
     authenticateJWT(redisClient),
-    requireRole(['caregiver', 'coordinator', 'admin']),
+    authorize(['coordinator', 'admin'], ['read:visits']),
     async (req: AuthenticatedRequest, res) => {
       const { clientId } = req.params;
       const { zoneId, role } = req.user!;
@@ -121,7 +121,7 @@ export function createProtectedRoutes(redisClient: ReturnType<typeof createClien
       if (role !== 'admin' && client.zoneId !== zoneId) {
         res.status(403).json({
           error: {
-            code: 'FORBIDDEN',
+            code: 'AUTH_ZONE_ACCESS_DENIED',
             message: 'You do not have access to this client',
             timestamp: new Date().toISOString(),
             requestId: req.headers['x-request-id'] || 'unknown',
@@ -166,7 +166,7 @@ export function createProtectedRoutes(redisClient: ReturnType<typeof createClien
       default:
         res.status(403).json({
           error: {
-            code: 'FORBIDDEN',
+            code: 'AUTH_INSUFFICIENT_ROLE',
             message: 'Invalid role',
             timestamp: new Date().toISOString(),
             requestId: req.headers['x-request-id'] || 'unknown',

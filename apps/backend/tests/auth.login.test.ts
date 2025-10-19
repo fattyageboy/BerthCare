@@ -4,7 +4,7 @@
  * Tests the user login endpoint according to specifications:
  * - Login succeeds with valid credentials
  * - 401 for invalid credentials
- * - Rate limit works (10 attempts per hour per IP)
+ * - Rate limit works (10 attempts per 15 minutes per IP)
  * - Account disabled check
  * - Email format validation
  * - Required field validation
@@ -24,10 +24,11 @@ import crypto from 'crypto';
 
 import express from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { verifyToken } from '../../../libs/shared/src/jwt-utils';
+import { generateAccessToken, verifyToken } from '@berthcare/shared';
+
+import { RedisClient } from '../src/cache/redis-client';
 import { createAuthRoutes } from '../src/routes/auth.routes';
 
 import { setupTestConnections, teardownTestConnections } from './test-helpers';
@@ -35,7 +36,9 @@ import { setupTestConnections, teardownTestConnections } from './test-helpers';
 describe('POST /v1/auth/login', () => {
   let app: express.Application;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
+  let adminAccessToken: string;
+  let schemaName: string;
 
   // Setup: Create app and database connections
   beforeAll(async () => {
@@ -43,6 +46,7 @@ describe('POST /v1/auth/login', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app with auth routes
     app = express();
@@ -53,7 +57,7 @@ describe('POST /v1/auth/login', () => {
 
   // Cleanup: Close connections
   afterAll(async () => {
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   // Clean database and Redis before each test
@@ -79,7 +83,18 @@ describe('POST /v1/auth/login', () => {
       console.error('Error cleaning Redis:', error);
       throw error;
     }
+
+    adminAccessToken = generateAccessToken({
+      userId: 'admin-user-id',
+      role: 'admin',
+      zoneId: 'global-admin-zone',
+      email: 'admin@example.com',
+      deviceId: 'admin-device-001',
+    });
   });
+
+  const postRegister = () =>
+    request(app).post('/v1/auth/register').set('Authorization', `Bearer ${adminAccessToken}`);
 
   // Helper function to create a test user
   async function createTestUser(
@@ -89,7 +104,7 @@ describe('POST /v1/auth/login', () => {
     zoneId: string = '123e4567-e89b-12d3-a456-426614174000',
     isActive: boolean = true
   ) {
-    const response = await request(app).post('/v1/auth/register').send({
+    const response = await postRegister().send({
       email,
       password,
       firstName: 'Test',
@@ -577,6 +592,7 @@ describe('POST /v1/auth/login', () => {
       expect(payload.role).toBe('coordinator');
       expect(payload.zoneId).toBe('123e4567-e89b-12d3-a456-426614174000');
       expect(payload.email).toBe('test@example.com');
+      expect(payload.deviceId).toBe('test-device-001');
     });
   });
 });

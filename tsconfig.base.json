@@ -18,6 +18,7 @@
       "@berthcare/shared": ["libs/shared/src/index.ts"],
       "@berthcare/shared/*": ["libs/shared/src/*"]
     },
+    "typeRoots": ["types", "node_modules/@types"],
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

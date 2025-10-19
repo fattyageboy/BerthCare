@@ -22,10 +22,11 @@
 
 import express from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { verifyToken } from '../../../libs/shared/src/jwt-utils';
+import { generateAccessToken, verifyToken } from '@berthcare/shared';
+
+import { RedisClient } from '../src/cache/redis-client';
 import { createAuthRoutes } from '../src/routes/auth.routes';
 
 import { setupTestConnections, teardownTestConnections } from './test-helpers';
@@ -33,7 +34,9 @@ import { setupTestConnections, teardownTestConnections } from './test-helpers';
 describe('POST /v1/auth/register', () => {
   let app: express.Application;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
+  let adminAccessToken: string;
+  let schemaName: string;
 
   // Setup: Create app and database connections
   beforeAll(async () => {
@@ -41,6 +44,7 @@ describe('POST /v1/auth/register', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app with auth routes
     app = express();
@@ -51,7 +55,7 @@ describe('POST /v1/auth/register', () => {
 
   // Cleanup: Close connections
   afterAll(async () => {
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   // Clean database and Redis before each test
@@ -75,11 +79,69 @@ describe('POST /v1/auth/register', () => {
     } catch (error) {
       throw new Error(`Failed to flush Redis: ${error}`);
     }
+
+    adminAccessToken = generateAccessToken({
+      userId: 'admin-user-id',
+      role: 'admin',
+      zoneId: 'global-admin-zone',
+      email: 'admin@example.com',
+      deviceId: 'admin-device-001',
+    });
+  });
+
+  const postRegister = () =>
+    request(app).post('/v1/auth/register').set('Authorization', `Bearer ${adminAccessToken}`);
+
+  describe('Authorization', () => {
+    it('should return 401 when authorization header is missing', async () => {
+      const response = await request(app).post('/v1/auth/register').send({
+        email: 'unauthorized@example.com',
+        password: 'SecurePass123',
+        firstName: 'No',
+        lastName: 'Auth',
+        role: 'caregiver',
+        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        deviceId: 'test-device-unauth',
+      });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toMatchObject({
+        code: 'MISSING_TOKEN',
+      });
+    });
+
+    it('should return 403 when token does not belong to an admin', async () => {
+      const nonAdminToken = generateAccessToken({
+        userId: 'caregiver-user-id',
+        role: 'caregiver',
+        zoneId: 'zone-caregiver',
+        email: 'caregiver@example.com',
+        deviceId: 'caregiver-device-001',
+      });
+
+      const response = await request(app)
+        .post('/v1/auth/register')
+        .set('Authorization', `Bearer ${nonAdminToken}`)
+        .send({
+          email: 'forbidden@example.com',
+          password: 'SecurePass123',
+          firstName: 'Not',
+          lastName: 'Allowed',
+          role: 'caregiver',
+          zoneId: '123e4567-e89b-12d3-a456-426614174000',
+          deviceId: 'test-device-forbidden',
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toMatchObject({
+        code: 'AUTH_INSUFFICIENT_ROLE',
+      });
+    });
   });
 
   describe('Successful Registration', () => {
     it('should register a new caregiver successfully', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'caregiver@example.com',
         password: 'SecurePass123',
         firstName: 'John',
@@ -124,7 +186,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should register a coordinator successfully', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'coordinator@example.com',
         password: 'SecurePass456',
         firstName: 'Jane',
@@ -139,7 +201,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should register an admin successfully (no zoneId required)', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'admin@example.com',
         password: 'AdminPass789',
         firstName: 'Admin',
@@ -154,7 +216,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should normalize email to lowercase', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'CamelCase@Example.COM',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -172,7 +234,7 @@ describe('POST /v1/auth/register', () => {
   describe('Duplicate Email Validation', () => {
     it('should return 409 when email already exists', async () => {
       // First registration
-      await request(app).post('/v1/auth/register').send({
+      await postRegister().send({
         email: 'duplicate@example.com',
         password: 'SecurePass123',
         firstName: 'First',
@@ -183,7 +245,7 @@ describe('POST /v1/auth/register', () => {
       });
 
       // Second registration with same email
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'duplicate@example.com',
         password: 'DifferentPass456',
         firstName: 'Second',
@@ -200,7 +262,7 @@ describe('POST /v1/auth/register', () => {
 
     it('should return 409 for case-insensitive duplicate emails', async () => {
       // First registration
-      await request(app).post('/v1/auth/register').send({
+      await postRegister().send({
         email: 'test@example.com',
         password: 'SecurePass123',
         firstName: 'First',
@@ -211,7 +273,7 @@ describe('POST /v1/auth/register', () => {
       });
 
       // Second registration with different case
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'TEST@EXAMPLE.COM',
         password: 'SecurePass456',
         firstName: 'Second',
@@ -228,7 +290,7 @@ describe('POST /v1/auth/register', () => {
 
   describe('Email Format Validation', () => {
     it('should reject invalid email format', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'invalid-email',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -244,7 +306,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject email without domain', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -259,7 +321,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject email without @', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'testexample.com',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -276,7 +338,7 @@ describe('POST /v1/auth/register', () => {
 
   describe('Password Strength Validation', () => {
     it('should reject password shorter than 8 characters', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'Short1',
         firstName: 'Test',
@@ -292,7 +354,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject password without uppercase letter', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'lowercase123',
         firstName: 'Test',
@@ -308,7 +370,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject password without number', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'NoNumbersHere',
         firstName: 'Test',
@@ -326,7 +388,7 @@ describe('POST /v1/auth/register', () => {
 
   describe('Required Field Validation', () => {
     it('should reject missing email', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         password: 'SecurePass123',
         firstName: 'Test',
         lastName: 'User',
@@ -341,7 +403,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject missing password', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         firstName: 'Test',
         lastName: 'User',
@@ -356,7 +418,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject missing firstName', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'SecurePass123',
         lastName: 'User',
@@ -371,7 +433,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject missing lastName', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -386,7 +448,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject missing role', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -401,7 +463,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject invalid role', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -417,7 +479,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject missing zoneId for caregiver', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -432,7 +494,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should reject missing zoneId for coordinator', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -453,17 +515,15 @@ describe('POST /v1/auth/register', () => {
 
       // Make 5 attempts (should all succeed or fail for other reasons, not rate limit)
       for (let i = 0; i < 5; i++) {
-        const response = await request(app)
-          .post('/v1/auth/register')
-          .send({
-            email: `test${i}@example.com`,
-            password: 'SecurePass123',
-            firstName: 'Test',
-            lastName: 'User',
-            role: 'caregiver',
-            zoneId: '123e4567-e89b-12d3-a456-426614174000',
-            deviceId: `test-device-${i}`,
-          });
+        const response = await postRegister().send({
+          email: `test${i}@example.com`,
+          password: 'SecurePass123',
+          firstName: 'Test',
+          lastName: 'User',
+          role: 'caregiver',
+          zoneId: '123e4567-e89b-12d3-a456-426614174000',
+          deviceId: `test-device-${i}`,
+        });
 
         attempts.push(response.status);
       }
@@ -475,21 +535,19 @@ describe('POST /v1/auth/register', () => {
     it('should block 6th registration attempt with 429', async () => {
       // Make 5 successful attempts
       for (let i = 0; i < 5; i++) {
-        await request(app)
-          .post('/v1/auth/register')
-          .send({
-            email: `test${i}@example.com`,
-            password: 'SecurePass123',
-            firstName: 'Test',
-            lastName: 'User',
-            role: 'caregiver',
-            zoneId: '123e4567-e89b-12d3-a456-426614174000',
-            deviceId: `test-device-${i}`,
-          });
+        await postRegister().send({
+          email: `test${i}@example.com`,
+          password: 'SecurePass123',
+          firstName: 'Test',
+          lastName: 'User',
+          role: 'caregiver',
+          zoneId: '123e4567-e89b-12d3-a456-426614174000',
+          deviceId: `test-device-${i}`,
+        });
       }
 
       // 6th attempt should be rate limited
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test6@example.com',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -506,7 +564,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should include rate limit headers', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'test@example.com',
         password: 'SecurePass123',
         firstName: 'Test',
@@ -526,7 +584,7 @@ describe('POST /v1/auth/register', () => {
     it('should hash password before storing', async () => {
       const plainPassword = 'SecurePass123';
 
-      await request(app).post('/v1/auth/register').send({
+      await postRegister().send({
         email: 'security@example.com',
         password: plainPassword,
         firstName: 'Security',
@@ -551,7 +609,7 @@ describe('POST /v1/auth/register', () => {
     });
 
     it('should hash refresh token before storing', async () => {
-      const response = await request(app).post('/v1/auth/register').send({
+      const response = await postRegister().send({
         email: 'token@example.com',
         password: 'SecurePass123',
         firstName: 'Token',

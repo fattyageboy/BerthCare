@@ -15,12 +15,14 @@ Successfully completed the full client management API implementation including d
 ### 1. Database Schema (Tasks C1, C2)
 
 **Migrations Created:**
+
 - ✅ `002_create_clients.sql` - Clients table with geographic indexing
-- ✅ `002_create_clients_rollback.sql` - Rollback migration
+- ✅ `002_create_clients-down.sql` - Rollback migration
 - ✅ `003_create_care_plans.sql` - Care plans with JSONB support
-- ✅ `003_create_care_plans_rollback.sql` - Rollback migration
+- ✅ `003_create_care_plans-down.sql` - Rollback migration
 
 **Key Features:**
+
 - Zone-based data isolation
 - Geographic coordinates for routing
 - JSONB storage for medications/allergies
@@ -31,6 +33,7 @@ Successfully completed the full client management API implementation including d
 ### 2. API Endpoints
 
 #### GET /v1/clients (Task C3)
+
 - ✅ List clients with pagination (default 50, max 100)
 - ✅ Zone-based filtering
 - ✅ Name search (case-insensitive)
@@ -38,6 +41,7 @@ Successfully completed the full client management API implementation including d
 - ✅ 18 integration tests passing
 
 #### GET /v1/clients/:clientId (Task C4)
+
 - ✅ Client detail with full care plan
 - ✅ Emergency contact information
 - ✅ Medications and allergies (JSONB)
@@ -45,6 +49,7 @@ Successfully completed the full client management API implementation including d
 - ✅ 13 integration tests passing
 
 #### POST /v1/clients (Task C5)
+
 - ✅ Create new clients
 - ✅ Automatic address geocoding (Google Maps API)
 - ✅ Automatic zone assignment
@@ -53,6 +58,7 @@ Successfully completed the full client management API implementation including d
 - ✅ 23 integration tests passing
 
 #### PATCH /v1/clients/:clientId (Task C6)
+
 - ✅ Update client information
 - ✅ Partial updates support
 - ✅ Address re-geocoding on change
@@ -62,6 +68,7 @@ Successfully completed the full client management API implementation including d
 - ✅ 22 integration tests passing
 
 #### POST /v1/care-plans (Task C7)
+
 - ✅ Create/update care plans (upsert pattern)
 - ✅ Automatic version tracking
 - ✅ Database validation functions
@@ -71,9 +78,11 @@ Successfully completed the full client management API implementation including d
 ### 3. Supporting Services
 
 #### Geocoding Service
+
 **File:** `apps/backend/src/services/geocoding.service.ts`
 
 **Features:**
+
 - Google Maps Geocoding API integration
 - Address to latitude/longitude conversion
 - Result caching (24 hour TTL)
@@ -81,9 +90,11 @@ Successfully completed the full client management API implementation including d
 - Comprehensive error handling
 
 #### Zone Assignment Service
+
 **File:** `apps/backend/src/services/zone-assignment.service.ts`
 
 **Features:**
+
 - Proximity-based zone assignment
 - Haversine formula for distance calculation
 - Zone data caching (1 hour TTL)
@@ -95,11 +106,13 @@ Successfully completed the full client management API implementation including d
 **File:** `apps/backend/src/middleware/validation.ts`
 
 **Added Validators:**
+
 - `validateCreateClient` - Create client validation
 - `validateUpdateClient` - Update client validation (partial)
 - `validateCarePlan` - Care plan validation
 
 **Features:**
+
 - Comprehensive field validation
 - Clear error messages
 - Type checking
@@ -108,6 +121,7 @@ Successfully completed the full client management API implementation including d
 ### 5. Integration Tests
 
 **Test Files:**
+
 - ✅ `tests/clients.list.test.ts` - 18 tests
 - ✅ `tests/clients.detail.test.ts` - 13 tests
 - ✅ `tests/clients.create.test.ts` - 23 tests
@@ -117,6 +131,7 @@ Successfully completed the full client management API implementation including d
 **Total:** 98 tests, all passing ✅
 
 **Test Coverage:**
+
 - Authentication and authorization
 - Input validation
 - Business logic
@@ -128,6 +143,7 @@ Successfully completed the full client management API implementation including d
 ### 6. Documentation
 
 **Created Documentation:**
+
 - ✅ `docs/C1-clients-migration.md` - Clients schema documentation
 - ✅ `docs/C2-care-plans-migration.md` - Care plans schema documentation
 - ✅ `docs/C3-clients-list-endpoint.md` - List endpoint documentation
@@ -151,22 +167,26 @@ Time:        ~7 seconds
 ### Test Breakdown
 
 **Authentication Tests:** 15 tests
+
 - JWT token validation
 - Role-based access control
 - Token blacklist checking
 
 **Authorization Tests:** 20 tests
+
 - Zone-based access control
 - Admin vs coordinator permissions
 - Cross-zone access restrictions
 
 **Validation Tests:** 30 tests
+
 - Required field validation
 - Format validation (UUID, date, phone)
 - Type validation
 - Range validation
 
 **Business Logic Tests:** 25 tests
+
 - Client creation with geocoding
 - Client updates with re-geocoding
 - Care plan versioning
@@ -174,6 +194,7 @@ Time:        ~7 seconds
 - Cache invalidation
 
 **Response Format Tests:** 8 tests
+
 - Correct data structure
 - Field presence and types
 - Pagination metadata
@@ -184,6 +205,7 @@ Time:        ~7 seconds
 ### Response Times
 
 **Without Cache:**
+
 - GET /v1/clients: < 50ms
 - GET /v1/clients/:id: < 10ms
 - POST /v1/clients: < 600ms (includes geocoding)
@@ -191,18 +213,21 @@ Time:        ~7 seconds
 - POST /v1/care-plans: < 200ms
 
 **With Cache:**
+
 - GET /v1/clients: < 5ms
 - GET /v1/clients/:id: < 2ms
 
 ### Database Performance
 
 **Query Optimization:**
+
 - Zone filtering: < 5ms (uses idx_clients_zone_id)
 - Name search: < 15ms (uses idx_clients_full_name)
 - Client detail: < 5ms (primary key + LEFT JOIN)
 - Care plan upsert: < 50ms (includes version trigger)
 
 **Index Usage:**
+
 - BTREE indexes for standard queries
 - GIN indexes for JSONB searches
 - Partial indexes (WHERE deleted_at IS NULL)
@@ -211,24 +236,28 @@ Time:        ~7 seconds
 ## Security Implementation
 
 ### Authentication & Authorization
+
 - ✅ JWT token required for all endpoints
 - ✅ Role-based access control (admin, coordinator, caregiver)
 - ✅ Zone-based data isolation
 - ✅ Token blacklist checking
 
 ### Input Validation
+
 - ✅ Comprehensive field validation
 - ✅ SQL injection prevention (parameterized queries)
 - ✅ XSS prevention (input sanitization)
 - ✅ Type checking and format validation
 
 ### Data Privacy
+
 - ✅ Minimal PII in logs
 - ✅ Encrypted data at rest
 - ✅ HTTPS for all API calls
 - ✅ Canadian data residency (PIPEDA compliant)
 
 ### Audit Trail
+
 - ✅ All modifications logged
 - ✅ User tracking (who made changes)
 - ✅ Change tracking (what changed)
@@ -237,12 +266,14 @@ Time:        ~7 seconds
 ## Design Philosophy Applied
 
 ### Simplicity is the Ultimate Sophistication
+
 - Clean, straightforward API design
 - Predictable behavior
 - Simple query parameters
 - Clear error messages
 
 ### Obsess Over Details
+
 - Sub-second response times via caching
 - Efficient database queries with proper indexes
 - Comprehensive error handling
@@ -250,6 +281,7 @@ Time:        ~7 seconds
 - Automatic geocoding and zone assignment
 
 ### Start with User Experience
+
 - Fast queries for caregiver workflows
 - Zone-based filtering automatic for non-admins
 - Search works intuitively
@@ -257,6 +289,7 @@ Time:        ~7 seconds
 - Single endpoint for create/update care plans
 
 ### Uncompromising Security
+
 - JWT authentication required
 - Zone-based access control enforced
 - SQL injection prevention
@@ -266,25 +299,30 @@ Time:        ~7 seconds
 ## Known Limitations (MVP)
 
 ### Hardcoded Zones
+
 - Zone data is hardcoded for MVP
 - Future: Query zones table from database
 - Future: Polygon-based zone boundaries with PostGIS
 
 ### Admin-Only Client Creation
+
 - Only admin users can create clients
 - Future: Allow coordinators to create clients in their zone
 
 ### No Bulk Operations
+
 - One client at a time
 - Future: CSV bulk import endpoint
 - Future: Bulk update endpoint
 
 ### Audit Trail in Logs
+
 - Changes logged to application logs
 - Future: Store in audit_logs table
 - Future: Query audit history via API
 
 ### No Optimistic Locking
+
 - Last write wins for concurrent updates
 - Future: Add version field for conflict detection
 - Future: Return 409 Conflict on version mismatch
@@ -292,6 +330,7 @@ Time:        ~7 seconds
 ## Dependencies Added
 
 ### NPM Packages
+
 ```json
 {
   "@googlemaps/google-maps-services-js": "^3.3.42"
@@ -299,6 +338,7 @@ Time:        ~7 seconds
 ```
 
 ### Environment Variables
+
 ```bash
 GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400
@@ -309,20 +349,24 @@ GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400
 ### Created Files (20)
 
 **Database Migrations:**
+
 - `apps/backend/src/db/migrations/002_create_clients.sql`
-- `apps/backend/src/db/migrations/002_create_clients_rollback.sql`
+- `apps/backend/src/db/migrations/002_create_clients-down.sql`
 - `apps/backend/src/db/migrations/003_create_care_plans.sql`
-- `apps/backend/src/db/migrations/003_create_care_plans_rollback.sql`
+- `apps/backend/src/db/migrations/003_create_care_plans-down.sql`
 
 **Services:**
+
 - `apps/backend/src/services/geocoding.service.ts`
 - `apps/backend/src/services/zone-assignment.service.ts`
 
 **Routes:**
+
 - `apps/backend/src/routes/clients.routes.ts`
 - `apps/backend/src/routes/care-plans.routes.ts`
 
 **Tests:**
+
 - `apps/backend/tests/clients.list.test.ts`
 - `apps/backend/tests/clients.detail.test.ts`
 - `apps/backend/tests/clients.create.test.ts`
@@ -330,6 +374,7 @@ GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400
 - `apps/backend/tests/care-plans.test.ts`
 
 **Documentation:**
+
 - `docs/C1-clients-migration.md`
 - `docs/C2-care-plans-migration.md`
 - `docs/C3-clients-list-endpoint.md`
@@ -438,6 +483,7 @@ npm run dev
 The client management API is now complete and production-ready. All 98 integration tests are passing, covering authentication, authorization, validation, business logic, and caching. The implementation follows best practices for security, performance, and maintainability.
 
 **Key Achievements:**
+
 - ✅ 5 API endpoints fully implemented
 - ✅ 2 database migrations with rollback support
 - ✅ 2 supporting services (geocoding, zone assignment)
@@ -455,6 +501,7 @@ The client management API is now complete and production-ready. All 98 integrati
 
 **PR Description:**
 Implements complete client management API including:
+
 - Database schema for clients and care plans
 - 5 API endpoints (list, detail, create, update, care plans)
 - Automatic address geocoding and zone assignment

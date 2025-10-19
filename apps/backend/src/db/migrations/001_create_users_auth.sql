@@ -26,15 +26,21 @@ CREATE TABLE IF NOT EXISTS users (
     -- caregiver: Home care workers who provide direct care to clients
     -- coordinator: Zone managers who handle alerts and oversight
     -- admin: System administrators with full access
-    role VARCHAR(20) NOT NULL CHECK (role IN ('caregiver', 'coordinator', 'admin')),
+    role VARCHAR(20) NOT NULL CHECK (role IN ('caregiver', 'coordinator', 'admin', 'family')),
     
     -- Zone assignment for data isolation
     -- Caregivers and coordinators are assigned to specific zones
     -- Admins have access to all zones (zone_id can be NULL)
-    zone_id UUID,
+    zone_id UUID REFERENCES zones(id),
+    
+    -- Optional contact information
+    phone VARCHAR(20),
     
     -- Account status
     is_active BOOLEAN NOT NULL DEFAULT true,
+    
+    -- Authentication activity
+    last_login_at TIMESTAMP WITH TIME ZONE,
     
     -- Audit timestamps
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -143,9 +149,11 @@ COMMENT ON TABLE users IS 'User accounts for authentication and authorization';
 COMMENT ON COLUMN users.id IS 'Unique user identifier (UUID)';
 COMMENT ON COLUMN users.email IS 'User email address (unique, used for login)';
 COMMENT ON COLUMN users.password_hash IS 'Bcrypt hashed password (never store plaintext)';
-COMMENT ON COLUMN users.role IS 'User role: caregiver, coordinator, or admin';
+COMMENT ON COLUMN users.role IS 'User role: caregiver, coordinator, admin, or family';
 COMMENT ON COLUMN users.zone_id IS 'Zone assignment for data isolation (NULL for admins)';
+COMMENT ON COLUMN users.phone IS 'Optional contact phone number';
 COMMENT ON COLUMN users.is_active IS 'Account active status (false = disabled)';
+COMMENT ON COLUMN users.last_login_at IS 'Timestamp of the most recent successful login';
 COMMENT ON COLUMN users.deleted_at IS 'Soft delete timestamp (NULL = not deleted)';
 
 COMMENT ON TABLE refresh_tokens IS 'JWT refresh tokens for multi-device session management';

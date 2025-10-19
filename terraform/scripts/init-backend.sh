@@ -17,7 +17,7 @@ if ! command -v aws &> /dev/null; then
     echo "❌ AWS CLI is not installed. Please install it first."
     exit 1
 fi
-
+ 
 # Check if AWS credentials are configured
 if ! aws sts get-caller-identity &> /dev/null; then
     echo "❌ AWS credentials are not configured. Please run 'aws configure' first."

@@ -2,11 +2,18 @@
  * Client Management Routes
  *
  * Handles client (patient) management endpoints:
- * - GET /v1/clients - List clients with pagination and filtering
- * - GET /v1/clients/:clientId - Get client details (future)
+ * - GET /v1/clients - List clients with pagination and filtering (Task C3)
+ * - GET /v1/clients/:clientId - Get client details (Task C4)
+ * - POST /v1/clients - Create new client (Task C5)
+ * - PATCH /v1/clients/:clientId - Update client details (Task C6)
  *
+ * Task C3: Implement GET /v1/clients endpoint
+ * Task C4: Implement GET /v1/clients/:clientId endpoint
+ * Task C5: Implement POST /v1/clients endpoint
+ * Task C6: Implement PATCH /v1/clients/:clientId endpoint
+ *
+ * Reference: project-documentation/task-plan.md - Phase C – Client Management API
  * Reference: Architecture Blueprint - Client Management Endpoints
- * Task: C3 - Implement GET /v1/clients endpoint
  *
  * Philosophy: "Start with the user experience, work backwards to the technology"
  * - Fast queries via optimized indexes
@@ -19,13 +26,14 @@ import * as crypto from 'crypto';
 
 import { Request, Response, Router } from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 
+import { RedisClient } from '../cache/redis-client';
 import { logError, logInfo } from '../config/logger';
 import { authenticateJWT, AuthenticatedRequest, requireRole } from '../middleware/auth';
 import { validateCreateClient, validateUpdateClient } from '../middleware/validation';
 import { GeocodingService, GeocodingError } from '../services/geocoding.service';
 import { ZoneAssignmentService, ZoneAssignmentError } from '../services/zone-assignment.service';
+import { formatDateOnly, formatDateTime } from '../utils/date';
 
 /**
  * Client list response item
@@ -34,7 +42,7 @@ interface ClientListItem {
   id: string;
   firstName: string;
   lastName: string;
-  dateOfBirth: string;
+  dateOfBirth: string | null;
   address: string;
   latitude: number;
   longitude: number;
@@ -53,15 +61,49 @@ interface PaginationMeta {
   totalPages: number;
 }
 
-export function createClientRoutes(
-  pgPool: Pool,
-  redisClient: ReturnType<typeof createClient>
-): Router {
+export function calculateVisitDuration(
+  checkInTime: string | Date | null,
+  checkOutTime: string | Date | null,
+  durationMinutes: number | null | undefined
+): {
+  duration: number;
+  checkInIso: string | null;
+  checkOutIso: string | null;
+} {
+  const checkInIso = formatDateTime(checkInTime);
+  const checkOutIso = formatDateTime(checkOutTime);
+
+  if (typeof durationMinutes === 'number' && Number.isFinite(durationMinutes)) {
+    return {
+      duration: durationMinutes,
+      checkInIso,
+      checkOutIso,
+    };
+  }
+
+  if (checkInIso && checkOutIso) {
+    const diffMs = new Date(checkOutIso).getTime() - new Date(checkInIso).getTime();
+    const duration = Math.max(0, Math.floor(diffMs / 60000));
+    return {
+      duration,
+      checkInIso,
+      checkOutIso,
+    };
+  }
+
+  return {
+    duration: 0,
+    checkInIso,
+    checkOutIso,
+  };
+}
+
+export function createClientRoutes(pgPool: Pool, redisClient: RedisClient): Router {
   const router = Router();
 
   // Initialize services
   const geocodingService = new GeocodingService(redisClient);
-  const zoneAssignmentService = new ZoneAssignmentService(redisClient);
+  const zoneAssignmentService = new ZoneAssignmentService(pgPool, redisClient);
 
   /**
    * POST /v1/clients
@@ -182,6 +224,22 @@ export function createClientRoutes(
           formattedAddress = geocodingResult.formattedAddress;
         } catch (error) {
           if (error instanceof GeocodingError) {
+            if (error.code === 'CONFIGURATION_ERROR') {
+              res.status(500).json({
+                error: {
+                  code: 'GEOCODING_CONFIGURATION_ERROR',
+                  message: 'Geocoding service is not configured',
+                  details: {
+                    address,
+                    errorCode: error.code,
+                  },
+                  timestamp: new Date().toISOString(),
+                  requestId: req.headers['x-request-id'] || 'unknown',
+                },
+              });
+              return;
+            }
+
             res.status(400).json({
               error: {
                 code: 'GEOCODING_ERROR',
@@ -494,8 +552,12 @@ export function createClientRoutes(
           if (existingClient.zone_id !== user.zoneId) {
             res.status(403).json({
               error: {
-                code: 'FORBIDDEN',
-                message: 'You can only update clients in your zone',
+                code: 'AUTH_ZONE_ACCESS_DENIED',
+                message: 'You do not have access to this zone',
+                details: {
+                  requestedZoneId: existingClient.zone_id,
+                  userZoneId: user.zoneId,
+                },
                 timestamp: new Date().toISOString(),
                 requestId: req.headers['x-request-id'] || 'unknown',
               },
@@ -507,7 +569,7 @@ export function createClientRoutes(
           if (req.body.zoneId && req.body.zoneId !== existingClient.zone_id) {
             res.status(403).json({
               error: {
-                code: 'FORBIDDEN',
+                code: 'AUTH_INSUFFICIENT_ROLE',
                 message: 'Only admins can change client zone',
                 timestamp: new Date().toISOString(),
                 requestId: req.headers['x-request-id'] || 'unknown',
@@ -807,21 +869,21 @@ export function createClientRoutes(
             `clients:list:zone=${existingClient.zone_id}:*`
           );
           if (oldZoneKeys.length > 0) {
-            await redisClient.del(oldZoneKeys);
+            await redisClient.del(...oldZoneKeys);
           }
 
           // Clear list caches for new zone (if changed)
           if (updateData.zoneId && updateData.zoneId !== existingClient.zone_id) {
             const newZoneKeys = await redisClient.keys(`clients:list:zone=${updateData.zoneId}:*`);
             if (newZoneKeys.length > 0) {
-              await redisClient.del(newZoneKeys);
+              await redisClient.del(...newZoneKeys);
             }
           }
 
           // Clear list caches for "all zones" view
           const allKeys = await redisClient.keys('clients:list:zone=all:*');
           if (allKeys.length > 0) {
-            await redisClient.del(allKeys);
+            await redisClient.del(...allKeys);
           }
         } catch (cacheError) {
           // Log but don't fail if cache invalidation fails
@@ -951,8 +1013,8 @@ export function createClientRoutes(
         if (!user.zoneId) {
           res.status(403).json({
             error: {
-              code: 'FORBIDDEN',
-              message: 'User does not have zone access',
+              code: 'AUTH_ZONE_ACCESS_DENIED',
+              message: 'You are not assigned to a zone',
               timestamp: new Date().toISOString(),
               requestId: req.headers['x-request-id'] || 'unknown',
             },
@@ -964,8 +1026,12 @@ export function createClientRoutes(
         if (zoneId && zoneId !== user.zoneId) {
           res.status(403).json({
             error: {
-              code: 'FORBIDDEN',
-              message: 'Access denied to requested zone',
+              code: 'AUTH_ZONE_ACCESS_DENIED',
+              message: 'You do not have access to this zone',
+              details: {
+                requestedZoneId: zoneId,
+                userZoneId: user.zoneId,
+              },
               timestamp: new Date().toISOString(),
               requestId: req.headers['x-request-id'] || 'unknown',
             },
@@ -1023,8 +1089,19 @@ export function createClientRoutes(
           c.latitude,
           c.longitude,
           cp.summary as care_plan_summary,
-          NULL as last_visit_date,
-          NULL as next_scheduled_visit
+          (
+            SELECT MAX(COALESCE(v.check_out_time, v.check_in_time, v.scheduled_start_time))
+            FROM visits v
+            WHERE v.client_id = c.id
+              AND v.status = 'completed'
+          ) AS last_visit_date,
+          (
+            SELECT MIN(v_future.scheduled_start_time)
+            FROM visits v_future
+            WHERE v_future.client_id = c.id
+              AND v_future.status = 'scheduled'
+              AND v_future.scheduled_start_time >= NOW()
+          ) AS next_scheduled_visit
         FROM clients c
         LEFT JOIN care_plans cp ON cp.client_id = c.id AND cp.deleted_at IS NULL
         WHERE c.deleted_at IS NULL
@@ -1064,18 +1141,25 @@ export function createClientRoutes(
       const dataResult = await client.query(dataQuery, queryParams);
 
       // Transform database results to API response format
-      const clients: ClientListItem[] = dataResult.rows.map((row) => ({
-        id: row.id,
-        firstName: row.first_name,
-        lastName: row.last_name,
-        dateOfBirth: row.date_of_birth,
-        address: row.address,
-        latitude: parseFloat(row.latitude),
-        longitude: parseFloat(row.longitude),
-        carePlanSummary: row.care_plan_summary,
-        lastVisitDate: row.last_visit_date,
-        nextScheduledVisit: row.next_scheduled_visit,
-      }));
+      const clients: ClientListItem[] = dataResult.rows.map((row) => {
+        const { last_visit_date: lastVisitRaw, next_scheduled_visit: nextVisitRaw } = row;
+        const formattedDob = formatDateOnly(row.date_of_birth);
+        const formattedLastVisit = formatDateTime(lastVisitRaw);
+        const formattedNextVisit = formatDateTime(nextVisitRaw);
+
+        return {
+          id: row.id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          dateOfBirth: formattedDob,
+          address: row.address,
+          latitude: parseFloat(row.latitude),
+          longitude: parseFloat(row.longitude),
+          carePlanSummary: row.care_plan_summary,
+          lastVisitDate: formattedLastVisit,
+          nextScheduledVisit: formattedNextVisit,
+        };
+      });
 
       // Build pagination metadata
       const pagination: PaginationMeta = {
@@ -1202,8 +1286,12 @@ export function createClientRoutes(
           if (user.role !== 'admin' && parsedData.zoneId !== user.zoneId) {
             res.status(403).json({
               error: {
-                code: 'FORBIDDEN',
-                message: 'Access denied to this client',
+                code: 'AUTH_ZONE_ACCESS_DENIED',
+                message: 'You do not have access to this client',
+                details: {
+                  requestedZoneId: parsedData.zoneId,
+                  userZoneId: user.zoneId,
+                },
                 timestamp: new Date().toISOString(),
                 requestId: req.headers['x-request-id'] || 'unknown',
               },
@@ -1274,8 +1362,12 @@ export function createClientRoutes(
       if (user.role !== 'admin' && clientData.zone_id !== user.zoneId) {
         res.status(403).json({
           error: {
-            code: 'FORBIDDEN',
-            message: 'Access denied to this client',
+            code: 'AUTH_ZONE_ACCESS_DENIED',
+            message: 'You do not have access to this client',
+            details: {
+              requestedZoneId: clientData.zone_id,
+              userZoneId: user.zoneId,
+            },
             timestamp: new Date().toISOString(),
             requestId: req.headers['x-request-id'] || 'unknown',
           },
@@ -1284,21 +1376,54 @@ export function createClientRoutes(
       }
 
       // Query recent visits (last 10)
-      // Note: visits table doesn't exist yet, so we return empty array
-      // This will be populated when visits table is implemented
-      const recentVisits: Array<{
-        id: string;
-        date: string;
-        staffName: string;
-        duration: number;
-      }> = [];
+      const recentVisitsResult = await client.query(
+        `
+          SELECT
+            v.id,
+            v.scheduled_start_time,
+            v.check_in_time,
+            v.check_out_time,
+            v.duration_minutes,
+            u.first_name AS staff_first_name,
+            u.last_name AS staff_last_name
+          FROM visits v
+          JOIN users u ON u.id = v.staff_id
+          WHERE v.client_id = $1
+          ORDER BY COALESCE(v.check_in_time, v.scheduled_start_time) DESC
+          LIMIT 10
+        `,
+        [clientId]
+      );
+
+      const recentVisits = recentVisitsResult.rows.map((visit) => {
+        const { duration, checkInIso, checkOutIso } = calculateVisitDuration(
+          visit.check_in_time,
+          visit.check_out_time,
+          visit.duration_minutes
+        );
+
+        const scheduledIso = formatDateTime(visit.scheduled_start_time);
+        const visitDate = checkInIso ?? scheduledIso ?? new Date().toISOString();
+
+        const staffName = [visit.staff_first_name, visit.staff_last_name]
+          .filter((part) => typeof part === 'string' && part.trim().length > 0)
+          .join(' ')
+          .trim();
+
+        return {
+          id: visit.id,
+          date: visitDate,
+          staffName,
+          duration,
+        };
+      });
 
       // Transform database results to API response format
       const responseData = {
         id: clientData.id,
         firstName: clientData.first_name,
         lastName: clientData.last_name,
-        dateOfBirth: clientData.date_of_birth.toISOString().split('T')[0],
+        dateOfBirth: formatDateOnly(clientData.date_of_birth),
         address: clientData.address,
         latitude: parseFloat(clientData.latitude),
         longitude: parseFloat(clientData.longitude),

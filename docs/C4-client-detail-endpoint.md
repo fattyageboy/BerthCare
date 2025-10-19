@@ -5,7 +5,7 @@
 **Status:** ✅ Completed  
 **Date:** October 10, 2025  
 **Developer:** Backend Engineer  
-**Estimated Time:** 1.5d  
+**Estimated Time:** 1.5d
 
 ## Overview
 
@@ -18,6 +18,7 @@ Successfully implemented the GET /v1/clients/:clientId endpoint with full client
 **File:** `apps/backend/src/routes/clients.routes.ts`
 
 **Features:**
+
 - GET /v1/clients/:clientId endpoint with full functionality
 - Complete client details with all related data
 - Care plan with medications and allergies (JSONB)
@@ -34,6 +35,7 @@ Successfully implemented the GET /v1/clients/:clientId endpoint with full client
 **File:** `apps/backend/tests/clients.detail.test.ts`
 
 **Test Coverage:**
+
 - Authentication (401 without token, 401 with invalid token)
 - Client ID validation (400 for invalid UUID, 404 for non-existent)
 - Zone-based access control (caregivers see only their zone, admins see all)
@@ -58,9 +60,9 @@ Authorization: Bearer <access_token>
 
 ### Path Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| clientId | string (UUID) | Yes | Unique client identifier |
+| Parameter | Type          | Required | Description              |
+| --------- | ------------- | -------- | ------------------------ |
+| clientId  | string (UUID) | Yes      | Unique client identifier |
 
 ### Response (200 OK)
 
@@ -106,6 +108,7 @@ Authorization: Bearer <access_token>
 ### Error Responses
 
 **400 Bad Request**
+
 ```json
 {
   "error": {
@@ -118,6 +121,7 @@ Authorization: Bearer <access_token>
 ```
 
 **401 Unauthorized**
+
 ```json
 {
   "error": {
@@ -130,6 +134,7 @@ Authorization: Bearer <access_token>
 ```
 
 **403 Forbidden**
+
 ```json
 {
   "error": {
@@ -142,6 +147,7 @@ Authorization: Bearer <access_token>
 ```
 
 **404 Not Found**
+
 ```json
 {
   "error": {
@@ -154,6 +160,7 @@ Authorization: Bearer <access_token>
 ```
 
 **500 Internal Server Error**
+
 ```json
 {
   "error": {
@@ -170,11 +177,13 @@ Authorization: Bearer <access_token>
 ### Zone-Based Access Control
 
 **Non-Admin Users (Caregivers, Coordinators):**
+
 - Can only access clients in their assigned zone
 - Attempting to access a client in a different zone returns 403 Forbidden
 - Zone check happens both on database query and cached data
 
 **Admin Users:**
+
 - Can access any client regardless of zone
 - No zone restrictions applied
 
@@ -188,19 +197,23 @@ Authorization: Bearer <access_token>
 ### Care Plan Data
 
 **Medications:**
+
 - Stored as JSONB array in database
 - Each medication has: name, dosage, frequency
 - Empty array if no medications
 
 **Allergies:**
+
 - Stored as JSONB array of strings
 - Empty array if no allergies
 
 **Special Instructions:**
+
 - Free-form text field
 - Empty string if not specified
 
 **No Care Plan:**
+
 - If client has no care plan, returns empty values:
   - summary: ""
   - medications: []
@@ -217,11 +230,13 @@ Authorization: Bearer <access_token>
 ### Redis Caching
 
 **Cache Key Format:**
-```
+
+```text
 client:detail:{clientId}
 ```
 
 **Cache Behavior:**
+
 - TTL: 900 seconds (15 minutes)
 - Longer than list endpoint (5 min) because detail views change less frequently
 - Cache includes zoneId for access control validation
@@ -233,12 +248,13 @@ client:detail:{clientId}
 ### Database Query Optimization
 
 **Single Query with JOIN:**
+
 ```sql
-SELECT 
-  c.*, 
-  cp.summary, 
-  cp.medications, 
-  cp.allergies, 
+SELECT
+  c.*,
+  cp.summary,
+  cp.medications,
+  cp.allergies,
   cp.special_instructions
 FROM clients c
 LEFT JOIN care_plans cp ON cp.client_id = c.id AND cp.deleted_at IS NULL
@@ -246,6 +262,7 @@ WHERE c.id = $1 AND c.deleted_at IS NULL
 ```
 
 **Performance:**
+
 - Single query retrieves all data
 - LEFT JOIN handles clients without care plans
 - Indexed primary key lookup (< 1ms)
@@ -254,11 +271,13 @@ WHERE c.id = $1 AND c.deleted_at IS NULL
 ### Performance Characteristics
 
 **Without Cache:**
+
 - Database query: < 5ms
 - JSON transformation: < 1ms
 - Total: < 10ms
 
 **With Cache:**
+
 - Cache hit: < 1ms
 - Zone validation: < 1ms
 - Total: < 2ms
@@ -268,6 +287,7 @@ WHERE c.id = $1 AND c.deleted_at IS NULL
 ### Test Database Setup
 
 Tests use a separate test database:
+
 - Database: `berthcare_test`
 - Redis DB: 1 (separate from development DB 0)
 - Tables created in beforeAll hook
@@ -276,19 +296,23 @@ Tests use a separate test database:
 ### Test Coverage
 
 **Authentication Tests:**
+
 - ✅ Returns 401 without token
 - ✅ Returns 401 with invalid token
 
 **Client ID Validation Tests:**
+
 - ✅ Returns 400 for invalid UUID format
 - ✅ Returns 404 for non-existent client
 
 **Zone Access Control Tests:**
+
 - ✅ Caregivers can access clients in their zone
 - ✅ Caregivers denied access to other zones
 - ✅ Admins can access any client
 
 **Response Format Tests:**
+
 - ✅ Returns complete data structure
 - ✅ Includes correct client details
 - ✅ Includes emergency contact information
@@ -297,6 +321,7 @@ Tests use a separate test database:
 - ✅ Returns empty recent visits array
 
 **Caching Tests:**
+
 - ✅ Results are cached after first request
 - ✅ Different clients have different cache keys
 - ✅ Zone access control enforced on cached data
@@ -317,12 +342,14 @@ npm test -- --coverage
 ## Design Philosophy Applied
 
 ### Simplicity is the Ultimate Sophistication
+
 - Single endpoint returns all client data
 - No need for multiple requests
 - Clear, predictable response structure
 - Simple error messages
 
 ### Obsess Over Details
+
 - Complete client information in one request
 - Efficient single-query database access
 - Proper date formatting (YYYY-MM-DD)
@@ -330,12 +357,14 @@ npm test -- --coverage
 - Detailed logging for debugging
 
 ### Start with User Experience
+
 - Fast response times via caching
 - All needed information in one call
 - Clear error messages
 - Zone access automatic for non-admins
 
 ### Uncompromising Security
+
 - JWT authentication required
 - Zone-based access control enforced
 - UUID validation prevents injection
@@ -347,16 +376,19 @@ npm test -- --coverage
 ### Supports Current Features
 
 **Care Plan Display:**
+
 - Full care plan with summary
 - Medications with dosage and frequency
 - Allergies list for safety
 - Special instructions for caregivers
 
 **Emergency Contact:**
+
 - Name, phone, relationship
 - Readily available for emergencies
 
 **Client Profile:**
+
 - Complete demographic information
 - Geographic coordinates for routing
 - Contact information
@@ -364,21 +396,25 @@ npm test -- --coverage
 ### Ready for Future Features
 
 **Recent Visits:**
+
 - Response includes `recentVisits` array (currently empty)
 - Will be populated when visits table is implemented
 - Structure defined: id, date, staffName, duration
 - Will show last 10 visits
 
 **Visit History Link:**
+
 - Client ID available for navigation
 - Can link to full visit history view
 
 ## Files Created/Modified
 
 ### Modified
+
 - `apps/backend/src/routes/clients.routes.ts` - Added GET /:clientId endpoint
 
 ### Created
+
 - `apps/backend/tests/clients.detail.test.ts` - Integration tests
 - `docs/C4-client-detail-endpoint.md` - This documentation
 
@@ -410,6 +446,7 @@ With the GET /v1/clients/:clientId endpoint complete, the next tasks are:
 **Error:** Cannot connect to Redis
 
 **Solution:**
+
 ```bash
 # Check Redis is running
 docker-compose ps redis
@@ -426,12 +463,13 @@ docker-compose logs redis
 **Issue:** Slow queries
 
 **Solution:**
+
 ```sql
 -- Check if indexes exist
 SELECT indexname FROM pg_indexes WHERE tablename = 'clients';
 
 -- Analyze query performance
-EXPLAIN ANALYZE 
+EXPLAIN ANALYZE
 SELECT c.*, cp.*
 FROM clients c
 LEFT JOIN care_plans cp ON cp.client_id = c.id
@@ -443,6 +481,7 @@ WHERE c.id = 'uuid' AND c.deleted_at IS NULL;
 **Issue:** Every request hits database
 
 **Solution:**
+
 ```bash
 # Check Redis connection
 docker-compose exec redis redis-cli -a berthcare_redis_password PING
@@ -487,6 +526,7 @@ The GET /v1/clients/:clientId endpoint is now complete and production-ready. The
 ---
 
 **Implementation Files:**
+
 - ✅ `apps/backend/src/routes/clients.routes.ts` - Route implementation
 - ✅ `apps/backend/tests/clients.detail.test.ts` - Integration tests
 - ✅ `docs/C4-client-detail-endpoint.md` - This documentation

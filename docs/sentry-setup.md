@@ -5,6 +5,7 @@ This guide walks you through setting up Sentry for error tracking and performanc
 ## Overview
 
 Sentry provides:
+
 - **Error Tracking** - Automatic capture of exceptions with stack traces
 - **Performance Monitoring** - Transaction tracing and slow query detection
 - **Release Tracking** - Deploy notifications and version tracking
@@ -33,6 +34,7 @@ sentry-cli projects create berthcare-backend-staging \
 ```
 
 Or create via web UI:
+
 1. Click "Create Project"
 2. Select platform: **Node.js**
 3. Project name: `berthcare-backend-staging`
@@ -49,6 +51,7 @@ sentry-cli projects create berthcare-mobile-staging \
 ```
 
 Or create via web UI:
+
 1. Click "Create Project"
 2. Select platform: **React Native**
 3. Project name: `berthcare-mobile-staging`
@@ -97,7 +100,7 @@ SENTRY_DSN=https://[key]@[org].ingest.sentry.io/[project]
 SENTRY_ENVIRONMENT=development
 SENTRY_TRACES_SAMPLE_RATE=0.1
 SENTRY_PROFILES_SAMPLE_RATE=0.1
-APP_VERSION=2.0.0
+APP_VERSION=1.0.0
 ```
 
 ## Step 5: Install Dependencies
@@ -119,6 +122,7 @@ npm install @sentry/react-native
 ## Step 6: Configure Backend Integration
 
 The backend integration is already configured in:
+
 - `apps/backend/src/config/sentry.ts` - Sentry initialization and utilities
 - `apps/backend/src/config/logger.ts` - Structured logging with Sentry integration
 - `apps/backend/src/main-with-monitoring.ts` - Server with monitoring enabled
@@ -286,6 +290,7 @@ logInfo('User logged in', {
 ### 5. Filter Sensitive Data
 
 Sensitive data is automatically filtered in `apps/backend/src/config/sentry.ts`:
+
 - Authorization headers
 - Cookies
 - Password query parameters
@@ -296,13 +301,15 @@ Add more filters as needed in the `beforeSend` hook.
 ## Cost Management
 
 ### Free Tier Limits
+
 - 5,000 errors/month
-- 10,000 performance units/month
+- 5,000,000 spans/month
 - 1 project
 
 ### Optimization Tips
 
 1. **Adjust Sample Rates:**
+
    ```bash
    SENTRY_TRACES_SAMPLE_RATE=0.1  # 10% of transactions
    SENTRY_PROFILES_SAMPLE_RATE=0.1  # 10% of transactions

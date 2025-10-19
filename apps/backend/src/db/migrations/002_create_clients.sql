@@ -2,6 +2,14 @@
 -- Description: Create clients table for client management system
 -- Author: Backend Engineer
 -- Date: 2025-10-10
+--
+-- Task C1: Design database schema – clients
+-- Create migration for clients table (id, first_name, last_name, date_of_birth, address,
+-- latitude, longitude, phone, emergency_contact_name, emergency_contact_phone,
+-- emergency_contact_relationship, zone_id, created_at, updated_at);
+-- add indexes on zone_id, last_name.
+--
+-- Reference: project-documentation/task-plan.md - Phase C – Client Management API
 -- Reference: Architecture Blueprint - Client Management Endpoints section
 
 -- ============================================================================

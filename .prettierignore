@@ -26,6 +26,9 @@ coverage/
 ios/Pods/
 android/build/
 
+# Config files managed via ESLint tooling
+apps/backend/.eslintrc.json
+
 # Terraform
 .terraform/
 *.tfstate

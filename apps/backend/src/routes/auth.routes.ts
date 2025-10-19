@@ -2,14 +2,18 @@
  * Authentication Routes
  *
  * Handles user authentication endpoints:
- * - POST /v1/auth/register - User registration
- * - POST /v1/auth/login - User login
- * - POST /v1/auth/refresh - Token refresh
+ * - POST /v1/auth/register - User registration (Task A4)
+ * - POST /v1/auth/login - User login (Task A5)
+ * - POST /v1/auth/refresh - Token refresh (Task A6)
+ * - POST /v1/auth/logout - User logout (Task A9)
  *
+ * Task A4: Implement POST /v1/auth/register endpoint
+ * Task A5: Implement POST /v1/auth/login endpoint
+ * Task A6: Implement POST /v1/auth/refresh endpoint
+ * Task A9: Implement POST /v1/auth/logout endpoint
+ *
+ * Reference: project-documentation/task-plan.md - Phase A – Authentication & Authorization
  * Reference: Architecture Blueprint - Authentication Endpoints
- * Task: A4 - Implement POST /v1/auth/register endpoint
- * Task: A5 - Implement POST /v1/auth/login endpoint
- * Task: A6 - Implement POST /v1/auth/refresh endpoint
  *
  * Philosophy: "Uncompromising Security"
  * - Input validation on all endpoints
@@ -23,16 +27,21 @@ import * as crypto from 'crypto';
 
 import { Request, Response, Router } from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 
 import {
+  decodeToken,
   generateAccessToken,
   generateRefreshToken,
+  DEFAULT_DEVICE_ID,
   hashPassword,
   verifyPassword,
   verifyToken,
-} from '../../../../libs/shared/src';
+  type JWTPayload,
+} from '@berthcare/shared';
+
+import { RedisClient } from '../cache/redis-client';
 import { logAuth, logError } from '../config/logger';
+import { authenticateJWT, requireRole } from '../middleware/auth';
 import { createLoginRateLimiter, createRegistrationRateLimiter } from '../middleware/rate-limiter';
 import {
   validateLogin,
@@ -40,10 +49,7 @@ import {
   validateRegistration,
 } from '../middleware/validation';
 
-export function createAuthRoutes(
-  pgPool: Pool,
-  redisClient: ReturnType<typeof createClient>
-): Router {
+export function createAuthRoutes(pgPool: Pool, redisClient: RedisClient): Router {
   const router = Router();
 
   /**
@@ -80,12 +86,15 @@ export function createAuthRoutes(
   router.post(
     '/register',
     createRegistrationRateLimiter(redisClient),
+    authenticateJWT(redisClient),
+    requireRole(['admin']),
     validateRegistration,
     async (req: Request, res: Response) => {
       const client = await pgPool.connect();
 
       try {
         const { email, password, firstName, lastName, role, zoneId, deviceId } = req.body;
+        const normalizedDeviceId = (deviceId ?? '').trim() || DEFAULT_DEVICE_ID;
 
         // Check if email already exists
         const existingUser = await client.query(
@@ -124,6 +133,7 @@ export function createAuthRoutes(
           userId: user.id,
           role: user.role,
           zoneId: user.zone_id,
+          deviceId: normalizedDeviceId,
           email: user.email,
         });
 
@@ -131,6 +141,7 @@ export function createAuthRoutes(
           userId: user.id,
           role: user.role,
           zoneId: user.zone_id,
+          deviceId: normalizedDeviceId,
         });
 
         // Store refresh token in database
@@ -140,13 +151,14 @@ export function createAuthRoutes(
         await client.query(
           `INSERT INTO refresh_tokens (user_id, token_hash, device_id, expires_at)
            VALUES ($1, $2, $3, $4)`,
-          [user.id, tokenHash, deviceId || 'unknown', expiresAt]
+          [user.id, tokenHash, normalizedDeviceId, expiresAt]
         );
 
         // Log successful registration
         logAuth('register', user.id, {
           email: user.email,
           role: user.role,
+          deviceId: normalizedDeviceId,
         });
 
         // Return success response
@@ -219,8 +231,9 @@ export function createAuthRoutes(
       const { refreshToken } = req.body;
 
       // Verify JWT signature and decode payload
+      let refreshPayload: JWTPayload;
       try {
-        verifyToken(refreshToken);
+        refreshPayload = verifyToken(refreshToken);
       } catch (error) {
         res.status(401).json({
           error: {
@@ -238,7 +251,7 @@ export function createAuthRoutes(
 
       // Check if token exists in database and is not revoked
       const tokenResult = await client.query(
-        `SELECT id, user_id, expires_at, revoked_at 
+        `SELECT id, user_id, device_id, expires_at, revoked_at 
          FROM refresh_tokens 
          WHERE token_hash = $1`,
         [tokenHash]
@@ -286,6 +299,21 @@ export function createAuthRoutes(
         return;
       }
 
+      const tokenDeviceId = (tokenRecord.device_id as string | null) ?? DEFAULT_DEVICE_ID;
+      const payloadDeviceId = (refreshPayload.deviceId ?? DEFAULT_DEVICE_ID).trim();
+
+      if (payloadDeviceId !== tokenDeviceId) {
+        res.status(401).json({
+          error: {
+            code: 'DEVICE_MISMATCH',
+            message: 'Refresh token device does not match active session',
+            timestamp: new Date().toISOString(),
+            requestId: req.headers['x-request-id'] || 'unknown',
+          },
+        });
+        return;
+      }
+
       // Fetch user information
       const userResult = await client.query(
         'SELECT id, email, role, zone_id, is_active FROM users WHERE id = $1 AND deleted_at IS NULL',
@@ -324,16 +352,62 @@ export function createAuthRoutes(
         userId: user.id,
         role: user.role,
         zoneId: user.zone_id,
+        deviceId: tokenDeviceId,
         email: user.email,
       });
 
-      // Log successful token refresh
-      logAuth('refresh', user.id);
+      // Rotate refresh token to prevent reuse of compromised tokens
+      let newRefreshToken: string | null = null;
+      try {
+        await client.query('BEGIN');
 
-      // Return new access token
+        newRefreshToken = generateRefreshToken({
+          userId: user.id,
+          role: user.role,
+          zoneId: user.zone_id,
+          deviceId: tokenDeviceId,
+        });
+
+        const newTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
+        const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+        await client.query(
+          `INSERT INTO refresh_tokens (user_id, token_hash, device_id, expires_at)
+           VALUES ($1, $2, $3, $4)`,
+          [user.id, newTokenHash, tokenDeviceId, newExpiresAt]
+        );
+
+        await client.query(
+          `UPDATE refresh_tokens
+           SET revoked_at = CURRENT_TIMESTAMP
+           WHERE id = $1 AND revoked_at IS NULL`,
+          [tokenRecord.id]
+        );
+
+        await client.query('COMMIT');
+      } catch (transactionError) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          logError(
+            'Token refresh rollback error',
+            rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError))
+          );
+        }
+        throw transactionError;
+      }
+
+      // Log successful token refresh
+      logAuth('refresh', user.id, { deviceId: tokenDeviceId });
+
+      // Return new tokens
+      if (!newRefreshToken) {
+        throw new Error('Refresh token rotation failed: token was not generated');
+      }
       res.status(200).json({
         data: {
           accessToken,
+          refreshToken: newRefreshToken,
         },
       });
     } catch (error) {
@@ -369,11 +443,11 @@ export function createAuthRoutes(
    * Errors:
    * - 400: Validation error
    * - 401: Invalid credentials
-   * - 429: Rate limit exceeded (10 attempts per hour per IP)
+   * - 429: Rate limit exceeded (10 attempts per 15 minutes per IP)
    * - 500: Server error
    *
    * Security:
-   * - Rate limiting: 10 attempts per hour per IP
+   * - Rate limiting: 10 attempts per 15 minutes per IP
    * - Password verification: bcrypt constant-time comparison
    * - Input validation: email format
    * - Refresh token hashing: SHA-256 before storage
@@ -387,6 +461,7 @@ export function createAuthRoutes(
 
       try {
         const { email, password, deviceId } = req.body;
+        const normalizedDeviceId = (deviceId ?? '').trim() || DEFAULT_DEVICE_ID;
 
         // Find user by email
         const userResult = await client.query(
@@ -442,6 +517,7 @@ export function createAuthRoutes(
           userId: user.id,
           role: user.role,
           zoneId: user.zone_id,
+          deviceId: normalizedDeviceId,
           email: user.email,
         });
 
@@ -449,6 +525,7 @@ export function createAuthRoutes(
           userId: user.id,
           role: user.role,
           zoneId: user.zone_id,
+          deviceId: normalizedDeviceId,
         });
 
         // Store refresh token in database
@@ -458,13 +535,13 @@ export function createAuthRoutes(
         await client.query(
           `INSERT INTO refresh_tokens (user_id, token_hash, device_id, expires_at)
            VALUES ($1, $2, $3, $4)`,
-          [user.id, tokenHash, deviceId, expiresAt]
+          [user.id, tokenHash, normalizedDeviceId, expiresAt]
         );
 
         // Log successful login
         logAuth('login', user.id, {
           email: user.email,
-          deviceId,
+          deviceId: normalizedDeviceId,
         });
 
         // Return success response
@@ -534,7 +611,7 @@ export function createAuthRoutes(
       // Extract token from Authorization header
       const authHeader = req.headers.authorization;
 
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader) {
         res.status(401).json({
           error: {
             code: 'MISSING_TOKEN',
@@ -546,22 +623,64 @@ export function createAuthRoutes(
         return;
       }
 
-      const token = authHeader.split(' ')[1];
+      const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/);
+      if (!bearerMatch) {
+        res.status(401).json({
+          error: {
+            code: 'INVALID_TOKEN_FORMAT',
+            message: 'Authorization header must be in format: Bearer <token>',
+            timestamp: new Date().toISOString(),
+            requestId: req.headers['x-request-id'] || 'unknown',
+          },
+        });
+        return;
+      }
 
-      // Decode token to get user ID (for refresh token revocation)
-      // We decode without verification to handle timing attacks
+      const token = bearerMatch[1].trim();
+      if (!token) {
+        res.status(401).json({
+          error: {
+            code: 'INVALID_TOKEN_FORMAT',
+            message: 'Authorization header must be in format: Bearer <token>',
+            timestamp: new Date().toISOString(),
+            requestId: req.headers['x-request-id'] || 'unknown',
+          },
+        });
+        return;
+      }
+
+      const decodedToken = decodeToken(token);
+
+      // Attempt to verify token to obtain user context (required to revoke refresh tokens)
       let userId: string | null = null;
       try {
         const decoded = verifyToken(token);
-        userId = decoded.userId;
+        userId = decoded.userId ?? null;
       } catch (error) {
-        // Token is invalid, but we still blacklist it (timing attack prevention)
-        // We won't be able to revoke refresh tokens without userId
+        if (
+          decodedToken?.userId &&
+          error instanceof Error &&
+          error.message === 'Token has expired'
+        ) {
+          userId = decodedToken.userId ?? null;
+        }
       }
 
-      // Blacklist the access token in Redis (1 hour expiry to match access token)
+      // Determine TTL based on token expiry (default to 1 hour)
+      let blacklistTtlSeconds = 3600;
+      if (decodedToken?.exp) {
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const secondsUntilExpiry = decodedToken.exp - nowSeconds;
+        if (Number.isFinite(secondsUntilExpiry) && secondsUntilExpiry > 0) {
+          blacklistTtlSeconds = Math.ceil(secondsUntilExpiry);
+        } else {
+          blacklistTtlSeconds = 1;
+        }
+      }
+
+      // Blacklist the access token in Redis (TTL matches remaining lifetime)
       const blacklistKey = `token:blacklist:${token}`;
-      await redisClient.setEx(blacklistKey, 3600, '1');
+      await redisClient.setEx(blacklistKey, blacklistTtlSeconds, '1');
 
       // Revoke all active refresh tokens for this user in database
       if (userId) {

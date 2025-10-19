@@ -1,6 +1,10 @@
 {
   "extends": ["../../.eslintrc.json"],
   "ignorePatterns": ["!**/*", "node_modules/**", "dist/**"],
+  "parserOptions": {
+    "project": ["apps/backend/tsconfig.eslint.json"],
+    "projectService": true
+  },
   "overrides": [
     {
       "files": ["*.ts", "*.tsx"],
@@ -11,7 +15,13 @@
       }
     },
     {
-      "files": ["src/test-connection.ts"],
+      "files": [
+        "src/test-connection.ts",
+        "src/db/verify-schema.ts",
+        "src/db/migrate.ts",
+        "src/db/seed.ts",
+        "src/storage/test-s3.ts"
+      ],
       "rules": {
         "no-console": "off"
       }

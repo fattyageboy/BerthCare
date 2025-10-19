@@ -35,7 +35,7 @@ Successfully implemented the database schema for the BerthCare client management
 
 #### Rollback Migration
 
-**File:** `apps/backend/src/db/migrations/002_create_clients_rollback.sql`
+**File:** `apps/backend/src/db/migrations/002_create_clients-down.sql`
 
 Safely removes all objects created by the forward migration with CASCADE support for foreign key dependencies.
 
@@ -54,8 +54,8 @@ Safely removes all objects created by the forward migration with CASCADE support
 
 ```bash
 npm run migrate:up        # Run all migrations (001 + 002)
-npm run migrate:up 002    # Run only migration 002
-npm run migrate:down 002  # Rollback migration 002
+npm run migrate:up -- 002    # Run only migration 002
+npm run migrate:down -- 002  # Rollback migration 002
 ```
 
 ## Database Schema
@@ -293,7 +293,7 @@ CREATE TABLE visits (
 npm run migrate:up
 
 # Option 2: Run only migration 002
-npm run migrate:up 002
+npm run migrate:up -- 002
 
 # Option 3: Use Makefile
 make db-migrate
@@ -317,7 +317,7 @@ docker-compose exec postgres psql -U berthcare -d berthcare_dev \
 
 ```bash
 # Rollback migration 002
-npm run migrate:down 002
+npm run migrate:down -- 002
 
 # Verify rollback
 npm run db:verify
@@ -395,10 +395,10 @@ With the clients table in place, the next implementation tasks are:
 npm run db:verify
 
 # Rollback if needed
-npm run migrate:down 002
+npm run migrate:down -- 002
 
 # Re-run migration
-npm run migrate:up 002
+npm run migrate:up -- 002
 ```
 
 ### Docker Not Running
@@ -442,10 +442,10 @@ docker-compose ps postgres
 
 ```bash
 # Run migration 001 first
-npm run migrate:up 001
+npm run migrate:up -- 001
 
 # Then run migration 002
-npm run migrate:up 002
+npm run migrate:up -- 002
 ```
 
 ## References
@@ -472,7 +472,7 @@ The database schema for clients is now complete and ready for use. The table str
 **Migration Files:**
 
 - ✅ `002_create_clients.sql` - Forward migration
-- ✅ `002_create_clients_rollback.sql` - Rollback migration
+- ✅ `002_create_clients-down.sql` - Rollback migration
 - ✅ `migrate.ts` - Updated migration runner
 - ✅ `C1-clients-migration.md` - This documentation
 

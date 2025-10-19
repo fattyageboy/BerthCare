@@ -4,8 +4,13 @@
  * Handles care plan management endpoints:
  * - POST /v1/care-plans - Create or update care plan
  *
+ * Task C7: Implement POST /v1/care-plans endpoint
+ * Create endpoint to create/update care plan for client; support versioning
+ * (increment version on each update); validate medications and allergies format;
+ * require coordinator or admin role.
+ *
+ * Reference: project-documentation/task-plan.md - Phase C – Client Management API
  * Reference: Architecture Blueprint - Care Plan Management
- * Task: C7 - Implement POST /v1/care-plans endpoint
  *
  * Philosophy: "Start with the user experience, work backwards to the technology"
  * - Simple upsert pattern (create or update)
@@ -16,16 +21,14 @@
 
 import { Request, Response, Router } from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 
+import { deleteKeysMatchingPattern } from '../cache/cache-utils';
+import { RedisClient } from '../cache/redis-client';
 import { logError, logInfo } from '../config/logger';
 import { authenticateJWT, AuthenticatedRequest, requireRole } from '../middleware/auth';
 import { validateCarePlan } from '../middleware/validation';
 
-export function createCarePlanRoutes(
-  pgPool: Pool,
-  redisClient: ReturnType<typeof createClient>
-): Router {
+export function createCarePlanRoutes(pgPool: Pool, redisClient: RedisClient): Router {
   const router = Router();
 
   /**
@@ -120,8 +123,12 @@ export function createCarePlanRoutes(
           if (clientData.zone_id !== user.zoneId) {
             res.status(403).json({
               error: {
-                code: 'FORBIDDEN',
-                message: 'You can only manage care plans for clients in your zone',
+                code: 'AUTH_ZONE_ACCESS_DENIED',
+                message: 'You do not have access to this client',
+                details: {
+                  requestedZoneId: clientData.zone_id,
+                  userZoneId: user.zoneId,
+                },
                 timestamp: new Date().toISOString(),
                 requestId: req.headers['x-request-id'] || 'unknown',
               },
@@ -217,6 +224,26 @@ export function createCarePlanRoutes(
         ]);
 
         const carePlan = result.rows[0];
+
+        // Invalidate related caches to ensure fresh data
+        try {
+          // Client detail cache
+          await redisClient.del(`client:detail:${clientId}`);
+
+          // Client list caches (all zones + specific zone) removed in batches to avoid blocking calls
+          await deleteKeysMatchingPattern(redisClient, `clients:list:zone=${clientData.zone_id}:*`);
+          await deleteKeysMatchingPattern(redisClient, 'clients:list:zone=all:*');
+        } catch (cacheError) {
+          logError(
+            'Care plan cache invalidation error',
+            cacheError instanceof Error ? cacheError : new Error(String(cacheError)),
+            {
+              clientId,
+              userId: user.userId,
+              requestId: req.headers['x-request-id'] || 'unknown',
+            }
+          );
+        }
 
         // Log the operation
         logInfo(isUpdate ? 'Care plan updated' : 'Care plan created', {

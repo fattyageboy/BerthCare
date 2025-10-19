@@ -14,7 +14,7 @@ Created database schema for user authentication system including users and refre
 ### Migration Files
 
 - ✅ `apps/backend/src/db/migrations/001_create_users_auth.sql` - Forward migration
-- ✅ `apps/backend/src/db/migrations/001_create_users_auth_rollback.sql` - Rollback migration
+- ✅ `apps/backend/src/db/migrations/001_create_users_auth-down.sql` - Rollback migration
 - ✅ `apps/backend/src/db/migrate.ts` - Migration runner tool
 - ✅ `apps/backend/src/db/verify-schema.ts` - Schema verification tool
 - ✅ `apps/backend/src/db/README.md` - Migration documentation
@@ -23,22 +23,26 @@ Created database schema for user authentication system including users and refre
 
 #### Users Table
 
-Stores user accounts for caregivers, coordinators, and administrators.
+Stores user accounts for caregivers, coordinators, administrators, and family members.
 
-**Columns:**
+##### Columns
+
 - `id` (UUID, Primary Key) - Unique user identifier
 - `email` (VARCHAR, UNIQUE) - User email for login
 - `password_hash` (VARCHAR) - Bcrypt hashed password
 - `first_name` (VARCHAR) - User first name
 - `last_name` (VARCHAR) - User last name
-- `role` (VARCHAR) - User role: 'caregiver', 'coordinator', or 'admin'
-- `zone_id` (UUID) - Zone assignment for data isolation
+- `role` (VARCHAR) - User role: 'caregiver', 'coordinator', 'admin', or 'family'
+- `zone_id` (UUID, FK) - Zone assignment for data isolation (`zones.id`)
+- `phone` (VARCHAR) - Optional contact number
 - `is_active` (BOOLEAN) - Account active status
+- `last_login_at` (TIMESTAMP) - Timestamp of the most recent successful login
 - `created_at` (TIMESTAMP) - Account creation timestamp
 - `updated_at` (TIMESTAMP) - Last update timestamp (auto-updated)
 - `deleted_at` (TIMESTAMP) - Soft delete timestamp
 
-**Indexes:**
+##### Indexes
+
 - `idx_users_email` - Fast email lookup for login
 - `idx_users_zone_id` - Zone-based data isolation queries
 - `idx_users_role` - Role-based authorization checks
@@ -48,7 +52,8 @@ Stores user accounts for caregivers, coordinators, and administrators.
 
 Manages JWT refresh tokens for multi-device session support.
 
-**Columns:**
+##### Columns
+
 - `id` (UUID, Primary Key) - Unique token identifier
 - `user_id` (UUID, Foreign Key) - References users table
 - `token_hash` (VARCHAR, UNIQUE) - Hashed refresh token
@@ -58,7 +63,8 @@ Manages JWT refresh tokens for multi-device session support.
 - `created_at` (TIMESTAMP) - Token creation timestamp
 - `updated_at` (TIMESTAMP) - Last update timestamp (auto-updated)
 
-**Indexes:**
+##### Indexes
+
 - `idx_refresh_tokens_user_id` - Fast user token lookup
 - `idx_refresh_tokens_token_hash` - Token validation queries
 - `idx_refresh_tokens_device_id` - Multi-device session management
@@ -66,24 +72,30 @@ Manages JWT refresh tokens for multi-device session support.
 
 ### Features
 
-**Security:**
+#### Security
+
 - Password hashing (bcrypt) - never store plaintext passwords
 - Token hashing - never store raw refresh tokens
 - Soft delete support - preserve audit trail
-- Role-based access control - caregiver, coordinator, admin
+- Role-based access control - caregiver, coordinator, admin, family
 
-**Performance:**
+#### Performance
+
 - Optimized indexes for common query patterns
 - Composite indexes for complex queries
 - Partial indexes with WHERE clauses for efficiency
 
-**Reliability:**
-- Foreign key constraints with CASCADE delete
+#### Reliability
+
+- Foreign key constraints with CASCADE delete for hard deletes (soft-deleted users have their refresh tokens revoked via `revoked_at` at the application layer; hard deletes cascade automatically)
 - Automatic timestamp management via triggers
 - Transaction support (BEGIN/COMMIT/ROLLBACK)
 - Comprehensive error handling
 
-**Maintainability:**
+> **Soft delete token policy:** When `deleted_at` is set on `users`, we immediately revoke relevant refresh tokens at the application layer (e.g., logout logic or dedicated cleanup job). This preserves the audit trail while ensuring no lingering sessions. Hard deletes use `ON DELETE CASCADE` to remove tokens automatically. Operationally, ensure the deployment includes the revocation routine and, if needed, run a one-time cleanup to revoke any tokens associated with already soft-deleted users.
+
+#### Maintainability
+
 - Clear table and column comments
 - Descriptive index names
 - Rollback scripts for safe deployment
@@ -105,7 +117,7 @@ npm run db:verify
 
 ```bash
 # Rollback if needed
-npm run migrate:down 001
+npm run migrate:down -- #001
 
 # Verify rollback
 npm run db:verify
@@ -124,7 +136,7 @@ All schema checks passed:
 
 ```
 ✅ Table 'users' exists
-✅ All columns exist in 'users' (11 columns)
+✅ All columns exist in 'users' (13 columns)
 ✅ Table 'refresh_tokens' exists
 ✅ All columns exist in 'refresh_tokens' (8 columns)
 ✅ Index 'idx_users_email' exists
@@ -149,17 +161,20 @@ This migration implements the authentication system as specified in:
 
 ### Design Philosophy Applied
 
-**Simplicity is the Ultimate Sophistication:**
+#### Simplicity is the Ultimate Sophistication
+
 - Plain SQL migrations (no complex ORM)
 - Clear, readable schema definitions
 - Straightforward migration runner
 
-**Obsess Over Details:**
+#### Obsess Over Details
+
 - Comprehensive indexes for performance
 - Automatic timestamp management
 - Detailed comments and documentation
 
-**Uncompromising Security:**
+#### Uncompromising Security
+
 - Password hashing (never plaintext)
 - Token hashing (never raw tokens)
 - Soft delete (preserve audit trail)

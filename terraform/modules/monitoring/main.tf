@@ -15,7 +15,7 @@ terraform {
 resource "aws_cloudwatch_log_group" "api_logs" {
   name              = "/aws/ecs/${var.environment}/berthcare-api"
   retention_in_days = var.log_retention_days
-
+ 
   tags = {
     Name        = "berthcare-api-logs-${var.environment}"
     Environment = var.environment

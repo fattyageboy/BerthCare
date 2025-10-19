@@ -10,6 +10,7 @@ CREATE DATABASE berthcare_test;
 
 -- Enable UUID extension for generating unique identifiers
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Enable PostGIS extension for geospatial queries (GPS coordinates)
 -- Commented out by default - uncomment if you need geospatial features
@@ -30,6 +31,7 @@ INSERT INTO health_check (status) VALUES ('healthy');
 
 -- Enable UUID extension in test database
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Create health check table in test database
 CREATE TABLE IF NOT EXISTS health_check (

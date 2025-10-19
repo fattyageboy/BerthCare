@@ -14,28 +14,26 @@ import crypto from 'crypto';
 
 import express, { Express } from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateAccessToken, generateRefreshToken } from '../../../libs/shared/src';
+import { generateAccessToken, generateRefreshToken } from '@berthcare/shared';
+
+import { RedisClient } from '../src/cache/redis-client';
 import { createAuthRoutes } from '../src/routes/auth.routes';
+
+import { setupTestConnections, teardownTestConnections } from './test-helpers';
 
 describe('POST /v1/auth/logout', () => {
   let app: Express;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
+  let schemaName: string;
 
   beforeAll(async () => {
-    // Initialize PostgreSQL connection
-    pgPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
-
-    // Initialize Redis connection
-    redisClient = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
-    });
-    await redisClient.connect();
+    const connections = await setupTestConnections();
+    pgPool = connections.pgPool;
+    redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app
     app = express();
@@ -48,16 +46,11 @@ describe('POST /v1/auth/logout', () => {
   });
 
   afterAll(async () => {
-    await pgPool.end();
-    await redisClient.quit();
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   beforeEach(async () => {
-    // Clear Redis test data
-    const keys = await redisClient.keys('token:blacklist:*');
-    if (keys.length > 0) {
-      await redisClient.del(keys);
-    }
+    await redisClient.flushDb();
 
     // Clear test refresh tokens from database
     const client = await pgPool.connect();
@@ -92,6 +85,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_test',
         });
         const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -107,6 +101,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_test',
           email: 'test-logout-1@example.com',
         });
 
@@ -156,6 +151,7 @@ describe('POST /v1/auth/logout', () => {
           role: 'coordinator',
           zoneId: '00000000-0000-0000-0000-000000000000',
           email: 'test-logout-2@example.com',
+          deviceId: 'test-device-id',
         });
 
         await request(app)
@@ -192,6 +188,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_1',
         });
         const tokenHash1 = crypto.createHash('sha256').update(refreshToken1).digest('hex');
 
@@ -199,6 +196,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_2',
         });
         const tokenHash2 = crypto.createHash('sha256').update(refreshToken2).digest('hex');
 
@@ -215,6 +213,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_1',
           email: 'test-logout-3@example.com',
         });
 
@@ -261,8 +260,8 @@ describe('POST /v1/auth/logout', () => {
 
       expect(response.body).toEqual({
         error: {
-          code: 'MISSING_TOKEN',
-          message: 'Authorization header is required',
+          code: 'INVALID_TOKEN_FORMAT',
+          message: 'Authorization header must be in format: Bearer <token>',
           timestamp: expect.any(String),
           requestId: expect.any(String),
         },
@@ -362,6 +361,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_idempotent',
           email: 'test-logout-idempotent@example.com',
         });
 
@@ -404,6 +404,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_refresh',
         });
         const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -419,6 +420,7 @@ describe('POST /v1/auth/logout', () => {
           userId,
           role: 'caregiver',
           zoneId: '00000000-0000-0000-0000-000000000000',
+          deviceId: 'device_refresh',
           email: 'test-logout-refresh@example.com',
         });
 

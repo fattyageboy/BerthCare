@@ -36,13 +36,25 @@ const isValid = await verifyPassword('mySecurePassword123', hash);
 Secure JWT token generation and verification using RS256 algorithm.
 
 ```typescript
-import { generateAccessToken, generateRefreshToken, verifyToken } from '@berthcare/shared';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyToken,
+  initializeJwtKeyStore,
+} from '@berthcare/shared';
+
+// Optionally load signing keys from AWS Secrets Manager
+await initializeJwtKeyStore({
+  secretArn: process.env.JWT_KEYS_SECRET_ARN,
+  region: process.env.AWS_REGION,
+});
 
 // Generate tokens
 const accessToken = generateAccessToken({
   userId: 'user_123',
   role: 'caregiver',
   zoneId: 'zone_456',
+  deviceId: 'device_ios_01',
   email: 'caregiver@example.com',
 });
 
@@ -50,12 +62,14 @@ const refreshToken = generateRefreshToken({
   userId: 'user_123',
   role: 'caregiver',
   zoneId: 'zone_456',
+  deviceId: 'device_ios_01',
 });
 
 // Verify token
 try {
   const payload = verifyToken(accessToken);
   console.log('User ID:', payload.userId);
+  console.log('Device ID:', payload.deviceId);
 } catch (error) {
   console.error('Invalid token');
 }
@@ -65,6 +79,7 @@ try {
 
 - RS256 algorithm (asymmetric encryption)
 - Key rotation support
+- Device binding via `deviceId`
 - Short-lived access tokens (1 hour)
 - Long-lived refresh tokens (30 days)
 - Comprehensive payload with user context
@@ -112,7 +127,19 @@ npx tsx libs/shared/examples/jwt-utils-demo.ts
 ```bash
 # JWT Configuration (required for JWT utilities)
 JWT_PRIVATE_KEY=your-rsa-private-key
+JWT_KEY_ID=current-dev-key
+JWT_PUBLIC_KEY_SET={}
+JWT_KEYS_JSON=
+JWT_KEYS_SECRET_ARN=
 JWT_PUBLIC_KEY=your-rsa-public-key
+
+# Notes:
+# - JWT_KEY_ID identifies the signing key and must be set whenever you use JWKS (JWT_PUBLIC_KEY_SET) or a JSON keyset (JWT_KEYS_JSON / JWT_KEYS_SECRET_ARN).
+# - Single-key setups supply JWT_PRIVATE_KEY + JWT_PUBLIC_KEY and skip JWKS variables; multi-key setups should provide JWT_PUBLIC_KEY_SET or JWT_KEYS_JSON / JWT_KEYS_SECRET_ARN.
+# - Precedence: explicit JWT_KEYS_JSON or JWT_KEYS_SECRET_ARN (secret-managed keyset) overrides JWT_PUBLIC_KEY; if both single-key and JWKS values are provided, the JWKS/keyset is preferred.
+# - Use JWT_KEYS_SECRET_ARN to load JWKS/JSON keysets from Secrets Manager and ensure JWT_KEY_ID matches the active key in that set.
+# - JWT_PUBLIC_KEY_SET should hold a JWKS string for multi-key rotation; leave it empty when using single-key PEM values.
+# - JWT_PRIVATE_KEY is only required when signing tokens locally; consumers verifying tokens only need the corresponding public key or JWKS entry.
 ```
 
 See `.env.example` for complete configuration options.
@@ -128,29 +155,40 @@ See `.env.example` for complete configuration options.
 
 ### JWT Utilities
 
-- `generateAccessToken(options: TokenOptions): string` - Generate access token
-- `generateRefreshToken(options: TokenOptions): string` - Generate refresh token
+- `generateAccessToken(options: AccessTokenOptions): string` - Generate access token
+- `generateRefreshToken(options: RefreshTokenOptions): string` - Generate refresh token
 - `verifyToken(token: string): JWTPayload` - Verify and decode token
 - `decodeToken(token: string): JWTPayload | null` - Decode token without verification
 - `isTokenExpired(token: string): boolean` - Check if token is expired
 - `getTokenExpiry(tokenType: 'access' | 'refresh'): number` - Get token expiry time
+- `initializeJwtKeyStore(options?: InitializeJwtKeyStoreOptions): Promise<void>` - Load keys from AWS Secrets Manager
+- `clearJwtKeyCache(): void` - Clear cached key configuration
+- `DEFAULT_DEVICE_ID: string` - Default fallback when deviceId is omitted
 
 ### Types
 
 ```typescript
-type UserRole = 'caregiver' | 'coordinator' | 'admin';
+type UserRole = 'caregiver' | 'coordinator' | 'admin' | 'family';
 
-interface TokenOptions {
+interface AccessTokenOptions {
   userId: string;
   role: UserRole;
   zoneId: string;
+  deviceId?: string;
   email?: string;
 }
 
+interface RefreshTokenOptions extends AccessTokenOptions {
+  tokenId?: string;
+}
+
 interface JWTPayload {
-  userId: string;
+  sub: string;
+  userId?: string;
   role: UserRole;
   zoneId: string;
+  deviceId?: string;
+  tokenId?: string;
   email?: string;
   iat?: number;
   exp?: number;

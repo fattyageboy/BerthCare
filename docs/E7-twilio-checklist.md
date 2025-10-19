@@ -29,12 +29,14 @@ Quick checklist for completing Twilio account configuration.
 ## Subaccounts
 
 ### Staging Subaccount
+
 - [ ] Subaccount created with name "BerthCare Staging"
 - [ ] Account SID recorded: `AC________________`
 - [ ] Auth Token recorded (keep secure)
 - [ ] Subaccount status: Active
 
 ### Production Subaccount
+
 - [ ] Subaccount created with name "BerthCare Production"
 - [ ] Account SID recorded: `AC________________`
 - [ ] Auth Token recorded (keep secure)
@@ -45,6 +47,7 @@ Quick checklist for completing Twilio account configuration.
 ## Phone Numbers
 
 ### Staging Phone Number
+
 - [ ] Canadian phone number purchased
 - [ ] Number: `+1________________`
 - [ ] Capabilities: Voice + SMS
@@ -56,6 +59,7 @@ Quick checklist for completing Twilio account configuration.
 - [ ] SMS status webhook configured: `https://api-staging.berthcare.ca/v1/twilio/sms/status`
 
 ### Production Phone Number
+
 - [ ] Canadian phone number purchased
 - [ ] Number: `+1________________`
 - [ ] Capabilities: Voice + SMS
@@ -71,6 +75,7 @@ Quick checklist for completing Twilio account configuration.
 ## AWS Secrets Manager
 
 ### Staging Credentials
+
 - [ ] Secret created: `berthcare/staging/twilio`
 - [ ] Account SID stored
 - [ ] Auth Token stored
@@ -81,6 +86,7 @@ Quick checklist for completing Twilio account configuration.
 - [ ] Secret verified (can retrieve successfully)
 
 ### Production Credentials
+
 - [ ] Secret created: `berthcare/production/twilio`
 - [ ] Account SID stored
 - [ ] Auth Token stored
@@ -113,6 +119,7 @@ Quick checklist for completing Twilio account configuration.
 ## Testing
 
 ### Staging Environment
+
 - [ ] Test outbound voice call successful
 - [ ] Test outbound SMS successful
 - [ ] Test inbound voice webhook (after backend deployment)
@@ -121,9 +128,13 @@ Quick checklist for completing Twilio account configuration.
 - [ ] Test SMS delivery status callback
 
 ### Production Environment
+
 - [ ] Test outbound voice call successful
 - [ ] Test outbound SMS successful
-- [ ] Webhooks configured (will test after backend deployment)
+- [ ] Test inbound voice webhook (after backend deployment)
+- [ ] Test inbound SMS webhook (after backend deployment)
+- [ ] Test voice call status callback
+- [ ] Test SMS delivery status callback
 
 ---
 
@@ -198,12 +209,11 @@ After completing this checklist:
 
 ## Sign-Off
 
-**Completed By:** ___________________  
-**Date:** ___________________  
-**Verified By:** ___________________  
-**Date:** ___________________
+**Completed By:** ____________  
+**Date:** ____________  
+**Verified By:** ____________  
+**Date:** ____________
 
 ---
 
 **Status:** ⬜ Not Started | 🟡 In Progress | ✅ Complete
-

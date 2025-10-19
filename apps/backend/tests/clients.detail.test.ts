@@ -25,23 +25,22 @@
 
 import express from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateAccessToken } from '../../../libs/shared/src/jwt-utils';
+import { generateAccessToken } from '@berthcare/shared';
+
+import { RedisClient } from '../src/cache/redis-client';
 import { createClientRoutes } from '../src/routes/clients.routes';
 
-// Test configuration
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  'postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test';
-const TEST_REDIS_URL =
-  process.env.TEST_REDIS_URL || 'redis://:berthcare_redis_password@localhost:6379/1';
+import { setupTestConnections, teardownTestConnections } from './test-helpers';
+
+const BASE_VISIT_DATE = new Date('2025-01-20T10:00:00Z');
 
 describe('GET /api/v1/clients/:clientId', () => {
   let app: express.Application;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
+  let schemaName: string;
 
   // Test data
   let testZoneId1: string;
@@ -53,77 +52,21 @@ describe('GET /api/v1/clients/:clientId', () => {
 
   // Setup: Create app and database connections
   beforeAll(async () => {
-    // Create PostgreSQL connection
-    pgPool = new Pool({
-      connectionString: TEST_DATABASE_URL,
-      max: 5,
-    });
-
-    // Create Redis connection
-    redisClient = createClient({
-      url: TEST_REDIS_URL,
-    });
-    await redisClient.connect();
+    const connections = await setupTestConnections();
+    pgPool = connections.pgPool;
+    redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app with client routes
     app = express();
     app.use(express.json());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     app.use('/api/v1/clients', createClientRoutes(pgPool, redisClient as any));
-
-    // Ensure test database has required tables
-    await pgPool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email VARCHAR(255) NOT NULL UNIQUE,
-        password_hash VARCHAR(255) NOT NULL,
-        first_name VARCHAR(100) NOT NULL,
-        last_name VARCHAR(100) NOT NULL,
-        role VARCHAR(20) NOT NULL CHECK (role IN ('caregiver', 'coordinator', 'admin')),
-        zone_id UUID,
-        is_active BOOLEAN NOT NULL DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-
-      CREATE TABLE IF NOT EXISTS clients (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        first_name VARCHAR(100) NOT NULL,
-        last_name VARCHAR(100) NOT NULL,
-        date_of_birth DATE NOT NULL,
-        address TEXT NOT NULL,
-        latitude DECIMAL(10,8) NOT NULL,
-        longitude DECIMAL(11,8) NOT NULL,
-        phone VARCHAR(20),
-        emergency_contact_name VARCHAR(200) NOT NULL,
-        emergency_contact_phone VARCHAR(20) NOT NULL,
-        emergency_contact_relationship VARCHAR(100) NOT NULL,
-        zone_id UUID NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-
-      CREATE TABLE IF NOT EXISTS care_plans (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-        summary TEXT NOT NULL,
-        medications JSONB NOT NULL DEFAULT '[]'::jsonb,
-        allergies JSONB NOT NULL DEFAULT '[]'::jsonb,
-        special_instructions TEXT,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-    `);
   });
 
   // Cleanup: Close connections
   afterAll(async () => {
-    await pgPool.end();
-    await redisClient.quit();
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   // Clean database and Redis before each test
@@ -132,6 +75,7 @@ describe('GET /api/v1/clients/:clientId', () => {
     try {
       await client.query('BEGIN');
       // Clear database tables in correct order
+      await client.query('DELETE FROM visits');
       await client.query('DELETE FROM care_plans');
       await client.query('DELETE FROM clients');
       await client.query(
@@ -228,6 +172,34 @@ describe('GET /api/v1/clients/:clientId', () => {
         'Client prefers morning visits',
       ]
     );
+
+    // Create visits for client 1 (ensure more than 10 to test limit)
+    for (let i = 0; i < 12; i += 1) {
+      const scheduledStart = new Date(BASE_VISIT_DATE.getTime() - i * 24 * 60 * 60 * 1000);
+      const checkIn = new Date(scheduledStart.getTime() + 5 * 60 * 1000);
+      const checkOut = new Date(checkIn.getTime() + 45 * 60 * 1000);
+
+      await pgPool.query(
+        `INSERT INTO visits (
+          client_id,
+          staff_id,
+          scheduled_start_time,
+          check_in_time,
+          check_out_time,
+          status,
+          duration_minutes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          testClient1Id,
+          testUserId1,
+          scheduledStart.toISOString(),
+          checkIn.toISOString(),
+          checkOut.toISOString(),
+          'completed',
+          45,
+        ]
+      );
+    }
   });
 
   describe('Authentication', () => {
@@ -315,7 +287,7 @@ describe('GET /api/v1/clients/:clientId', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
 
-      expect(response.body.error.code).toBe('FORBIDDEN');
+      expect(response.body.error.code).toBe('AUTH_ZONE_ACCESS_DENIED');
     });
 
     it('should allow admin to access any client', async () => {
@@ -384,6 +356,7 @@ describe('GET /api/v1/clients/:clientId', () => {
       // Recent visits
       expect(client).toHaveProperty('recentVisits');
       expect(Array.isArray(client.recentVisits)).toBe(true);
+      expect(client.recentVisits).toHaveLength(10);
     });
 
     it('should include correct client details', async () => {
@@ -454,6 +427,44 @@ describe('GET /api/v1/clients/:clientId', () => {
       expect(carePlan.specialInstructions).toBe('Client prefers morning visits');
     });
 
+    it('should include the 10 most recent visits with staff name and duration', async () => {
+      const token = generateAccessToken({
+        userId: testUserId1,
+        role: 'caregiver',
+        zoneId: testZoneId1,
+        email: 'caregiver1@test.com',
+      });
+
+      const response = await request(app)
+        .get(`/api/v1/clients/${testClient1Id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const { recentVisits } = response.body.data;
+
+      expect(recentVisits).toHaveLength(10);
+
+      const expectedMostRecentDate = new Date(
+        BASE_VISIT_DATE.getTime() + 5 * 60 * 1000
+      ).toISOString();
+      const expectedTenthDate = new Date(
+        BASE_VISIT_DATE.getTime() - 9 * 24 * 60 * 60 * 1000 + 5 * 60 * 1000
+      ).toISOString();
+
+      expect(recentVisits[0].date).toBe(expectedMostRecentDate);
+      expect(recentVisits[0].staffName).toBe('Test Caregiver1');
+      expect(recentVisits[0].duration).toBe(45);
+
+      expect(recentVisits[9].date).toBe(expectedTenthDate);
+      expect(recentVisits[9].duration).toBe(45);
+
+      for (let i = 1; i < recentVisits.length; i += 1) {
+        expect(new Date(recentVisits[i - 1].date).getTime()).toBeGreaterThanOrEqual(
+          new Date(recentVisits[i].date).getTime()
+        );
+      }
+    });
+
     it('should return empty care plan for client without care plan', async () => {
       const token = generateAccessToken({
         userId: testAdminId,
@@ -477,14 +488,14 @@ describe('GET /api/v1/clients/:clientId', () => {
 
     it('should return empty recent visits array', async () => {
       const token = generateAccessToken({
-        userId: testUserId1,
-        role: 'caregiver',
-        zoneId: testZoneId1,
-        email: 'caregiver1@test.com',
+        userId: testAdminId,
+        role: 'admin',
+        zoneId: '',
+        email: 'admin@test.com',
       });
 
       const response = await request(app)
-        .get(`/api/v1/clients/${testClient1Id}`)
+        .get(`/api/v1/clients/${testClient2Id}`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
@@ -571,7 +582,7 @@ describe('GET /api/v1/clients/:clientId', () => {
         .set('Authorization', `Bearer ${caregiverToken}`)
         .expect(403);
 
-      expect(response.body.error.code).toBe('FORBIDDEN');
+      expect(response.body.error.code).toBe('AUTH_ZONE_ACCESS_DENIED');
     });
   });
 });

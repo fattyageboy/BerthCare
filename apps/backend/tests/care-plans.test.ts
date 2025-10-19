@@ -25,16 +25,18 @@ import crypto from 'crypto';
 
 import { Express } from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateAccessToken } from '../../../libs/shared/src';
+import { generateAccessToken } from '@berthcare/shared';
+
+import { RedisClient } from '../src/cache/redis-client';
 
 import { createTestApp, setupTestConnections, teardownTestConnections } from './test-helpers';
 
 let app: Express;
 let pgPool: Pool;
-let redisClient: ReturnType<typeof createClient>;
+let redisClient: RedisClient;
+let schemaName: string;
 
 describe('POST /api/v1/care-plans - Create/Update Care Plan', () => {
   let adminToken: string;
@@ -57,6 +59,7 @@ describe('POST /api/v1/care-plans - Create/Update Care Plan', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create app with all routes
     app = createTestApp(pgPool, redisClient);
@@ -127,7 +130,7 @@ describe('POST /api/v1/care-plans - Create/Update Care Plan', () => {
     }
 
     // Close connections using shared helper
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   afterEach(async () => {
@@ -168,7 +171,7 @@ describe('POST /api/v1/care-plans - Create/Update Care Plan', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.error.code).toBe('FORBIDDEN');
+      expect(response.body.error.code).toBe('AUTH_INSUFFICIENT_ROLE');
     });
 
     it('should reject coordinator managing care plan in different zone', async () => {
@@ -183,8 +186,8 @@ describe('POST /api/v1/care-plans - Create/Update Care Plan', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.error.code).toBe('FORBIDDEN');
-      expect(response.body.error.message).toContain('your zone');
+      expect(response.body.error.code).toBe('AUTH_ZONE_ACCESS_DENIED');
+      expect(response.body.error.message).toContain('access to this client');
     });
 
     it('should allow coordinator to create care plan in same zone', async () => {
@@ -504,6 +507,15 @@ describe('POST /api/v1/care-plans - Create/Update Care Plan', () => {
       expect(updateResponse.body.data.summary).toBe('Updated care plan');
       expect(updateResponse.body.data.medications).toHaveLength(1);
       expect(updateResponse.body.data.allergies).toHaveLength(1);
+
+      // Verify client detail reflects update
+      const clientDetailResponse = await request(app)
+        .get(`/api/v1/clients/${testClientId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(clientDetailResponse.status).toBe(200);
+      expect(clientDetailResponse.body.data.carePlan.summary).toBe('Updated care plan');
+      expect(clientDetailResponse.body.data.carePlan.medications).toHaveLength(1);
+      expect(clientDetailResponse.body.data.carePlan.allergies).toHaveLength(1);
     });
 
     it('should increment version on multiple updates', async () => {
@@ -545,6 +557,79 @@ describe('POST /api/v1/care-plans - Create/Update Care Plan', () => {
         });
 
       expect(update2.body.data.version).toBe(3);
+    });
+  });
+
+  describe('Cache Invalidation', () => {
+    it('should invalidate caches after care plan update', async () => {
+      // Seed care plan
+      await request(app)
+        .post('/api/v1/care-plans')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          clientId: testClientId,
+          summary: 'Cache Seed Summary',
+          medications: [],
+          allergies: [],
+        });
+
+      // Prime detail cache
+      const detailPrime = await request(app)
+        .get(`/api/v1/clients/${testClientId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(detailPrime.status).toBe(200);
+      expect(detailPrime.body.data.carePlan.summary).toBe('Cache Seed Summary');
+
+      // Prime list cache
+      const listPrime = await request(app)
+        .get('/api/v1/clients')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(listPrime.status).toBe(200);
+      const primeClient = listPrime.body.data.clients.find(
+        (client: { id: string }) => client.id === testClientId
+      );
+      if (!primeClient) {
+        throw new Error('Expected client to appear in list response');
+      }
+
+      // Update care plan to trigger invalidation
+      await request(app)
+        .post('/api/v1/care-plans')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          clientId: testClientId,
+          summary: 'Cache Updated Summary',
+          medications: [
+            {
+              name: 'Vitamin D',
+              dosage: '1000 IU',
+              frequency: 'Daily',
+            },
+          ],
+          allergies: ['Dust'],
+        });
+
+      // Fetch detail again - should reflect updated summary
+      const detailFetch = await request(app)
+        .get(`/api/v1/clients/${testClientId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(detailFetch.status).toBe(200);
+      expect(detailFetch.body.data.carePlan.summary).toBe('Cache Updated Summary');
+      expect(detailFetch.body.data.carePlan.medications).toHaveLength(1);
+      expect(detailFetch.body.data.carePlan.allergies).toHaveLength(1);
+
+      // Fetch list again - summary should match updated value
+      const listFetch = await request(app)
+        .get('/api/v1/clients')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(listFetch.status).toBe(200);
+      const updatedListClient = listFetch.body.data.clients.find(
+        (client: { id: string; carePlanSummary: string | null }) => client.id === testClientId
+      );
+      if (!updatedListClient) {
+        throw new Error('Expected updated client in list response');
+      }
+      expect(updatedListClient.carePlanSummary).toBe('Cache Updated Summary');
     });
   });
 

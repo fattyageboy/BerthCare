@@ -1,6 +1,6 @@
 # BerthCare - Home Care Management Platform
 
-**Version:** 2.0.0  
+**Version:** 1.0.0  
 **Philosophy:** Simplicity is the ultimate sophistication
 
 ## Overview

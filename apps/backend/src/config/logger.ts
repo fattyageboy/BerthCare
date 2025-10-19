@@ -1,12 +1,17 @@
 /**
  * Structured Logging Configuration
  *
+ * Task B1: Configure logging (Winston)
+ * Set up Winston logger with JSON formatting for CloudWatch parsing.
+ *
  * Features:
  * - JSON formatted logs for CloudWatch parsing
  * - Multiple log levels (error, warn, info, debug)
  * - Request ID tracking
  * - User context
  * - Performance metrics
+ *
+ * Reference: project-documentation/task-plan.md - Phase B – Backend Core Infrastructure
  */
 
 import winston from 'winston';

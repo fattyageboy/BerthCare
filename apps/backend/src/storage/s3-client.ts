@@ -1,6 +1,11 @@
 /**
  * AWS S3 Client Configuration
  *
+ * Task B4: Set up S3 client
+ * Configure AWS SDK v3 for S3; implement pre-signed URL generation for uploads;
+ * create helper functions for photo storage (with compression metadata);
+ * configure lifecycle policies (archive after 7 years).
+ *
  * Provides S3 client for file storage operations with support for:
  * - Pre-signed URL generation for secure uploads/downloads
  * - Photo storage with compression metadata
@@ -8,6 +13,7 @@
  * - LocalStack support for local development
  * - Production-ready error handling
  *
+ * Reference: project-documentation/task-plan.md - Phase B – Backend Core Infrastructure
  * Reference: Architecture Blueprint - File Storage section
  */
 
@@ -15,6 +21,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  NotFound,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -54,7 +61,7 @@ export const S3_BUCKETS = {
 export const FILE_CONFIGS = {
   PHOTO: {
     maxSize: 10 * 1024 * 1024, // 10MB
-    allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
+    allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
     bucket: S3_BUCKETS.PHOTOS,
   },
   DOCUMENT: {
@@ -324,7 +331,7 @@ export async function objectExists(bucket: string, key: string): Promise<boolean
     await s3Client.send(command);
     return true;
   } catch (error) {
-    if ((error as { name?: string }).name === 'NotFound') {
+    if (error instanceof NotFound) {
       return false;
     }
     logError('Failed to check object existence', error as Error, {
@@ -406,7 +413,7 @@ export async function verifyS3Connection(): Promise<boolean> {
     return true;
   } catch (error) {
     // NotFound is expected (key doesn't exist), but means bucket is accessible
-    if ((error as { name?: string }).name === 'NotFound') {
+    if (error instanceof NotFound) {
       logInfo('S3 connection verified', {
         bucket: S3_BUCKETS.PHOTOS,
         endpoint: process.env.AWS_ENDPOINT || 'AWS',

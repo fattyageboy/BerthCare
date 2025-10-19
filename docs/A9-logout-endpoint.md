@@ -31,6 +31,7 @@ Implement secure logout functionality that invalidates both access and refresh t
 ### Request Format
 
 **Headers**:
+
 ```
 Authorization: Bearer <access_token>
 ```
@@ -40,6 +41,7 @@ Authorization: Bearer <access_token>
 ### Response Format
 
 **Success Response (200)**:
+
 ```json
 {
   "data": {
@@ -51,6 +53,7 @@ Authorization: Bearer <access_token>
 **Error Responses**:
 
 401 Unauthorized - Missing token:
+
 ```json
 {
   "error": {
@@ -63,6 +66,7 @@ Authorization: Bearer <access_token>
 ```
 
 401 Unauthorized - Invalid token format:
+
 ```json
 {
   "error": {
@@ -75,6 +79,7 @@ Authorization: Bearer <access_token>
 ```
 
 500 Internal Server Error:
+
 ```json
 {
   "error": {
@@ -91,12 +96,14 @@ Authorization: Bearer <access_token>
 ### Token Invalidation Strategy
 
 #### 1. Access Token Blacklisting (Redis)
+
 - Extract access token from Authorization header
 - Add token to Redis blacklist with key: `token:blacklist:<token>`
 - Set TTL to 3600 seconds (1 hour) to match access token expiry
 - Blacklisted tokens are checked by `authenticateJWT` middleware
 
 #### 2. Refresh Token Revocation (PostgreSQL)
+
 - Decode access token to extract userId
 - Find all active refresh tokens for the user
 - Set `revoked_at` timestamp to current time
@@ -113,6 +120,7 @@ Authorization: Bearer <access_token>
 ### Database Operations
 
 **Query to revoke refresh tokens**:
+
 ```sql
 UPDATE refresh_tokens
 SET revoked_at = CURRENT_TIMESTAMP
@@ -124,6 +132,7 @@ WHERE user_id = $1
 ### Redis Operations
 
 **Blacklist access token**:
+
 ```typescript
 const blacklistKey = `token:blacklist:${token}`;
 await redisClient.setEx(blacklistKey, 3600, '1');
@@ -153,6 +162,7 @@ await redisClient.setEx(blacklistKey, 3600, '1');
 ### Test Data
 
 **Valid Test User**:
+
 ```json
 {
   "userId": "user_123",

@@ -16,7 +16,9 @@ import {
   decodeToken,
   getTokenExpiry,
   isTokenExpired,
-  type TokenOptions,
+  clearJwtKeyCache,
+  DEFAULT_DEVICE_ID,
+  type AccessTokenOptions,
 } from '../src/jwt-utils';
 
 // Test RSA key pair (for demo only)
@@ -62,6 +64,8 @@ async function demonstrateJWTUtils() {
   // Setup demo keys
   process.env.JWT_PRIVATE_KEY = DEMO_PRIVATE_KEY;
   process.env.JWT_PUBLIC_KEY = DEMO_PUBLIC_KEY;
+  process.env.JWT_KEY_ID = 'demo-key';
+  clearJwtKeyCache();
 
   console.log('🔐 BerthCare JWT Token Generation Demo\n');
   console.log('='.repeat(70));
@@ -77,11 +81,12 @@ async function demonstrateJWTUtils() {
   console.log('Example 1: User Login - Generate Access & Refresh Tokens');
   console.log('='.repeat(70));
 
-  const caregiverUser: TokenOptions = {
+  const caregiverUser: AccessTokenOptions = {
     userId: 'user_abc123',
     role: 'caregiver',
     zoneId: 'zone_toronto_west',
     email: 'sarah.johnson@berthcare.ca',
+    deviceId: 'device-ios-001',
   };
 
   console.log('\n1. User logs in:');
@@ -163,6 +168,7 @@ async function demonstrateJWTUtils() {
       userId: refreshPayload.userId,
       role: refreshPayload.role,
       zoneId: refreshPayload.zoneId,
+      deviceId: refreshPayload.deviceId ?? DEFAULT_DEVICE_ID,
     });
 
     console.log('4. New access token generated');
@@ -178,20 +184,28 @@ async function demonstrateJWTUtils() {
   console.log('Example 6: Different User Roles');
   console.log('='.repeat(70));
 
-  const users: TokenOptions[] = [
+  const users: AccessTokenOptions[] = [
     {
       userId: 'user_001',
       role: 'caregiver',
       zoneId: 'zone_toronto',
       email: 'caregiver@example.com',
+      deviceId: 'device_caregiver',
     },
     {
       userId: 'user_002',
       role: 'coordinator',
       zoneId: 'zone_toronto',
       email: 'coordinator@example.com',
+      deviceId: 'device_coordinator',
     },
-    { userId: 'user_003', role: 'admin', zoneId: 'zone_all', email: 'admin@example.com' },
+    {
+      userId: 'user_003',
+      role: 'admin',
+      zoneId: 'zone_all',
+      email: 'admin@example.com',
+      deviceId: 'device_admin',
+    },
   ];
 
   console.log('\nGenerating tokens for different roles:');

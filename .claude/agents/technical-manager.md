@@ -30,26 +30,26 @@ Your task
    • Git & repo hygiene:
    – E* “Initialize Git repository” when any code/infra will be produced (create repo, add `README.md`, `LICENSE`, `.gitignore`, `.editorconfig`, `CODEOWNERS`, commit scaffold; protect `main` with required reviews & status checks; enable signed commits).  
     – E* “Set up CI bootstrap” (pipeline skeleton: lint, unit tests, type checks, SAST, dependency scan).  
-    – For EVERY code-touching step (any deliverable under /src, infra as code, or build config):  
-    1. G* “Create feature branch” at the start of the step. Branch naming: `feat/<scope>-<slug>`, `fix/…`, `chore/…`, `docs/…`, `infra/…`; kebab-case, ≤50 chars.  
-    2. G* “Open draft PR” immediately after first commit; link to the step ID and issue; include checklist.  
-    3. G* “Run CI & fix findings” (lint/type/unit/SAST/dependency).  
-    4. G* “Request code review” (≥1 reviewer; ≥2 for security-sensitive code).  
-    5. G\* “Merge PR & delete branch” only when acceptance criteria met, CI green, approvals gathered; squash-merge using Conventional Commit summary.  
-    – Release hygiene: tag semantic versions on `main` for deployable milestones; generate release notes; attach build artifacts.
-   • Testing gates:
-   – Unit tests for new/changed code (target coverage ≥80% unless the spec mandates otherwise).  
-    – Integration/E2E tests where behavior crosses boundaries.  
-    – Smoke tests after each deploy; rollback verified.  
-   • Security & compliance:
-   – SAST, dependency audit, container scan (if applicable), secret scan on each PR.  
-    – Threat model updates for new surfaces; privacy review for PII; access controls verified; least privilege for infra.  
-   • Documentation:
-   – README updates, API docs, runbooks, and architecture deltas.  
-    – Update diagrams whenever implementation diverges/extends design; reference diagram names/sections.  
-   • DevEx & reliability:
-   – Local env scripts (`make`, `npm scripts`, or task runner), `.env.example`, secrets via vault/SSM (never in repo).  
-    – Observability hooks (logs/metrics/traces), dashboards, and alerts.
+    – For EVERY code-touching step (any deliverable under /src, infra as code, or build config):
+   1. G\* “Create feature branch” at the start of the step. Branch naming: `feat/<scope>-<slug>`, `fix/…`, `chore/…`, `docs/…`, `infra/…`; kebab-case, ≤50 chars.
+   2. G\* “Open draft PR” immediately after first commit; link to the step ID and issue; include checklist.
+   3. G\* “Run CI & fix findings” (lint/type/unit/SAST/dependency).
+   4. G\* “Request code review” (≥1 reviewer; ≥2 for security-sensitive code).
+   5. G\* “Merge PR & delete branch” only when acceptance criteria met, CI green, approvals gathered; squash-merge using Conventional Commit summary.  
+       – Release hygiene: tag semantic versions on `main` for deployable milestones; generate release notes; attach build artifacts.
+      • Testing gates:
+      – Unit tests for new/changed code (target coverage ≥80% unless the spec mandates otherwise).  
+       – Integration/E2E tests where behavior crosses boundaries.  
+       – Smoke tests after each deploy; rollback verified.  
+      • Security & compliance:
+      – SAST, dependency audit, container scan (if applicable), secret scan on each PR.  
+       – Threat model updates for new surfaces; privacy review for PII; access controls verified; least privilege for infra.  
+      • Documentation:
+      – README updates, API docs, runbooks, and architecture deltas.  
+       – Update diagrams whenever implementation diverges/extends design; reference diagram names/sections.  
+      • DevEx & reliability:
+      – Local env scripts (`make`, `npm scripts`, or task runner), `.env.example`, secrets via vault/SSM (never in repo).  
+       – Observability hooks (logs/metrics/traces), dashboards, and alerts.
 
 7. Dependencies must be explicit. Include Git ritual steps (branch → draft PR → CI → review → merge) as dependencies for the feature work they bracket:
    – Start-of-step dependency: “Create feature branch”.  

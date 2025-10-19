@@ -24,24 +24,23 @@
 
 import express from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateAccessToken } from '../../../libs/shared/src/jwt-utils';
+import { generateAccessToken } from '@berthcare/shared';
+
+import { RedisClient } from '../src/cache/redis-client';
 import { createClientRoutes } from '../src/routes/clients.routes';
 
-// Test configuration
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
-const TEST_REDIS_URL = process.env.TEST_REDIS_URL;
+import { setupTestConnections, teardownTestConnections } from './test-helpers';
 
-if (!TEST_DATABASE_URL || !TEST_REDIS_URL) {
-  throw new Error('TEST_DATABASE_URL and TEST_REDIS_URL must be set');
-}
+const LAST_VISIT_COMPLETED_AT = '2025-01-01T10:05:00.000Z';
+const NEXT_VISIT_SCHEDULED_AT = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
 describe('GET /api/v1/clients', () => {
   let app: express.Application;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
+  let schemaName: string;
 
   // Test data
   let testZoneId1: string;
@@ -54,76 +53,19 @@ describe('GET /api/v1/clients', () => {
 
   // Setup: Create app and database connections
   beforeAll(async () => {
-    // Create PostgreSQL connection
-    pgPool = new Pool({
-      connectionString: TEST_DATABASE_URL,
-      max: 5,
-    });
-
-    // Create Redis connection
-    redisClient = createClient({
-      url: TEST_REDIS_URL,
-    });
-    await redisClient.connect();
+    const connections = await setupTestConnections();
+    pgPool = connections.pgPool;
+    redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app with client routes
     app = express();
-    app = express();
     app.use('/api/v1/clients', createClientRoutes(pgPool, redisClient));
-
-    // Ensure test database has required tables
-    await pgPool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email VARCHAR(255) NOT NULL UNIQUE,
-        password_hash VARCHAR(255) NOT NULL,
-        first_name VARCHAR(100) NOT NULL,
-        last_name VARCHAR(100) NOT NULL,
-        role VARCHAR(20) NOT NULL CHECK (role IN ('caregiver', 'coordinator', 'admin')),
-        zone_id UUID,
-        is_active BOOLEAN NOT NULL DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-
-      CREATE TABLE IF NOT EXISTS clients (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        first_name VARCHAR(100) NOT NULL,
-        last_name VARCHAR(100) NOT NULL,
-        date_of_birth DATE NOT NULL,
-        address TEXT NOT NULL,
-        latitude DECIMAL(10,8) NOT NULL,
-        longitude DECIMAL(11,8) NOT NULL,
-        phone VARCHAR(20),
-        emergency_contact_name VARCHAR(200) NOT NULL,
-        emergency_contact_phone VARCHAR(20) NOT NULL,
-        emergency_contact_relationship VARCHAR(100) NOT NULL,
-        zone_id UUID NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-
-      CREATE TABLE IF NOT EXISTS care_plans (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-        summary TEXT NOT NULL,
-        medications JSONB NOT NULL DEFAULT '[]'::jsonb,
-        allergies JSONB NOT NULL DEFAULT '[]'::jsonb,
-        special_instructions TEXT,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-    `);
   });
 
   // Cleanup: Close connections
   afterAll(async () => {
-    await pgPool.end();
-    await redisClient.quit();
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   // Clean database and Redis before each test
@@ -132,11 +74,13 @@ describe('GET /api/v1/clients', () => {
     try {
       await client.query('BEGIN');
       // Clear database tables in correct order
+      await client.query('DELETE FROM visits');
       await client.query('DELETE FROM care_plans');
       await client.query('DELETE FROM clients');
       await client.query(
         "DELETE FROM users WHERE email LIKE '%@test.com' OR email LIKE '%@example.com'"
       );
+      await client.query('DELETE FROM zones');
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -151,6 +95,12 @@ describe('GET /api/v1/clients', () => {
     // Create test zones
     testZoneId1 = '11111111-1111-1111-1111-111111111111';
     testZoneId2 = '22222222-2222-2222-2222-222222222222';
+
+    await pgPool.query(
+      `INSERT INTO zones (id, name, region)
+       VALUES ($1, $2, $3), ($4, $5, $6)`,
+      [testZoneId1, 'Zone 1', 'Region 1', testZoneId2, 'Zone 2', 'Region 2']
+    );
 
     // Create test users with unique emails
     const timestamp = Date.now();
@@ -244,6 +194,37 @@ describe('GET /api/v1/clients', () => {
         'Mobility assistance required',
       ]
     );
+
+    // Create visits for last/next visit calculations
+    await pgPool.query(
+      `INSERT INTO visits (
+         client_id,
+         staff_id,
+         scheduled_start_time,
+         check_in_time,
+         check_out_time,
+         status
+       )
+       VALUES ($1, $2, $3, $4, $5, 'completed')`,
+      [
+        testClient1Id,
+        testUserId1,
+        '2025-01-01T09:00:00.000Z',
+        '2025-01-01T09:05:00.000Z',
+        LAST_VISIT_COMPLETED_AT,
+      ]
+    );
+
+    await pgPool.query(
+      `INSERT INTO visits (
+         client_id,
+         staff_id,
+         scheduled_start_time,
+         status
+       )
+       VALUES ($1, $2, $3, 'scheduled')`,
+      [testClient1Id, testUserId1, NEXT_VISIT_SCHEDULED_AT]
+    );
   });
 
   describe('Authentication', () => {
@@ -298,7 +279,7 @@ describe('GET /api/v1/clients', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(403);
 
-      expect(response.body.error.code).toBe('FORBIDDEN');
+      expect(response.body.error.code).toBe('AUTH_ZONE_ACCESS_DENIED');
     });
 
     it('should allow admin to access all zones', async () => {
@@ -526,6 +507,27 @@ describe('GET /api/v1/clients', () => {
         (c: { firstName: string }) => c.firstName === 'Alice'
       );
       expect(aliceClient.carePlanSummary).toBe('Requires assistance with daily activities');
+    });
+
+    it('should include last visit and next scheduled visit when available', async () => {
+      const token = generateAccessToken({
+        userId: testUserId1,
+        role: 'caregiver',
+        zoneId: testZoneId1,
+        email: 'caregiver1@test.com',
+      });
+
+      const response = await request(app)
+        .get('/api/v1/clients')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const aliceClient = response.body.data.clients.find(
+        (c: { firstName: string }) => c.firstName === 'Alice'
+      );
+
+      expect(aliceClient.lastVisitDate).toBe(LAST_VISIT_COMPLETED_AT);
+      expect(aliceClient.nextScheduledVisit).toBe(NEXT_VISIT_SCHEDULED_AT);
     });
 
     it('should sort by last name then first name', async () => {

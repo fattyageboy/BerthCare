@@ -13,13 +13,11 @@
       }
     },
     "build": {
-      "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/apps/backend"],
+      "dependsOn": ["^build"],
       "options": {
-        "outputPath": "apps/backend/dist",
-        "main": "apps/backend/src/main.ts",
-        "tsConfig": "apps/backend/tsconfig.json",
-        "assets": []
+        "command": "tsc -p apps/backend/tsconfig.json"
       }
     },
     "lint": {
@@ -33,6 +31,13 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "jest",
+        "cwd": "apps/backend"
+      }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
         "cwd": "apps/backend"
       }
     }

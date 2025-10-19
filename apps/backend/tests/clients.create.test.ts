@@ -19,10 +19,11 @@
 
 import { Express } from 'express';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
 import request from 'supertest';
 
-import { generateAccessToken } from '../../../libs/shared/src';
+import { generateAccessToken } from '@berthcare/shared';
+
+import { RedisClient } from '../src/cache/redis-client';
 
 import {
   cleanupTestData,
@@ -53,6 +54,10 @@ jest.mock('../src/services/geocoding.service', () => {
             throw new GeocodingError('Address not found', 'ADDRESS_NOT_FOUND', { address });
           }
 
+          if (address.includes('Config Missing')) {
+            throw new GeocodingError('Google Maps API key not configured', 'CONFIGURATION_ERROR');
+          }
+
           // Return successful geocoding for valid addresses
           return Promise.resolve({
             latitude: 43.6532,
@@ -72,10 +77,34 @@ jest.mock('../src/services/geocoding.service', () => {
 describe('POST /api/v1/clients - Create Client', () => {
   let app: Express;
   let pgPool: Pool;
-  let redisClient: ReturnType<typeof createClient>;
+  let redisClient: RedisClient;
+  let schemaName: string;
   let adminToken: string;
   let caregiverToken: string;
   let testClientIds: string[] = [];
+  const defaultZones = [
+    {
+      id: '00000000-0000-0000-0000-000000000001',
+      name: 'North Zone',
+      region: 'Quebec',
+      latitude: 45.5017,
+      longitude: -73.5673,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000002',
+      name: 'South Zone',
+      region: 'Ontario',
+      latitude: 43.6532,
+      longitude: -79.3832,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000003',
+      name: 'West Zone',
+      region: 'British Columbia',
+      latitude: 49.2827,
+      longitude: -123.1207,
+    },
+  ];
 
   // Test user IDs
   const adminUserId = '00000000-0000-0000-0000-000000000001';
@@ -87,6 +116,7 @@ describe('POST /api/v1/clients - Create Client', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create app
     app = createTestApp(pgPool, redisClient);
@@ -105,6 +135,23 @@ describe('POST /api/v1/clients - Create Client', () => {
       role: 'caregiver',
       zoneId: testZoneId,
     });
+
+    // Ensure required zones exist for zone assignment tests
+    for (const zone of defaultZones) {
+      await pgPool.query(
+        `INSERT INTO zones (id, name, region, center_latitude, center_longitude, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+         ON CONFLICT (id)
+         DO UPDATE SET
+           name = EXCLUDED.name,
+           region = EXCLUDED.region,
+           center_latitude = EXCLUDED.center_latitude,
+           center_longitude = EXCLUDED.center_longitude,
+           deleted_at = NULL,
+           updated_at = NOW()`,
+        [zone.id, zone.name, zone.region, zone.latitude, zone.longitude]
+      );
+    }
   });
 
   afterEach(async () => {
@@ -115,7 +162,7 @@ describe('POST /api/v1/clients - Create Client', () => {
 
   afterAll(async () => {
     // Teardown connections
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   describe('Authorization', () => {
@@ -149,7 +196,7 @@ describe('POST /api/v1/clients - Create Client', () => {
         });
 
       expect(response.status).toBe(403);
-      expect(response.body.error.code).toBe('FORBIDDEN');
+      expect(response.body.error.code).toBe('AUTH_INSUFFICIENT_ROLE');
     });
   });
 
@@ -368,6 +415,24 @@ describe('POST /api/v1/clients - Create Client', () => {
       // Should return 400 with geocoding error
       expect(response.status).toBe(400);
       expect(response.body.error.code).toBe('GEOCODING_ERROR');
+    });
+
+    it('should return 500 when geocoding configuration is missing', async () => {
+      const response = await request(app)
+        .post('/api/v1/clients')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          firstName: 'Config',
+          lastName: 'Error',
+          dateOfBirth: '1950-01-01',
+          address: 'Config Missing API Key Address',
+          emergencyContactName: 'Support Contact',
+          emergencyContactPhone: '416-555-0100',
+          emergencyContactRelationship: 'Spouse',
+        });
+
+      expect(response.status).toBe(500);
+      expect(response.body.error.code).toBe('GEOCODING_CONFIGURATION_ERROR');
     });
   });
 

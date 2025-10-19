@@ -19,6 +19,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 **Added Function:** `validateUpdateClient`
 
 **Features:**
+
 - Validates at least one field is provided (no empty updates)
 - All field validations are optional (partial updates)
 - Same validation rules as create endpoint
@@ -26,6 +27,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 - Clear error messages for each validation failure
 
 **Validations:**
+
 - firstName: 1-100 characters (optional)
 - lastName: 1-100 characters (optional)
 - dateOfBirth: ISO 8601 format, not future, not >120 years ago (optional)
@@ -43,11 +45,13 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 **Endpoint:** `PATCH /v1/clients/:clientId`
 
 **Middleware Chain:**
+
 1. `authenticateJWT(redisClient)` - Verify JWT token
 2. `requireRole(['coordinator', 'admin'])` - Require coordinator or admin
 3. `validateUpdateClient` - Validate request body
 
 **Business Logic Flow:**
+
 1. Validate client ID format (UUID)
 2. Fetch existing client from database
 3. Check authorization:
@@ -63,6 +67,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 11. Return updated client
 
 **Key Features:**
+
 - **Partial Updates**: Only updates fields provided in request
 - **Address Re-geocoding**: Automatically geocodes new addresses
 - **Zone Re-assignment**: Auto-assigns zone based on new location
@@ -74,16 +79,19 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ### 3. Authorization Logic
 
 **Coordinator Access:**
+
 - Can update clients in their zone only
 - Cannot change client zone
 - Cannot update clients in other zones
 
 **Admin Access:**
+
 - Can update any client in any zone
 - Can manually change client zone
 - No restrictions
 
 **Caregiver Access:**
+
 - Cannot update clients (read-only)
 - Returns 403 Forbidden
 
@@ -92,12 +100,14 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 **Trigger:** Address field changes
 
 **Process:**
+
 1. Call Google Maps Geocoding API
 2. Update address with formatted address
 3. Update latitude/longitude with new coordinates
 4. Re-assign zone based on new location (unless admin specified zone)
 
 **Error Handling:**
+
 - Invalid address: 400 Bad Request
 - Geocoding API failure: 400 Bad Request
 - Clear error message with address and reason
@@ -105,12 +115,14 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ### 5. Cache Invalidation
 
 **Caches Cleared:**
+
 1. Client detail cache: `client:detail:${clientId}`
 2. Client list cache (old zone): `clients:list:zone=${oldZoneId}:*`
 3. Client list cache (new zone): `clients:list:zone=${newZoneId}:*` (if zone changed)
 4. Client list cache (all zones): `clients:list:zone=all:*`
 
 **Implementation:**
+
 - Uses Redis KEYS pattern matching
 - Clears all matching keys in batch
 - Graceful fallback if cache invalidation fails
@@ -119,6 +131,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ### 6. Audit Trail Logging
 
 **Log Format:**
+
 ```json
 {
   "level": "info",
@@ -128,8 +141,8 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
   "changes": {
     "firstName": { "old": "John", "new": "Jonathan" },
     "address": { "old": "123 Old St", "new": "456 New St" },
-    "latitude": { "old": 43.6532, "new": 43.7000 },
-    "longitude": { "old": -79.3832, "new": -79.4000 }
+    "latitude": { "old": 43.6532, "new": 43.7 },
+    "longitude": { "old": -79.3832, "new": -79.4 }
   },
   "timestamp": "2025-10-10T12:00:00Z",
   "requestId": "uuid"
@@ -137,6 +150,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ```
 
 **Features:**
+
 - Tracks all field changes (old value → new value)
 - Records user who made the change
 - Includes timestamp and request ID
@@ -144,6 +158,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 - Uses structured logging (logInfo)
 
 **Future Enhancement:**
+
 - Store in audit_logs table for persistence
 - Query audit history via API
 - Generate audit reports
@@ -153,6 +168,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 **File:** `apps/backend/tests/clients.update.test.ts`
 
 **Test Coverage:**
+
 - ✅ Authorization (401, 403)
 - ✅ Coordinator can update client in same zone
 - ✅ Coordinator cannot update client in different zone
@@ -173,6 +189,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 - ✅ Response format validation
 
 **Test Scenarios:**
+
 - Authorization checks for all roles
 - Validation of all fields
 - Partial update scenarios
@@ -185,12 +202,14 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ## Design Philosophy Applied
 
 ### Simplicity is the Ultimate Sophistication
+
 - Partial updates (only update what changed)
 - Automatic re-geocoding on address change
 - Automatic zone re-assignment
 - Clear, predictable API behavior
 
 ### Obsess Over Details
+
 - Comprehensive validation
 - Clear error messages
 - Audit trail for all changes
@@ -198,12 +217,14 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 - Zone-based access control
 
 ### Start with User Experience
+
 - Coordinators can update clients in their zone
 - Admins have full control
 - Automatic geocoding and zone assignment
 - No manual cache management required
 
 ### Uncompromising Security
+
 - Zone-based access control
 - Role-based permissions
 - Input validation
@@ -215,12 +236,14 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ### Cache Invalidation Strategy
 
 **Selective Invalidation:**
+
 - Only clears affected caches
 - Uses pattern matching for efficiency
 - Clears detail + list caches
 - Clears old and new zone caches (if zone changed)
 
 **Cache Warming:**
+
 - Don't pre-populate cache after update
 - Let next GET request populate cache
 - Reduces update latency
@@ -228,12 +251,14 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ### Database Optimization
 
 **Dynamic Query Building:**
+
 - Only updates fields that changed
 - Single UPDATE query (no multiple queries)
 - Uses parameterized queries for security
 - Efficient query execution
 
 **Duplicate Detection:**
+
 - Only checks if name/DOB changed
 - Uses indexes for fast lookup
 - Case-insensitive comparison
@@ -241,6 +266,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ### Geocoding Optimization
 
 **Conditional Geocoding:**
+
 - Only geocodes if address changed
 - Uses cached geocoding results (24 hour TTL)
 - Skips geocoding if address unchanged
@@ -249,6 +275,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ## Security Considerations
 
 ### Input Validation
+
 - All fields validated
 - String length limits enforced
 - Date format and range validated
@@ -256,12 +283,14 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 - Prevents SQL injection via parameterized queries
 
 ### Authorization
+
 - Zone-based access control for coordinators
 - Admin-only zone changes
 - Verify user has permission before update
 - Log all update attempts
 
 ### Data Privacy
+
 - Log minimal PII in audit trail
 - Encrypt sensitive data at rest
 - Use HTTPS for all API calls
@@ -270,6 +299,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ## Error Handling
 
 ### Validation Errors (400)
+
 - Empty update (no fields provided)
 - Invalid field types
 - Invalid date format
@@ -277,25 +307,30 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 - String length violations
 
 ### Authorization Errors (403)
+
 - Caregiver attempting update
 - Coordinator updating client in different zone
 - Coordinator attempting zone change
 
 ### Not Found Errors (404)
+
 - Client ID doesn't exist
 - Client was soft deleted
 
 ### Conflict Errors (409)
+
 - Duplicate client after name/DOB change
 - Returns existing client ID
 
 ### Geocoding Errors (400)
+
 - Invalid address format
 - Address not found
 - API timeout
 - API quota exceeded
 
 ### Server Errors (500)
+
 - Database errors
 - Unexpected errors
 - Transaction failures
@@ -305,6 +340,7 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 ### Update Single Field
 
 **Request:**
+
 ```bash
 curl -X PATCH http://localhost:3000/v1/clients/uuid \
   -H "Authorization: Bearer <token>" \
@@ -315,6 +351,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ```
 
 **Response:**
+
 ```json
 {
   "data": {
@@ -340,6 +377,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ### Update Multiple Fields
 
 **Request:**
+
 ```bash
 curl -X PATCH http://localhost:3000/v1/clients/uuid \
   -H "Authorization: Bearer <token>" \
@@ -354,6 +392,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ### Update Address (Triggers Re-geocoding)
 
 **Request:**
+
 ```bash
 curl -X PATCH http://localhost:3000/v1/clients/uuid \
   -H "Authorization: Bearer <token>" \
@@ -364,6 +403,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ```
 
 **Response:**
+
 - Address is formatted by Google Maps
 - Latitude/longitude updated automatically
 - Zone re-assigned based on new location
@@ -371,6 +411,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ### Clear Optional Field
 
 **Request:**
+
 ```bash
 curl -X PATCH http://localhost:3000/v1/clients/uuid \
   -H "Authorization: Bearer <token>" \
@@ -383,6 +424,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ### Change Zone (Admin Only)
 
 **Request:**
+
 ```bash
 curl -X PATCH http://localhost:3000/v1/clients/uuid \
   -H "Authorization: Bearer <admin_token>" \
@@ -451,12 +493,14 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ## Testing Strategy
 
 ### Unit Tests
+
 - Validation middleware
 - Cache invalidation logic
 - Change tracking logic
 - Authorization checks
 
 ### Integration Tests
+
 - Full endpoint flow
 - Database updates
 - Cache invalidation
@@ -464,6 +508,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 - Edge cases
 
 ### Manual Testing
+
 - Update various fields
 - Test address re-geocoding
 - Verify cache invalidation
@@ -473,6 +518,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ## Monitoring & Logging
 
 ### Metrics to Track
+
 - Update success rate
 - Update response time
 - Geocoding API calls (address changes)
@@ -481,6 +527,7 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 - Duplicate detection rate
 
 ### Logging Events
+
 - Client updated (INFO)
 - Field changes (INFO)
 - Geocoding triggered (INFO)
@@ -493,26 +540,32 @@ curl -X PATCH http://localhost:3000/v1/clients/uuid \
 ### Common Issues
 
 **Error: FORBIDDEN - "You can only update clients in your zone"**
+
 - **Cause:** Coordinator trying to update client in different zone
 - **Solution:** Use admin token or update client in your zone
 
 **Error: FORBIDDEN - "Only admins can change client zone"**
+
 - **Cause:** Coordinator trying to change zone
 - **Solution:** Use admin token to change zone
 
 **Error: VALIDATION_ERROR - "At least one field must be provided"**
+
 - **Cause:** Empty request body
 - **Solution:** Provide at least one field to update
 
 **Error: DUPLICATE_CLIENT**
+
 - **Cause:** Another client with same name and DOB exists
 - **Solution:** Use different name or DOB, or update existing client
 
 **Error: GEOCODING_ERROR**
+
 - **Cause:** Invalid address or geocoding API failure
 - **Solution:** Provide valid address or check API configuration
 
 **Error: CLIENT_NOT_FOUND**
+
 - **Cause:** Client ID doesn't exist or was deleted
 - **Solution:** Verify client ID is correct
 
@@ -562,6 +615,7 @@ The PATCH /v1/clients/:clientId endpoint is now fully implemented and ready for 
 ---
 
 **Implementation Files:**
+
 - ✅ `apps/backend/src/middleware/validation.ts` - Extended validation
 - ✅ `apps/backend/src/routes/clients.routes.ts` - PATCH endpoint
 - ✅ `apps/backend/tests/clients.update.test.ts` - Integration tests
@@ -569,4 +623,3 @@ The PATCH /v1/clients/:clientId endpoint is now fully implemented and ready for 
 - ✅ `docs/C6-update-client-implementation-summary.md` - This summary
 
 **Next Task:** Testing and validation
-

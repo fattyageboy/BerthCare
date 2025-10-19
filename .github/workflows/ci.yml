@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: Monorepo CI
 
 on:
   pull_request:
@@ -7,211 +7,55 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
-# Cancel in-progress runs when a new workflow with the same group name is triggered
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Job 1: Code Quality Checks
-  code-quality:
-    name: Code Quality (Lint & Format)
+  detect-changes:
+    name: Detect Affected Workspaces
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      mobile: ${{ steps.filter.outputs.mobile }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - id: filter
+        name: Filter paths
+        uses: dorny/paths-filter@v3
         with:
-          node-version: '20'
-          cache: 'npm'
+          filters: |
+            backend:
+              - 'apps/backend/**'
+              - 'libs/shared/**'
+              - '.github/workflows/backend-ci.yml'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.base.json'
+              - '.eslintrc.json'
+            mobile:
+              - 'apps/mobile/**'
+              - 'libs/shared/**'
+              - '.github/workflows/mobile-ci.yml'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.base.json'
+              - '.eslintrc.json'
 
-      - name: Install dependencies
-        run: npm ci
+  backend:
+    name: Backend CI
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+    uses: ./.github/workflows/backend-ci.yml
+    secrets: inherit
 
-      - name: Run ESLint
-        run: npm run lint
-        continue-on-error: false
-
-      - name: Run Prettier check
-        run: npm run format:check
-        continue-on-error: false
-
-  # Job 2: Type Checking
-  type-check:
-    name: TypeScript Type Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run TypeScript type check
-        run: npm run type-check
-        continue-on-error: false
-
-  # Job 3: Unit Tests
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests with coverage
-        run: npm run test:ci -- --maxWorkers=1
-        continue-on-error: false
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/coverage-final.json
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-
-  # Job 4: Security Scanning (SAST)
-  security-sast:
-    name: Security Scan (SAST)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Snyk security scan
-        uses: snyk/actions/node@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high --all-projects
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: '/language:javascript-typescript'
-
-  # Job 5: Dependency Audit
-  dependency-audit:
-    name: Dependency Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Run npm audit
-        run: npm audit --audit-level=high
-        continue-on-error: false
-
-      - name: Check for outdated dependencies
-        run: npm outdated || true
-
-  # Job 6: Build Verification
-  build:
-    name: Build Verification
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build all packages
-        run: npm run build
-        continue-on-error: false
-
-      - name: Check build artifacts
-        run: |
-          if [ ! -d "dist" ] && [ ! -d "apps/backend/dist" ]; then
-            echo "Warning: No build artifacts found"
-          fi
-
-  # Job 7: CI Summary
-  ci-summary:
-    name: CI Summary
-    runs-on: ubuntu-latest
-    needs: [code-quality, type-check, test, security-sast, dependency-audit, build]
-    if: always()
-
-    steps:
-      - name: Check all jobs status
-        run: |
-          echo "Code Quality: ${{ needs.code-quality.result }}"
-          echo "Type Check: ${{ needs.type-check.result }}"
-          echo "Tests: ${{ needs.test.result }}"
-          echo "Security SAST: ${{ needs.security-sast.result }}"
-          echo "Dependency Audit: ${{ needs.dependency-audit.result }}"
-          echo "Build: ${{ needs.build.result }}"
-
-      - name: Fail if any required job failed
-        if: |
-          needs.code-quality.result == 'failure' ||
-          needs.type-check.result == 'failure' ||
-          needs.test.result == 'failure' ||
-          needs.dependency-audit.result == 'failure' ||
-          needs.build.result == 'failure'
-        run: exit 1
+  mobile:
+    name: Mobile CI
+    needs: detect-changes
+    if: needs.detect-changes.outputs.mobile == 'true' || github.event_name != 'pull_request'
+    uses: ./.github/workflows/mobile-ci.yml
+    secrets: inherit

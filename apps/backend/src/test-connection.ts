@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
+
+import { createRedisClient } from './cache/redis-client';
 
 // Load environment variables
 dotenv.config({ path: '../../.env' });
@@ -50,9 +51,7 @@ async function testConnections() {
 
   // Test Redis
   console.log('Testing Redis connection...');
-  const redisClient = createClient({
-    url: process.env.REDIS_URL,
-  });
+  const redisClient = createRedisClient();
 
   try {
     await redisClient.connect();
@@ -65,7 +64,7 @@ async function testConnections() {
     console.log(`   Redis version: ${version}`);
 
     // Test set/get
-    await redisClient.set('test:connection', 'success', { EX: 10 });
+    await redisClient.set('test:connection', 'success', 'EX', 10);
     const value = await redisClient.get('test:connection');
     console.log(`   Test key set/get: ${value}`);
   } catch (error) {
