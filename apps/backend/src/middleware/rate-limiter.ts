@@ -21,6 +21,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 import { RedisClient } from '../cache/redis-client';
+import { logError } from '../config/logger';
 
 interface RateLimitConfig {
   windowMs: number; // Time window in milliseconds
@@ -85,7 +86,11 @@ export function createRateLimiter(redisClient: RedisClient, config: RateLimitCon
     } catch (error) {
       // If Redis fails, log error but allow request through
       // (graceful degradation - don't block users if rate limiting fails)
-      console.error('Rate limiter error:', error);
+      logError(
+        'Rate limiter error',
+        error instanceof Error ? error : new Error(String(error)),
+        { keyPrefix: config.keyPrefix },
+      );
       next();
     }
   };

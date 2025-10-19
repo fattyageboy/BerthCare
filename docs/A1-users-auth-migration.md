@@ -25,7 +25,7 @@ Created database schema for user authentication system including users and refre
 
 Stores user accounts for caregivers, coordinators, administrators, and family members.
 
-**Columns:**
+##### Columns
 
 - `id` (UUID, Primary Key) - Unique user identifier
 - `email` (VARCHAR, UNIQUE) - User email for login
@@ -41,19 +41,18 @@ Stores user accounts for caregivers, coordinators, administrators, and family me
 - `updated_at` (TIMESTAMP) - Last update timestamp (auto-updated)
 - `deleted_at` (TIMESTAMP) - Soft delete timestamp
 
-**Indexes:**
+##### Indexes
 
 - `idx_users_email` - Fast email lookup for login
 - `idx_users_zone_id` - Zone-based data isolation queries
 - `idx_users_role` - Role-based authorization checks
-- `idx_users_active` - Quickly list active accounts
 - `idx_users_zone_role` - Composite index for zone + role queries
 
 #### Refresh Tokens Table
 
 Manages JWT refresh tokens for multi-device session support.
 
-**Columns:**
+##### Columns
 
 - `id` (UUID, Primary Key) - Unique token identifier
 - `user_id` (UUID, Foreign Key) - References users table
@@ -64,7 +63,7 @@ Manages JWT refresh tokens for multi-device session support.
 - `created_at` (TIMESTAMP) - Token creation timestamp
 - `updated_at` (TIMESTAMP) - Last update timestamp (auto-updated)
 
-**Indexes:**
+##### Indexes
 
 - `idx_refresh_tokens_user_id` - Fast user token lookup
 - `idx_refresh_tokens_token_hash` - Token validation queries
@@ -73,20 +72,20 @@ Manages JWT refresh tokens for multi-device session support.
 
 ### Features
 
-**Security:**
+#### Security
 
 - Password hashing (bcrypt) - never store plaintext passwords
 - Token hashing - never store raw refresh tokens
 - Soft delete support - preserve audit trail
 - Role-based access control - caregiver, coordinator, admin, family
 
-**Performance:**
+#### Performance
 
 - Optimized indexes for common query patterns
 - Composite indexes for complex queries
 - Partial indexes with WHERE clauses for efficiency
 
-**Reliability:**
+#### Reliability
 
 - Foreign key constraints with CASCADE delete for hard deletes (soft-deleted users have their refresh tokens revoked via `revoked_at` at the application layer; hard deletes cascade automatically)
 - Automatic timestamp management via triggers
@@ -95,7 +94,7 @@ Manages JWT refresh tokens for multi-device session support.
 
 > **Soft delete token policy:** When `deleted_at` is set on `users`, we immediately revoke relevant refresh tokens at the application layer (e.g., logout logic or dedicated cleanup job). This preserves the audit trail while ensuring no lingering sessions. Hard deletes use `ON DELETE CASCADE` to remove tokens automatically. Operationally, ensure the deployment includes the revocation routine and, if needed, run a one-time cleanup to revoke any tokens associated with already soft-deleted users.
 
-**Maintainability:**
+#### Maintainability
 
 - Clear table and column comments
 - Descriptive index names
@@ -118,7 +117,7 @@ npm run db:verify
 
 ```bash
 # Rollback if needed
-npm run migrate:down 001
+npm run migrate:down -- #001
 
 # Verify rollback
 npm run db:verify
@@ -143,14 +142,13 @@ All schema checks passed:
 ✅ Index 'idx_users_email' exists
 ✅ Index 'idx_users_zone_id' exists
 ✅ Index 'idx_users_role' exists
-✅ Index 'idx_users_active' exists
 ✅ Index 'idx_users_zone_role' exists
 ✅ Index 'idx_refresh_tokens_user_id' exists
 ✅ Index 'idx_refresh_tokens_token_hash' exists
 ✅ Index 'idx_refresh_tokens_device_id' exists
 ✅ Index 'idx_refresh_tokens_expires_at' exists
 
-📈 Summary: 13/13 checks passed
+📈 Summary: 12/12 checks passed
 ```
 
 ## Architecture Alignment
@@ -163,19 +161,19 @@ This migration implements the authentication system as specified in:
 
 ### Design Philosophy Applied
 
-**Simplicity is the Ultimate Sophistication:**
+#### Simplicity is the Ultimate Sophistication
 
 - Plain SQL migrations (no complex ORM)
 - Clear, readable schema definitions
 - Straightforward migration runner
 
-**Obsess Over Details:**
+#### Obsess Over Details
 
 - Comprehensive indexes for performance
 - Automatic timestamp management
 - Detailed comments and documentation
 
-**Uncompromising Security:**
+#### Uncompromising Security
 
 - Password hashing (never plaintext)
 - Token hashing (never raw tokens)

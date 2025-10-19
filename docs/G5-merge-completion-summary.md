@@ -95,11 +95,12 @@ Successfully merged the complete authentication system and backend scaffold into
 
 ## Known Issues & Future Work
 
-### Test Isolation (Non-blocking)
+### Test Isolation
 
-- Some tests fail when run in parallel due to shared Redis/PostgreSQL state
-- **Workaround**: CI configured to run with `--maxWorkers=1`
-- **Future Fix**: Use separate Redis databases per test suite or mock Redis
+- Jest workers now isolate their Redis usage by mapping `JEST_WORKER_ID` to logical databases 0–15 (configurable via `TEST_REDIS_DB_LIMIT`), flushing before the first suite runs and again during teardown.
+- PostgreSQL schemas are provisioned per worker (unique suffix per suite) and dropped automatically after each suite and once more at global teardown to prevent leakage when running with multiple workers.
+- CI and local scripts must ensure `JEST_WORKER_ID` is exported (Jest sets this automatically per worker; explicit exports are required only when overriding worker counts manually).
+- Cleanup expectations: Redis logical DBs remain empty after suites complete and any schema with prefix `test_schema_w{worker}` is dropped during teardown.
 
 ### Mobile App Tests
 

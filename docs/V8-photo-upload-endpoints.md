@@ -35,7 +35,7 @@ Implemented the photo upload flow using S3 pre-signed URLs for secure, direct-to
 ```typescript
 {
   fileName: string; // Required - Original file name
-  mimeType: string; // Required - MIME type (image/jpeg, image/png, image/webp, image/heic)
+  mimeType: string; // Required - MIME type (image/jpeg, image/png, image/webp). HEIC uploads must be converted client-side before upload.
   fileSize: number; // Required - File size in bytes (max 2MB)
 }
 ```
@@ -166,7 +166,7 @@ curl -X POST http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3e
 
 - Generates secure, time-limited S3 upload URLs
 - Validates file size (max 2MB after compression)
-- Validates MIME type (JPEG, PNG, WebP, HEIC)
+- Validates MIME type (JPEG, PNG, WebP)
 - Sanitizes file names (removes special characters)
 - Includes metadata in S3 object
 
@@ -255,12 +255,12 @@ if (fileSize > maxSize) {
 - `image/jpeg` - JPEG/JPG images
 - `image/png` - PNG images
 - `image/webp` - WebP images (modern format)
-- `image/heic` - HEIC images (iOS default)
+> ⚠️ HEIC images are not accepted by the API; iOS clients must convert to JPEG or PNG before requesting an upload URL.
 
 **Implementation:**
 
 ```typescript
-const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
 if (!allowedTypes.includes(mimeType)) {
   return res.status(400).json({
     error: 'Bad Request',
@@ -274,7 +274,7 @@ if (!allowedTypes.includes(mimeType)) {
 - **JPEG**: Universal support, good compression
 - **PNG**: Lossless, good for screenshots
 - **WebP**: Modern format, better compression than JPEG
-- **HEIC**: iOS default, excellent compression
+- **HEIC (Not Supported)**: Requires client-side conversion because many browsers lack native support and server-side thumbnails depend on JPEG/WebP
 
 ### 5. File Name Sanitization
 
@@ -383,7 +383,7 @@ await redisClient.del(cacheKeyPattern);
 - ✅ Generate pre-signed URL for valid request
 - ✅ Accept PNG images
 - ✅ Accept WebP images
-- ✅ Accept HEIC images
+- ✅ Reject HEIC images (requires client-side conversion)
 - ✅ Allow coordinator to generate URL
 - ✅ Sanitize file names with special characters
 - ✅ Reject file size exceeding 2MB
@@ -438,7 +438,7 @@ PASS  apps/backend/tests/visits.photos.test.ts
         ✓ should generate pre-signed URL for valid photo upload request (47ms)
         ✓ should accept PNG images (14ms)
         ✓ should accept WebP images (10ms)
-        ✓ should accept HEIC images (10ms)
+        ✓ should reject HEIC images (requires client-side conversion) (10ms)
         ✓ should allow coordinator to generate upload URL for any visit (5ms)
         ✓ should sanitize file names with special characters (6ms)
       Validation Errors
@@ -798,7 +798,7 @@ visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba/photos/1760246409476-wound-photo.jpg
 ```json
 {
   "error": "Bad Request",
-  "message": "Invalid MIME type. Allowed types: image/jpeg, image/png, image/webp, image/heic"
+  "message": "Invalid MIME type. Allowed types: image/jpeg, image/png, image/webp"
 }
 ```
 
@@ -968,7 +968,7 @@ try {
 **Benefits:**
 
 - Consistent compression quality
-- Automatic format conversion (HEIC → JPEG)
+- Optional format conversion for unsupported uploads (e.g., HEIC → JPEG)
 - Automatic thumbnail generation
 - Reduced mobile app complexity
 
@@ -1051,7 +1051,7 @@ try {
 - ✅ Pre-signed URL generation endpoint implemented
 - ✅ Photo metadata recording endpoint implemented
 - ✅ File size validation (max 2MB)
-- ✅ MIME type validation (JPEG, PNG, WebP, HEIC)
+- ✅ MIME type validation (JPEG, PNG, WebP)
 - ✅ File name sanitization
 - ✅ Authorization checks (visit ownership)
 - ✅ Coordinator override support

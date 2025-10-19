@@ -49,7 +49,7 @@ apps/mobile/
 
 **Configuration:**
 
-- React Native 0.82 with Expo SDK 54.0.13
+- React Native 0.81 with Expo SDK 54.0.13
 - WatermelonDB for offline-first architecture
 - Zustand + React Query for state management
 - Nx targets: `dev`, `build`, `lint`, `test`
@@ -103,7 +103,7 @@ libs/shared/
 **TypeScript (`tsconfig.base.json`):**
 
 - Strict mode enabled
-- ES2021 target
+- ES2021 target (<https://www.typescriptlang.org/tsconfig/target>)
 - Path aliases for clean imports
 - Shared across all projects
 

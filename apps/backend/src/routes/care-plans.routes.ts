@@ -22,6 +22,7 @@
 import { Request, Response, Router } from 'express';
 import { Pool } from 'pg';
 
+import { deleteKeysMatchingPattern } from '../cache/cache-utils';
 import { RedisClient } from '../cache/redis-client';
 import { logError, logInfo } from '../config/logger';
 import { authenticateJWT, AuthenticatedRequest, requireRole } from '../middleware/auth';
@@ -229,16 +230,9 @@ export function createCarePlanRoutes(pgPool: Pool, redisClient: RedisClient): Ro
           // Client detail cache
           await redisClient.del(`client:detail:${clientId}`);
 
-          // Client list caches (all zones + specific zone)
-          const zoneListKeys = await redisClient.keys(`clients:list:zone=${clientData.zone_id}:*`);
-          if (zoneListKeys.length > 0) {
-            await redisClient.del(...zoneListKeys);
-          }
-
-          const allZoneKeys = await redisClient.keys('clients:list:zone=all:*');
-          if (allZoneKeys.length > 0) {
-            await redisClient.del(...allZoneKeys);
-          }
+          // Client list caches (all zones + specific zone) removed in batches to avoid blocking calls
+          await deleteKeysMatchingPattern(redisClient, `clients:list:zone=${clientData.zone_id}:*`);
+          await deleteKeysMatchingPattern(redisClient, 'clients:list:zone=all:*');
         } catch (cacheError) {
           logError(
             'Care plan cache invalidation error',

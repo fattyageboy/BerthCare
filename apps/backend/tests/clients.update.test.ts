@@ -38,6 +38,7 @@ import { createTestApp, setupTestConnections, teardownTestConnections } from './
 let app: Express;
 let pgPool: Pool;
 let redisClient: RedisClient;
+let schemaName: string;
 
 describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
   let adminToken: string;
@@ -60,6 +61,7 @@ describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create app with all routes
     app = createTestApp(pgPool, redisClient);
@@ -164,7 +166,7 @@ describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
     }
 
     // Close connections using shared helper
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   describe('Authorization', () => {

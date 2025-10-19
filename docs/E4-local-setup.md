@@ -245,6 +245,7 @@ cp .env.example .env
 # Application
 NODE_ENV=development
 PORT=3000
+# Default visit length (minutes) for scheduling/predictive analytics; adjust for local testing if needed
 DEFAULT_VISIT_DURATION_MINUTES=60
 
 # PostgreSQL

@@ -53,8 +53,37 @@ app.use(cors());
 app.use(compression());
 app.use(express.json());
 
-const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10);
-const rateLimitMaxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10);
+const RATE_LIMIT_WINDOW_MS_DEFAULT = 900000;
+const RATE_LIMIT_MAX_REQUESTS_DEFAULT = 100;
+
+const rateLimitWindowMsEnv = process.env.RATE_LIMIT_WINDOW_MS;
+const parsedRateLimitWindowMs = rateLimitWindowMsEnv
+  ? Number.parseInt(rateLimitWindowMsEnv, 10)
+  : RATE_LIMIT_WINDOW_MS_DEFAULT;
+let rateLimitWindowMs = parsedRateLimitWindowMs;
+
+if (!Number.isInteger(rateLimitWindowMs) || rateLimitWindowMs <= 0) {
+  logWarn('Invalid RATE_LIMIT_WINDOW_MS value; falling back to default', {
+    providedValue: rateLimitWindowMsEnv,
+    defaultValue: RATE_LIMIT_WINDOW_MS_DEFAULT,
+  });
+  rateLimitWindowMs = RATE_LIMIT_WINDOW_MS_DEFAULT;
+}
+
+const rateLimitMaxRequestsEnv = process.env.RATE_LIMIT_MAX_REQUESTS;
+const parsedRateLimitMaxRequests = rateLimitMaxRequestsEnv
+  ? Number.parseInt(rateLimitMaxRequestsEnv, 10)
+  : RATE_LIMIT_MAX_REQUESTS_DEFAULT;
+let rateLimitMaxRequests = parsedRateLimitMaxRequests;
+
+if (!Number.isInteger(rateLimitMaxRequests) || rateLimitMaxRequests <= 0) {
+  logWarn('Invalid RATE_LIMIT_MAX_REQUESTS value; falling back to default', {
+    providedValue: rateLimitMaxRequestsEnv,
+    defaultValue: RATE_LIMIT_MAX_REQUESTS_DEFAULT,
+  });
+  rateLimitMaxRequests = RATE_LIMIT_MAX_REQUESTS_DEFAULT;
+}
+
 app.use(
   createGlobalRateLimiter({
     windowMs: rateLimitWindowMs,
@@ -244,8 +273,7 @@ startServer();
 export { app, pgPool, redisClient };
 
 function registerGlobalErrorHandler(server: express.Application) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  server.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  server.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     logError('Unhandled application error', err, {
       path: req.path,
       method: req.method,
@@ -253,7 +281,7 @@ function registerGlobalErrorHandler(server: express.Application) {
     });
 
     if (res.headersSent) {
-      return;
+      return next(err);
     }
 
     res.status(500).json({

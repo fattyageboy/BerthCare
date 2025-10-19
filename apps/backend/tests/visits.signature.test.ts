@@ -44,6 +44,7 @@ describe('Signature Upload Endpoints', () => {
   let pgPool: Pool;
   let redisClient: RedisClient;
   let app: Express;
+  let schemaName: string;
 
   let caregiverToken: string;
   let caregiverId: string;
@@ -59,6 +60,7 @@ describe('Signature Upload Endpoints', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
     app = createTestApp(pgPool, redisClient);
 
     // Create test zone
@@ -163,7 +165,7 @@ describe('Signature Upload Endpoints', () => {
 
   afterAll(async () => {
     await cleanAllTestData(pgPool, redisClient);
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   describe('POST /v1/visits/:visitId/signature/upload-url', () => {

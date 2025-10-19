@@ -78,6 +78,7 @@ describe('POST /api/v1/clients - Create Client', () => {
   let app: Express;
   let pgPool: Pool;
   let redisClient: RedisClient;
+  let schemaName: string;
   let adminToken: string;
   let caregiverToken: string;
   let testClientIds: string[] = [];
@@ -115,6 +116,7 @@ describe('POST /api/v1/clients - Create Client', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create app
     app = createTestApp(pgPool, redisClient);
@@ -160,7 +162,7 @@ describe('POST /api/v1/clients - Create Client', () => {
 
   afterAll(async () => {
     // Teardown connections
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   describe('Authorization', () => {

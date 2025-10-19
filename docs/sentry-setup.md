@@ -303,7 +303,7 @@ Add more filters as needed in the `beforeSend` hook.
 ### Free Tier Limits
 
 - 5,000 errors/month
-- 10,000 performance units/month
+- 5,000,000 spans/month
 - 1 project
 
 ### Optimization Tips

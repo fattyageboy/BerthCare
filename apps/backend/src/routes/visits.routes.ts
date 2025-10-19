@@ -17,6 +17,8 @@
  * - Auto-save documentation
  */
 
+import Ajv, { ValidateFunction } from 'ajv';
+import { HeadObjectCommand } from '@aws-sdk/client-s3';
 import { Request, Response, Router } from 'express';
 import { Pool } from 'pg';
 
@@ -27,6 +29,7 @@ import {
   generatePhotoUploadUrl,
   generateSignatureUploadUrl,
   S3_BUCKETS,
+  s3Client,
 } from '../storage/s3-client';
 
 const parsedDefaultVisitDuration = Number.parseInt(
@@ -38,7 +41,7 @@ const DEFAULT_VISIT_DURATION_MINUTES = Math.min(
   Math.max(15, Number.isNaN(parsedDefaultVisitDuration) ? 60 : parsedDefaultVisitDuration)
 );
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_VISIT_DURATION_MINUTES = 10000;
+const MAX_VISIT_DURATION_MINUTES = 720;
 
 /**
  * Create visit request body
@@ -73,6 +76,55 @@ type DocumentationPayload = {
   observations?: string | null;
   concerns?: string | null;
 };
+
+const ajv = new Ajv({ allErrors: true, allowUnionTypes: true });
+
+const vitalSignsSchema = {
+  type: 'object',
+  properties: {
+    bloodPressure: {
+      type: 'object',
+      properties: {
+        systolic: { type: 'number' },
+        diastolic: { type: 'number' },
+      },
+      required: ['systolic', 'diastolic'],
+      additionalProperties: true,
+    },
+    heartRate: { type: 'number' },
+    temperature: { type: 'number' },
+    respiratoryRate: { type: 'number' },
+    oxygenSaturation: { type: 'number' },
+    bloodSugar: { type: 'number' },
+  },
+  additionalProperties: true,
+} as const;
+
+const activitiesSchema = {
+  type: 'object',
+  properties: {
+    tasksCompleted: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          completed: { type: 'boolean' },
+          notes: { type: 'string' },
+        },
+        additionalProperties: true,
+      },
+    },
+    mealPreparation: { type: 'boolean' },
+    mobilitySupport: { type: 'boolean' },
+    companionship: { type: 'boolean' },
+    notes: { type: 'string' },
+  },
+  additionalProperties: true,
+} as const;
+
+const validateVitalSigns = ajv.compile(vitalSignsSchema);
+const validateActivities = ajv.compile(activitiesSchema);
 
 /**
  * Invalidate all cached visit list queries
@@ -115,6 +167,59 @@ async function invalidateVisitListCache(redisClient: RedisClient): Promise<void>
   } catch (error) {
     // Log error but don't fail the request - cache invalidation is not critical
     logError('Failed to invalidate visit list cache', error as Error);
+  }
+}
+
+/**
+ * Invalidate cached visit detail responses for a given visit
+ *
+ * Deletes all Redis keys matching the visit:detail:{visitId}:* pattern to ensure
+ * cached visit detail responses stay consistent across authorization scopes.
+ *
+ * @param redisClient - Redis client instance
+ * @param visitId - Visit identifier
+ */
+async function invalidateVisitDetailCache(
+  redisClient: RedisClient,
+  visitId: string
+): Promise<void> {
+  const cacheKeyPattern = `visit:detail:${visitId}:*`;
+  const legacyCacheKey = `visit:detail:${visitId}`;
+
+  try {
+    const scopedKeys: string[] = [];
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await redisClient.scan(
+        cursor,
+        'MATCH',
+        cacheKeyPattern,
+        'COUNT',
+        100
+      );
+      if (keys.length > 0) {
+        scopedKeys.push(...keys);
+      }
+      cursor = nextCursor;
+    } while (cursor !== '0');
+
+    if (scopedKeys.length > 0) {
+      const chunkSize = 100;
+      for (let i = 0; i < scopedKeys.length; i += chunkSize) {
+        const chunk = scopedKeys.slice(i, i + chunkSize);
+        await redisClient.del(...chunk);
+      }
+      logInfo('Visit detail cache invalidated', {
+        visitId,
+        keysDeleted: scopedKeys.length,
+      });
+    }
+
+    // Clean up potential legacy cache entries without scope
+    await redisClient.del(legacyCacheKey);
+  } catch (error) {
+    logError('Failed to invalidate visit detail cache', error as Error, { visitId });
   }
 }
 
@@ -781,23 +886,37 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
 
       const docPayload = documentation as DocumentationPayload;
 
-      const structuredFields: Array<
-        [keyof Pick<DocumentationPayload, 'vitalSigns' | 'activities'>, string]
-      > = [
-        ['vitalSigns', 'documentation.vitalSigns'],
-        ['activities', 'documentation.activities'],
+      const structuredFieldValidators: Record<
+        keyof Pick<DocumentationPayload, 'vitalSigns' | 'activities'>,
+        ValidateFunction
+      > = {
+        vitalSigns: validateVitalSigns,
+        activities: validateActivities,
+      };
+
+      const labelMap: Record<keyof typeof structuredFieldValidators, string> = {
+        vitalSigns: 'documentation.vitalSigns',
+        activities: 'documentation.activities',
+      };
+
+      const structuredFields: Array<keyof typeof structuredFieldValidators> = [
+        'vitalSigns',
+        'activities',
       ];
 
-      for (const [key, label] of structuredFields) {
+      for (const key of structuredFields) {
         const value = docPayload[key];
         if (value === undefined || value === null) {
           continue;
         }
 
-        if (typeof value !== 'object') {
+        const validator = structuredFieldValidators[key];
+
+        if (!validator(value)) {
           return res.status(400).json({
             error: 'Bad Request',
-            message: `${label} must be a JSON object.`,
+            message: `${labelMap[key]} failed validation`,
+            details: validator.errors ?? [],
           });
         }
       }
@@ -1016,11 +1135,7 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
       await invalidateVisitListCache(redisClient);
 
       // Invalidate cached visit detail after successful update
-      try {
-        await redisClient.del(`visit:detail:${visitId}`);
-      } catch (error) {
-        logError('Failed to invalidate visit detail cache', error as Error);
-      }
+      await invalidateVisitDetailCache(redisClient, visitId);
 
       logInfo('Visit updated successfully', {
         visitId,
@@ -1119,8 +1234,10 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
       const userZoneId = userResult.rows[0].zone_id;
       const userRoleFromDb = userResult.rows[0].role;
 
-      // Build cache key
-      const cacheKey = `visit:detail:${visitId}`;
+      // Build cache key scoped to user/zone to reduce cross-user inference
+      const principalScope =
+        userRoleFromDb === 'caregiver' ? `user:${userId}` : `zone:${userZoneId}`;
+      const cacheKey = `visit:detail:${visitId}:${principalScope}`;
 
       // Try to get from cache
       const cached = await redisClient.get(cacheKey);
@@ -1146,7 +1263,7 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
             });
           }
 
-          logInfo('Visit detail cache hit', { visitId, userId });
+          logInfo('Visit detail cache hit', { visitId, userId, principalScope });
           return res.status(200).json({
             ...cachedData,
             meta: { cached: true },
@@ -1326,6 +1443,7 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
         visitId,
         userId,
         userRole: userRoleFromDb,
+        principalScope,
         hasDocumentation: !!documentation,
         photoCount: photosResult.rows.length,
       });
@@ -1403,7 +1521,7 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
       }
 
       // Validate MIME type
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
       if (!allowedTypes.includes(mimeType)) {
         return res.status(400).json({
           error: 'Bad Request',
@@ -1554,6 +1672,14 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
         });
       }
 
+      const declaredFileSize = typeof fileSize === 'number' ? fileSize : Number(fileSize);
+      if (!Number.isFinite(declaredFileSize) || declaredFileSize <= 0) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'fileSize must be a positive number',
+        });
+      }
+
       // Validate photoKey format (should start with visits/{visitId}/photos/)
       const expectedPrefix = `visits/${visitId}/photos/`;
       if (!photoKey.startsWith(expectedPrefix)) {
@@ -1595,6 +1721,52 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
           });
         }
 
+        let s3ContentLength: number | undefined;
+        try {
+          const headResult = await s3Client.send(
+            new HeadObjectCommand({
+              Bucket: S3_BUCKETS.PHOTOS,
+              Key: photoKey,
+            })
+          );
+          s3ContentLength = headResult.ContentLength ?? undefined;
+        } catch (s3Error) {
+          await client.query('ROLLBACK');
+          const name = (s3Error as { name?: string }).name;
+          const code = (s3Error as { Code?: string }).Code;
+          const statusCode = (s3Error as { $metadata?: { httpStatusCode?: number } }).$metadata
+            ?.httpStatusCode;
+          if (name === 'NotFound' || code === 'NotFound' || code === 'NoSuchKey' || statusCode === 404) {
+            return res.status(400).json({
+              error: 'Bad Request',
+              message: 'Photo not found in S3',
+            });
+          }
+
+          logError('Failed to verify photo in S3', s3Error as Error, {
+            visitId,
+            userId,
+            photoKey,
+          });
+
+          return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to verify photo in S3',
+          });
+        }
+
+        const sizeToleranceBytes = 1024; // Allow 1KB variance between declared and actual size
+        if (
+          typeof s3ContentLength === 'number' &&
+          Math.abs(s3ContentLength - declaredFileSize) > sizeToleranceBytes
+        ) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'Declared fileSize does not match the S3 object size',
+          });
+        }
+
         // Construct S3 URL (use configured AWS region only)
         const s3Url = `https://${S3_BUCKETS.PHOTOS}.s3.${process.env.AWS_REGION}.amazonaws.com/${photoKey}`;
 
@@ -1611,7 +1783,7 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
             uploaded_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
           RETURNING id, s3_key, s3_url, thumbnail_s3_key, uploaded_at`,
-          [visitId, photoKey, s3Url, thumbnailKey || null, fileName, fileSize, mimeType]
+          [visitId, photoKey, s3Url, thumbnailKey || null, fileName, declaredFileSize, mimeType]
         );
 
         const photo = photoResult.rows[0];
@@ -1619,20 +1791,14 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
         await client.query('COMMIT');
 
         // Invalidate cached visit details
-        const cacheKeyPattern = `visit:detail:${visitId}`;
-        try {
-          await redisClient.del(cacheKeyPattern);
-        } catch (cacheError) {
-          // Log but don't fail the request
-          logError('Failed to invalidate visit cache', cacheError as Error, { visitId });
-        }
+        await invalidateVisitDetailCache(redisClient, visitId);
 
         logInfo('Photo metadata recorded', {
           visitId,
           photoId: photo.id,
           photoKey,
           userId,
-          fileSize,
+          fileSize: declaredFileSize,
         });
 
         return res.status(201).json({
@@ -1902,6 +2068,39 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
           });
         }
 
+        try {
+          await s3Client.send(
+            new HeadObjectCommand({
+              Bucket: S3_BUCKETS.SIGNATURES,
+              Key: signatureKey,
+            })
+          );
+        } catch (s3Error) {
+          await client.query('ROLLBACK');
+          const name = (s3Error as { name?: string }).name;
+          const code = (s3Error as { Code?: string }).Code;
+          const statusCode = (s3Error as { $metadata?: { httpStatusCode?: number } }).$metadata
+            ?.httpStatusCode;
+
+          if (name === 'NotFound' || code === 'NotFound' || code === 'NoSuchKey' || statusCode === 404) {
+            return res.status(400).json({
+              error: 'Bad Request',
+              message: 'Signature not found in S3',
+            });
+          }
+
+          logError('Failed to verify signature in S3', s3Error as Error, {
+            visitId,
+            userId,
+            signatureKey,
+          });
+
+          return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to verify signature in S3',
+          });
+        }
+
         // Construct S3 URL (use configured AWS region only)
         const signatureUrl = `https://${S3_BUCKETS.SIGNATURES}.s3.${process.env.AWS_REGION}.amazonaws.com/${signatureKey}`;
 
@@ -1912,6 +2111,7 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
         );
 
         if (docResult.rows.length > 0) {
+          // Single-signature design: replace existing signature_url regardless of signatureType.
           // Update existing documentation
           await client.query(
             `UPDATE visit_documentation 
@@ -1931,13 +2131,7 @@ export function createVisitsRouter(pool: Pool, redisClient: RedisClient): Router
         await client.query('COMMIT');
 
         // Invalidate cached visit details
-        const cacheKeyPattern = `visit:detail:${visitId}`;
-        try {
-          await redisClient.del(cacheKeyPattern);
-        } catch (cacheError) {
-          // Log but don't fail the request
-          logError('Failed to invalidate visit cache', cacheError as Error, { visitId });
-        }
+        await invalidateVisitDetailCache(redisClient, visitId);
 
         logInfo('Signature metadata recorded', {
           visitId,

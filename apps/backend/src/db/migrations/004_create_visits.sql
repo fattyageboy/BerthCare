@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS visits (
     
     -- Duration tracking (in minutes)
     duration_minutes INTEGER CHECK (
-        duration_minutes >= 0 AND duration_minutes <= 10000
+        duration_minutes >= 0 AND duration_minutes <= 720
     ),
     
     -- Smart data reuse - reference to previous visit for copying documentation
@@ -67,6 +67,15 @@ CREATE TABLE IF NOT EXISTS visits (
     ),
     CONSTRAINT check_out_longitude_requires_times CHECK (
         check_out_longitude IS NULL OR check_out_time IS NOT NULL
+    ),
+    -- Check-in coordinates require check-in time and must appear as a pair
+    CONSTRAINT check_in_coordinates_require_time CHECK (
+        (check_in_latitude IS NULL AND check_in_longitude IS NULL)
+        OR check_in_time IS NOT NULL
+    ),
+    CONSTRAINT check_in_coordinates_must_pair CHECK (
+        (check_in_latitude IS NULL AND check_in_longitude IS NULL)
+        OR (check_in_latitude IS NOT NULL AND check_in_longitude IS NOT NULL)
     ),
     -- Duration can only be stored when both times exist and stays within sane bounds
     CONSTRAINT duration_requires_times CHECK (

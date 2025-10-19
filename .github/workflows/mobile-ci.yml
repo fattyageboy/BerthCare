@@ -31,11 +31,9 @@ jobs:
 
       - name: Run ESLint (mobile only)
         run: npx nx run mobile:lint
-        continue-on-error: false
 
       - name: Run Prettier check
         run: npm run format:check
-        continue-on-error: false
 
   # Job 2: Type Checking
   type-check:
@@ -58,7 +56,6 @@ jobs:
 
       - name: Run TypeScript type check (mobile only)
         run: npx nx run mobile:type-check
-        continue-on-error: false
 
   # Job 3: Unit Tests
   test:
@@ -81,7 +78,6 @@ jobs:
 
       - name: Run tests (mobile only)
         run: npx nx run mobile:test --ci --coverage
-        continue-on-error: false
 
   # Job 4: Dependency Audit (Mobile Only)
   dependency-audit:
@@ -104,7 +100,6 @@ jobs:
 
       - name: Audit mobile production dependencies
         run: node scripts/check-mobile-audit.mjs
-        continue-on-error: false
 
       - name: Check for outdated mobile dependencies
         run: npm outdated --workspace=@berthcare/mobile || true
@@ -130,7 +125,6 @@ jobs:
 
       - name: Build mobile
         run: npx nx run mobile:build
-        continue-on-error: false
 
   # Job 6: CI Summary
   ci-summary:

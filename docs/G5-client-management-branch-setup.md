@@ -65,11 +65,13 @@ The PR template includes comprehensive checklists for:
 
 ### To Create the Draft PR on GitHub:
 
-1. **Visit the PR creation URL:**
+1. **Start the PR creation flow in GitHub:** Use the template link below (or navigate via GitHub → Pull requests → New) to open the "New pull request" page for this branch.
 
    ```
    https://github.com/fattyageboy/BerthCare/pull/new/feat/client-management
    ```
+
+   This is a helper link; once the PR exists, replace it with the real PR URL in this doc.
 
 2. **Configure the PR:**
    - Title: `[DRAFT] feat: Client Management API`
@@ -78,7 +80,7 @@ The PR template includes comprehensive checklists for:
    - Mark as **Draft PR**
    - Link to issue #3 in the description
 
-3. **The PR template will auto-populate** with the comprehensive checklist
+3. **Ensure the PR template can auto-populate:** GitHub only fills the checklist when `.github/PULL_REQUEST_TEMPLATE/client-management-pr.md` exists (example path: `.github/PULL_REQUEST_TEMPLATE/client-management-pr.md`); otherwise, paste the checklist manually.
 
 4. **Add labels:**
    - `feature`
@@ -112,11 +114,11 @@ Following the task plan, the implementation will proceed in this order:
 7. **C6:** Implement PATCH /v1/clients/:clientId (update) - 1.5d
 8. **C7:** Implement POST /v1/care-plans (create/update) - 1.5d
 
-### Phase 4: Testing & Review (0.25d)
+### Phase 4: Testing & Review (0.5d)
 
-9. **G6:** CI checks, code review, merge
+9. **G6:** CI checks, code review, merge (buffer for CI reruns and review feedback)
 
-**Total Estimated Effort:** 8.5 days
+**Total Estimated Effort:** 8.75 days
 
 ---
 
@@ -179,7 +181,7 @@ CREATE INDEX idx_care_plans_client_id ON care_plans(client_id);
 ### External Dependencies
 
 - **Google Maps Geocoding API** - For address to lat/long conversion
-- **Redis** - For caching client data
+- **Redis** - For caching client data (client profile reads cached 5–30m; geocode responses cached 1–24h; invalidate on client update/delete, address changes, or cache-bust job; see `docs/cache-config.md` and `config/redis.yml` for exact TTLs, invalidation hooks, and eventual-consistency notes)
 - **PostgreSQL** - Primary data store
 
 ---
@@ -223,4 +225,6 @@ The feature will be considered complete when:
 
 The branch has been pushed and CI will automatically run on the first commit. The draft PR should be created on GitHub to track progress through the checklist.
 
-**GitHub PR URL:** https://github.com/fattyageboy/BerthCare/pull/new/feat/client-management
+**GitHub PR template URL:** https://github.com/fattyageboy/BerthCare/pull/new/feat/client-management
+
+Open this to start a new PR; after the PR is created, update this document with the actual PR link.

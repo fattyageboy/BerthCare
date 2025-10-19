@@ -9,7 +9,12 @@
 
 import path from 'path';
 
+import { Client } from 'pg';
 import dotenv from 'dotenv';
+
+import { createRedisClient } from '../src/cache/redis-client';
+import { registerCleanup } from './test-helpers';
+import { getWorkerContext } from './worker-context';
 
 // Load test environment variables
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -89,4 +94,79 @@ export const createTestUser = (overrides = {}) => ({
   zoneId: TEST_ZONE_ID,
   deviceId: 'test-device-001',
   ...overrides,
+});
+
+let workerIsolationPromise: Promise<void> | undefined;
+
+async function dropWorkerSchemas(prefix: string): Promise<void> {
+  const context = getWorkerContext();
+  const adminClient = new Client({ connectionString: context.baseDatabaseUrl });
+
+  try {
+    await adminClient.connect();
+    const { rows } = await adminClient.query<{ schema_name: string }>(
+      `
+        SELECT schema_name
+        FROM information_schema.schemata
+        WHERE schema_name LIKE $1
+      `,
+      [`${prefix}_%`]
+    );
+
+    for (const row of rows) {
+      const schemaName = row.schema_name;
+      if (!schemaName) {
+        continue;
+      }
+      await adminClient.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+    }
+  } catch (error) {
+    console.error('Failed to clean worker schemas during setup/teardown:', error);
+  } finally {
+    await adminClient.end().catch((closeError) => {
+      console.error('Error closing admin PostgreSQL client during schema cleanup:', closeError);
+    });
+  }
+}
+
+async function flushWorkerRedisDb(redisUrl: string): Promise<void> {
+  const redisClient = createRedisClient({ url: redisUrl });
+  try {
+    await redisClient.connect();
+    await redisClient.flushDb();
+  } catch (error) {
+    console.error('Failed to prepare Redis logical database for tests:', error);
+    throw error;
+  } finally {
+    await redisClient.quit().catch((quitError) => {
+      console.error('Error closing Redis client during setup/teardown:', quitError);
+      try {
+        redisClient.disconnect();
+      } catch {
+        // Ignore secondary errors
+      }
+    });
+  }
+}
+
+async function initializeWorkerIsolation(): Promise<void> {
+  const context = getWorkerContext();
+
+  await dropWorkerSchemas(context.schemaPrefix);
+  await flushWorkerRedisDb(context.redisUrl);
+
+  registerCleanup(async () => {
+    await flushWorkerRedisDb(context.redisUrl);
+  });
+
+  registerCleanup(async () => {
+    await dropWorkerSchemas(context.schemaPrefix);
+  });
+}
+
+beforeAll(async () => {
+  if (!workerIsolationPromise) {
+    workerIsolationPromise = initializeWorkerIsolation();
+  }
+  await workerIsolationPromise;
 });

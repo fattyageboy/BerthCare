@@ -91,6 +91,31 @@ This document provides step-by-step instructions for provisioning the complete A
   - CloudFront 5xx error rate > 5%
 - **SNS Topic:** Email notifications for alarms
 
+### Logging
+
+- **Application logs:** Backend emits structured JSON to `stdout`/`stderr`; ECS Fargate collects and forwards to CloudWatch Logs.
+- **Log group:** Configure via `CLOUDWATCH_LOG_GROUP` environment variable (e.g., `/aws/ecs/berthcare-api-staging`). Set retention to 30 days unless compliance dictates otherwise.
+- **IAM permissions:** ECS task execution role needs `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:DescribeLogStreams`, and `logs:PutLogEvents` on the target log group.
+- **Deployment snippet:**
+
+  ```json
+  {
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "/aws/ecs/berthcare-api-staging",
+        "awslogs-region": "ca-central-1",
+        "awslogs-stream-prefix": "ecs"
+      }
+    },
+    "environment": [
+      { "name": "CLOUDWATCH_LOG_GROUP", "value": "/aws/ecs/berthcare-api-staging" }
+    ]
+  }
+  ```
+
+- **Reference:** [Amazon ECS logging with CloudWatch Logs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_cloudwatch_logs.html)
+
 ---
 
 ## Prerequisites
@@ -110,7 +135,7 @@ brew install awscli
 
 # Verify installation
 aws --version
-```
+```bash
 
 ### 2. Configure AWS Credentials
 
@@ -600,7 +625,7 @@ In case of complete ca-central-1 region failure, the Terraform state backend (S3
 
 ##### Option 1: S3 Cross-Region Replication + Secondary DynamoDB Table (Recommended)
 
-**Step 1: Enable S3 Bucket Versioning and Cross-Region Replication**
+#### Step 1: Enable S3 Bucket Versioning and Cross-Region Replication
 
 ```bash
 # 1. Enable versioning on primary state bucket (if not already enabled)
@@ -647,6 +672,12 @@ aws iam create-role \
   --role-name S3TerraformStateReplicationRole \
   --assume-role-policy-document file://replication-role-trust-policy.json
 
+# IAM can take a few seconds to propagate the newly created role; wait before attaching policies.
+until aws iam get-role --role-name S3TerraformStateReplicationRole >/dev/null 2>&1; do
+  echo "Waiting for IAM role propagation..."
+  sleep 5
+done
+
 # 5. Attach replication permissions
 cat > replication-policy.json <<EOF
 {
@@ -685,8 +716,14 @@ aws iam put-role-policy \
   --policy-name ReplicationPolicy \
   --policy-document file://replication-policy.json
 
+# If the previous command fails with a propagation error (e.g., NoSuchEntity), wait ~5s and rerun.
+# Always check the exit code before proceeding; dependent commands assume the role policy is in place.
+
 # 6. Configure replication on primary bucket
-REPLICATION_ROLE_ARN=$(aws iam get-role --role-name S3TerraformStateReplicationRole --query 'Role.Arn' --output text)
+until REPLICATION_ROLE_ARN=$(aws iam get-role --role-name S3TerraformStateReplicationRole --query 'Role.Arn' --output text 2>/dev/null); do
+  echo "Waiting for IAM role ARN to become available..."
+  sleep 5
+done
 
 jq -n --arg role "$REPLICATION_ROLE_ARN" '
 {
@@ -729,10 +766,11 @@ aws s3 cp test-replication.txt s3://berthcare-terraform-state/test-replication.t
 aws s3 ls s3://berthcare-terraform-state-dr/ --region us-east-1
 ```
 
-**Step 2: Provision Secondary DynamoDB Lock Table**
+#### Step 2: Provision Secondary DynamoDB Lock Table
 
 ```bash
 # Create DynamoDB table in us-east-1 for state locking
+# If you require a dedicated CMK for DR, replace alias/aws/dynamodb with the DR-region CMK ARN (e.g., arn:aws:kms:us-east-1:<account-id>:key/<key-id>) and ensure the CMK policy and grants allow cross-region use by the accounts/services involved.
 aws dynamodb create-table \
   --table-name berthcare-terraform-locks-dr \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
@@ -741,8 +779,6 @@ aws dynamodb create-table \
   --sse-specification Enabled=true,SSEType=KMS,KMSMasterKeyId=alias/aws/dynamodb \
   --region us-east-1
 
-# Uses AWS managed DynamoDB key; swap alias/aws/dynamodb for your CMK ARN if you need a dedicated key.
-
 # Verify table is active
 aws dynamodb describe-table \
   --table-name berthcare-terraform-locks-dr \
@@ -750,7 +786,7 @@ aws dynamodb describe-table \
   --query 'Table.TableStatus'
 ```
 
-**Step 3: Verify Replication Status**
+#### Step 3: Verify Replication Status
 
 ```bash
 # Check replication metrics
@@ -862,7 +898,7 @@ aws dynamodb create-global-table \
 
 #### Failover Procedure
 
-**Pre-Checks (Run these first):**
+##### Pre-Checks (Run these first)
 
 ```bash
 # 1. Verify ca-central-1 is truly unavailable
@@ -887,7 +923,7 @@ aws dynamodb scan \
   --region us-east-1
 ```
 
-**Step 1: Migrate Terraform State to Secondary Backend**
+##### Step 1: Migrate Terraform State to Secondary Backend
 
 ```bash
 # Navigate to staging environment
@@ -921,7 +957,7 @@ terraform init -migrate-state
 terraform state list
 ```
 
-**Step 2: Verify State Read/Write and Locking**
+##### Step 2: Verify State Read/Write and Locking
 
 ```bash
 # Test state locking in new region
@@ -939,7 +975,7 @@ terraform show
 terraform refresh
 ```
 
-**Step 3: Update Region and Redeploy Infrastructure**
+##### Step 3: Update Region and Redeploy Infrastructure
 
 Run the command that matches your platform to update `terraform.tfvars` with the DR region:
 
@@ -969,7 +1005,7 @@ terraform apply
 # This will take 15-20 minutes
 ```
 
-**Step 4: Restore Persistent Data**
+##### Step 4: Restore Persistent Data
 
 1. **Database:** Use the most recent production snapshot and only copy what you need. The following script validates each step, waits for asynchronous operations, and exits on any AWS CLI failure:
 
@@ -1008,6 +1044,24 @@ terraform apply
        --region "$DR_REGION"
    fi
 
+   SNAPSHOT_METADATA=$(aws rds describe-db-snapshots \
+     --db-snapshot-identifier "$TARGET_SNAPSHOT_ID" \
+     --region "$DR_REGION" \
+     --query 'DBSnapshots[0].[Status,SnapshotCreateTime]' \
+     --output text)
+
+   if [ -z "$SNAPSHOT_METADATA" ] || [ "$SNAPSHOT_METADATA" = "None" ]; then
+     echo "Unable to retrieve status for ${TARGET_SNAPSHOT_ID} in ${DR_REGION}" >&2
+     exit 1
+   fi
+
+   read -r SNAPSHOT_STATUS SNAPSHOT_CREATE_TIME <<< "$SNAPSHOT_METADATA"
+
+   if [ "$SNAPSHOT_STATUS" != "available" ]; then
+     echo "Snapshot ${TARGET_SNAPSHOT_ID} in ${DR_REGION} is ${SNAPSHOT_STATUS} (created ${SNAPSHOT_CREATE_TIME}); aborting restore." >&2
+     exit 1
+   fi
+
    aws rds restore-db-instance-from-db-snapshot \
      --db-instance-identifier "$TARGET_DB_INSTANCE" \
      --db-snapshot-identifier "$TARGET_SNAPSHOT_ID" \
@@ -1027,7 +1081,7 @@ terraform apply
 
    Adjust identifiers to match the current DR plan; the `wait` commands block until the snapshot copy and instance restore complete, preventing downstream tasks from running on incomplete resources.
 
-2. **Object storage:** If cross-region replication lags, perform a validated sync before cut-over. The script below deletes stray objects, verifies parity, and fails fast when counts or sizes diverge:
+2. **Object storage:** If cross-region replication lags, perform a validated sync before cut-over. The script below previews proposed changes, syncs without destructive deletes, and fails fast when counts or sizes diverge:
 
    ```bash
    set -euo pipefail
@@ -1037,10 +1091,24 @@ terraform apply
    SOURCE_BUCKET=berthcare-photos-prod
    DEST_BUCKET=berthcare-photos-prod-dr
 
+   echo "Previewing S3 sync changes (dry-run)..."
    if ! aws s3 sync "s3://${SOURCE_BUCKET}" "s3://${DEST_BUCKET}" \
      --source-region "${PRIMARY_REGION}" \
      --region "${DR_REGION}" \
-     --delete; then
+     --dryrun; then
+     echo "S3 dry-run failed" >&2
+     exit 1
+   fi
+
+   read -r -p "Dry-run complete. Proceed with real sync (no deletes)? [y/N] " PROCEED_SYNC
+   if [[ "${PROCEED_SYNC}" != "y" && "${PROCEED_SYNC}" != "Y" ]]; then
+     echo "S3 sync aborted before making changes." >&2
+     exit 1
+   fi
+
+   if ! aws s3 sync "s3://${SOURCE_BUCKET}" "s3://${DEST_BUCKET}" \
+     --source-region "${PRIMARY_REGION}" \
+     --region "${DR_REGION}"; then
      echo "S3 sync failed" >&2
      exit 1
    fi
@@ -1061,13 +1129,15 @@ terraform apply
    echo "S3 sync complete: ${DEST_BUCKET} matches ${SOURCE_BUCKET}"
    ```
 
-   For very large backfills, rerun the sync if validation fails or escalate to **S3 Batch Operations**/**AWS DataSync** to handle high object counts with managed retries and reporting.
+   If you determine a delete is required (for example, to eliminate objects that should not exist in the DR bucket), snapshot or clone the destination bucket first (or use a staging bucket), run the dry-run and validation steps against that copy, and only invoke `aws s3 sync ... --delete` after the validation passes and stakeholders approve the change.
+
+  For backfills with high object counts, rerun the sync if validation fails or escalate to **S3 Batch Operations**/**AWS DataSync** to handle high object counts with managed retries and reporting.
 
 3. **Caches:** Redis/ElastiCache data is treated as ephemeral. Warm it via normal application flows after the DR stack is online; do **not** attempt to replicate cache snapshots unless a business requirement demands it.
 
 
 
-**Step 5: Update Application Configuration**
+##### Step 5: Update Application Configuration
 
 ```bash
 # Update backend application environment variables with new endpoints
@@ -1081,7 +1151,7 @@ terraform output
 # - New CloudFront distribution (if recreated)
 ```
 
-**Step 6: Verify Application Functionality**
+##### Step 6: Verify Application Functionality
 
 ```bash
 # Test database connectivity
@@ -1101,33 +1171,33 @@ curl https://$(terraform output -raw cloudfront_domain_name)/health
 
 If ca-central-1 becomes available again and you need to fail back, complete these ordered steps and confirm each operation succeeds before moving on.
 
-**Prerequisites**
+##### Prerequisites
 
 - Confirm the primary Region is healthy (`aws health describe-events --region ca-central-1`) and that required services (RDS, S3, DynamoDB) are available.
 - Verify the ca-central-1 S3 state bucket and DynamoDB lock table still exist and are reachable: `aws s3 ls s3://berthcare-terraform-state --region ca-central-1` and `aws dynamodb describe-table --table-name berthcare-terraform-locks --region ca-central-1`.
 - Review the remote Terraform state to ensure no drift occurred while operating from DR.
 
-**Step 1: Capture Final DR Snapshot**
+##### Step 1: Capture Final DR Snapshot
 
 - In us-east-1, create a final snapshot of the DR database instance (`aws rds create-db-snapshot ... --region us-east-1`) and wait for `DBSnapshotStatus` to report `available`. Do not proceed until the snapshot is fully created.
 
-**Step 2: Synchronize Data from DR to Primary**
+##### Step 2: Synchronize Data from DR to Primary
 
 - Sync object storage back to the primary Region, ensuring the direction is DR ➜ primary: `aws s3 sync s3://berthcare-photos-prod-dr s3://berthcare-photos-prod --source-region us-east-1 --region ca-central-1 --delete`. Wait for the command to finish successfully.
 - Copy the final DR snapshot to ca-central-1: `aws rds copy-db-snapshot --source-region us-east-1 --region ca-central-1 --source-db-snapshot-identifier <dr-snapshot-arn> --target-db-snapshot-identifier <primary-restore-snapshot-id>` and wait for the copied snapshot status to become `available`.
 
-**Step 3: Restore Primary Infrastructure**
+##### Step 3: Restore Primary Infrastructure
 
 - Update the Terraform backend block so it points back to the ca-central-1 S3 bucket and DynamoDB lock table.
 - Run `terraform init -migrate-state` to move the remote state back to ca-central-1.
 - Update `terraform.tfvars` so `aws_region = "ca-central-1"` and review any other DR-specific variable overrides.
 - Execute `terraform plan` and `terraform apply` from ca-central-1 to recreate the primary infrastructure. Wait for each apply to finish before continuing.
 
-**Step 4: Restore Database**
+##### Step 4: Restore Database
 
 - Restore the ca-central-1 database instance from the copied snapshot (`aws rds restore-db-instance-from-db-snapshot ... --region ca-central-1`) and wait for the instance status to be `available`. Reapply parameter groups or Multi-AZ settings if needed.
 
-**Step 5: Verify and Cutover**
+##### Step 5: Verify and Cutover
 
 - Update application configuration, Secrets Manager values, and DNS records so workloads point back to ca-central-1 endpoints.
 - Perform functional testing (API health checks, database connectivity, end-to-end user flows). Only move on when validations succeed.

@@ -15,7 +15,7 @@ Introduces the Visit Documentation API, enabling caregivers to start, document, 
 - GET /api/v1/visits — List with filtering, pagination, and scoped caching
 - GET /api/v1/visits/:visitId — Visit detail with safe caching and invalidation
 
-Photos and signature upload flows are supported via pre‑signed URLs in subsequent tasks; metadata endpoints are integrated in visits routes.
+Photos and signature uploads are supported in this release via pre-signed URLs within visit tasks, and the metadata endpoints are integrated into the visits routes as part of this launch.
 
 ## Security
 
@@ -67,4 +67,3 @@ Environment variables (see `.env.example`):
 - Dedicated endpoints for documentation read/write (fine‑grained updates)
 - Multiple signature fields (caregiver, client, family) or visit_signatures table
 - Offline delta sync optimizations for low‑connectivity scenarios
-

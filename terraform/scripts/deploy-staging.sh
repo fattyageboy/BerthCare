@@ -7,6 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STAGING_DIR="${SCRIPT_DIR}/../environments/staging"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+INFRA_VERIFICATION_DOC="docs/E5-aws-infrastructure-setup.md"
 
 echo "🚀 Deploying BerthCare Staging Infrastructure"
 echo "=============================================="
@@ -90,7 +91,7 @@ fi
 
 echo ""
 echo "📝 Saved raw outputs to ${OUTPUT_FILE}"
-echo "   Update docs/E5-aws-infrastructure-setup.md verification table with these values."
+echo "   Update ${INFRA_VERIFICATION_DOC} verification table with these values."
 
 echo ""
 echo "✅ Deployment completed successfully!"

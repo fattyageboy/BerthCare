@@ -16,13 +16,18 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import express, { Express } from 'express';
-import { Pool, PoolClient } from 'pg';
+import { Client, Pool, PoolClient } from 'pg';
 
 import { createRedisClient, RedisClient } from '../src/cache/redis-client';
 import { createAuthRoutes } from '../src/routes/auth.routes';
 import { createCarePlanRoutes } from '../src/routes/care-plans.routes';
 import { createClientRoutes } from '../src/routes/clients.routes';
 import { createVisitsRouter } from '../src/routes/visits.routes';
+import {
+  buildSchemaConnectionString,
+  buildSchemaName,
+  getWorkerContext,
+} from './worker-context';
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../src/db/migrations');
 const MIGRATIONS_TABLE = 'schema_migrations';
@@ -43,6 +48,7 @@ type ParsedMigration = {
   baseName: string;
   fileName: string;
   fullPath: string;
+  checksum?: string;
 };
 
 function parseMigrationFile(fileName: string): ParsedMigration | null {
@@ -73,9 +79,19 @@ async function ensureMigrationsTable(client: PoolClient): Promise<void> {
   await client.query(`
     CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
       name TEXT PRIMARY KEY,
-      run_on TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      run_on TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      checksum TEXT
     )
   `);
+
+  await client.query(`
+    ALTER TABLE ${MIGRATIONS_TABLE}
+    ADD COLUMN IF NOT EXISTS checksum TEXT
+  `);
+}
+
+function computeMigrationChecksum(contents: string): string {
+  return crypto.createHash('sha256').update(contents, 'utf8').digest('hex');
 }
 
 async function loadPendingMigrations(client: PoolClient): Promise<ParsedMigration[]> {
@@ -98,9 +114,44 @@ async function loadPendingMigrations(client: PoolClient): Promise<ParsedMigratio
     files.push(parsed);
   }
 
-  const { rows } = await client.query<{ name: string }>(`SELECT name FROM ${MIGRATIONS_TABLE}`);
-  const applied = new Set(rows.map((row) => row.name));
+  const filesByName = new Map(files.map((migration) => [migration.baseName, migration]));
+  const { rows } = await client.query<{ name: string; checksum: string | null }>(
+    `SELECT name, checksum FROM ${MIGRATIONS_TABLE}`
+  );
 
+  for (const row of rows) {
+    const migration = filesByName.get(row.name);
+    if (!migration) {
+      throw new Error(
+        `Applied migration ${row.name} is recorded in ${MIGRATIONS_TABLE} but the file is missing`
+      );
+    }
+
+    let contents: string;
+    try {
+      contents = await fs.readFile(migration.fullPath, 'utf8');
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown error reading migration file';
+      throw new Error(`Unable to read migration ${migration.fileName}: ${message}`);
+    }
+
+    const checksum = computeMigrationChecksum(contents);
+    migration.checksum = checksum;
+
+    if (!row.checksum) {
+      await client.query(
+        `UPDATE ${MIGRATIONS_TABLE} SET checksum = $1 WHERE name = $2`,
+        [checksum, row.name]
+      );
+    } else if (row.checksum !== checksum) {
+      throw new Error(
+        `Checksum mismatch for migration ${row.name}. Stored checksum (${row.checksum}) does not match current file checksum (${checksum}).`
+      );
+    }
+  }
+
+  const applied = new Set(rows.map((row) => row.name));
   const pending = files.filter((migration) => !applied.has(migration.baseName));
 
   return pending.sort((a, b) => {
@@ -128,11 +179,14 @@ export async function runTestMigrations(pgPool: Pool): Promise<void> {
         throw new Error(`Unable to read migration ${migration.fileName}: ${message}`);
       }
 
+      const checksum = computeMigrationChecksum(sql);
+
       await client.query('BEGIN');
       try {
         await client.query(sql);
-        await client.query(`INSERT INTO ${MIGRATIONS_TABLE} (name) VALUES ($1)`, [
+        await client.query(`INSERT INTO ${MIGRATIONS_TABLE} (name, checksum) VALUES ($1, $2)`, [
           migration.baseName,
+          checksum,
         ]);
         await client.query('COMMIT');
       } catch (error) {
@@ -279,10 +333,11 @@ export async function cleanupTestData(pgPool: Pool, clientIds: string[]): Promis
  * Handles foreign key constraints in correct order
  * Uses DELETE instead of TRUNCATE to avoid deadlocks
  */
-export async function cleanAllTestData(
-  pgPool: Pool,
-  redisClient: ReturnType<typeof createClient>
-): Promise<void> {
+export async function cleanAllTestData(pgPool: Pool, redisClient: RedisClient): Promise<void> {
+  if (!pgPool) {
+    return;
+  }
+
   const client = await pgPool.connect();
   try {
     // Use a transaction to ensure atomicity
@@ -299,7 +354,9 @@ export async function cleanAllTestData(
     await client.query('COMMIT');
 
     // Clear Redis
-    await redisClient.flushDb();
+    if (redisClient && redisClient.status !== 'end') {
+      await redisClient.flushDb();
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error cleaning test data:', error);
@@ -335,9 +392,23 @@ export function registerCleanup(cleanup: () => Promise<void>): void {
 export async function setupTestConnections(): Promise<{
   pgPool: Pool;
   redisClient: RedisClient;
+  schemaName: string;
+  redisDb: number;
 }> {
+  const context = getWorkerContext();
+  const schemaName = buildSchemaName();
+  const schemaConnectionString = buildSchemaConnectionString(schemaName);
+
+  const adminClient = new Client({ connectionString: context.baseDatabaseUrl });
+  try {
+    await adminClient.connect();
+    await adminClient.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
+  } finally {
+    await adminClient.end();
+  }
+
   const pgPool = new Pool({
-    connectionString: TEST_DATABASE_URL,
+    connectionString: schemaConnectionString,
     max: 5, // Reduced pool size for tests
     min: 0, // Allow pool to scale down to 0
     idleTimeoutMillis: 10000, // Close idle connections faster
@@ -345,28 +416,44 @@ export async function setupTestConnections(): Promise<{
     allowExitOnIdle: true, // Allow process to exit when pool is idle
   });
 
-  // Test the connection immediately
   try {
     const client = await pgPool.connect();
+    await client.query('SELECT 1');
     client.release();
   } catch (error) {
     console.error('Failed to connect to PostgreSQL:', error);
+    await pgPool.end().catch((closeError) => {
+      console.error('Failed to close PostgreSQL pool after connection error:', closeError);
+    });
     throw new Error('PostgreSQL connection failed. Is the database running?');
   }
 
   await runTestMigrations(pgPool);
 
-  const redisClient = createRedisClient({ url: TEST_REDIS_URL });
+  const redisClient = createRedisClient({
+    url: context.redisUrl,
+  });
 
   try {
     await redisClient.connect();
+    await redisClient.flushDb();
   } catch (error) {
     console.error('Failed to connect to Redis:', error);
-    await pgPool.end();
+    await pgPool.end().catch((closeError) => {
+      console.error('Failed to close PostgreSQL pool after Redis error:', closeError);
+    });
     throw new Error('Redis connection failed. Is Redis running?');
   }
 
-  return { pgPool, redisClient };
+  registerCleanup(() =>
+    teardownTestConnections(pgPool, redisClient, {
+      schemaName,
+      redisDb: context.redisDb,
+      dropSchema: true,
+    })
+  );
+
+  return { pgPool, redisClient, schemaName, redisDb: context.redisDb };
 }
 
 /**
@@ -374,33 +461,41 @@ export async function setupTestConnections(): Promise<{
  * Ensures all connections are properly closed and no handles remain open
  */
 export async function teardownTestConnections(
-  pgPool: Pool,
-  redisClient: RedisClient
+  pgPool: Pool | undefined,
+  redisClient: RedisClient | undefined,
+  options: {
+    schemaName?: string;
+    redisDb?: number;
+    dropSchema?: boolean;
+  } = {}
 ): Promise<void> {
+  if (!pgPool && !redisClient) {
+    return;
+  }
+
   const cleanupTasks: Promise<void>[] = [];
 
-  // Close Redis first (faster)
   const redisCleanup = (async () => {
     try {
-      if (redisClient.isOpen) {
+      if (redisClient && redisClient.status !== 'end') {
+        await redisClient.flushDb();
         await redisClient.quit();
       }
     } catch (error) {
       console.error('Error closing redisClient:', error);
-      // Force disconnect if quit fails
       try {
-        await redisClient.disconnect();
+        await redisClient?.disconnect();
       } catch (disconnectError) {
         console.error('Error disconnecting redisClient:', disconnectError);
       }
     }
   })();
 
-  // Close PostgreSQL pool
   const pgCleanup = (async () => {
     try {
-      // Wait for all active queries to complete
-      await pgPool.end();
+      if (pgPool && !pgPool.ended) {
+        await pgPool.end();
+      }
     } catch (error) {
       console.error('Error closing pgPool:', error);
     }
@@ -408,6 +503,19 @@ export async function teardownTestConnections(
 
   cleanupTasks.push(redisCleanup, pgCleanup);
 
-  // Wait for all cleanup tasks to complete
   await Promise.all(cleanupTasks);
+
+  if (options.dropSchema && options.schemaName) {
+    const adminClient = new Client({ connectionString: TEST_DATABASE_URL });
+    try {
+      await adminClient.connect();
+      await adminClient.query(`DROP SCHEMA IF EXISTS "${options.schemaName}" CASCADE`);
+    } catch (error) {
+      console.error(`Error dropping schema "${options.schemaName}":`, error);
+    } finally {
+      await adminClient.end().catch((closeError) => {
+        console.error('Error closing admin PostgreSQL client:', closeError);
+      });
+    }
+  }
 }

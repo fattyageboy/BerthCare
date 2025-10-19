@@ -81,7 +81,7 @@ Target: coverage ≥ 80%. Thresholds enforced by apps/backend/jest.config.js.
 
 ## Acceptance Criteria
 
-- CI green for backend workflow (.github/workflows/backend-ci.yml)
+- CI green for backend workflow (GitHub: .github/workflows/backend-ci.yml)
 - 80%+ coverage (lines/statements/functions) for backend package
 - At least 1 reviewer approval (senior backend dev)
 - Branch up‑to‑date and squash‑merged
@@ -98,7 +98,7 @@ Target: coverage ≥ 80%. Thresholds enforced by apps/backend/jest.config.js.
 
 Squash and merge with message:
 
-```
+```text
 feat: implement visit documentation API
 
 - Add visits endpoints (create/list/detail/update)
@@ -112,4 +112,3 @@ feat: implement visit documentation API
 - Tag release candidate and publish release notes (see docs/RELEASE_NOTES_VISITS.md)
 - Deploy to staging; verify endpoints and caching under load
 - Monitor logs and error rates; validate DB indices in query plans
-

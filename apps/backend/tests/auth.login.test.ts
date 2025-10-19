@@ -38,6 +38,7 @@ describe('POST /v1/auth/login', () => {
   let pgPool: Pool;
   let redisClient: RedisClient;
   let adminAccessToken: string;
+  let schemaName: string;
 
   // Setup: Create app and database connections
   beforeAll(async () => {
@@ -45,6 +46,7 @@ describe('POST /v1/auth/login', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app with auth routes
     app = express();
@@ -55,7 +57,7 @@ describe('POST /v1/auth/login', () => {
 
   // Cleanup: Close connections
   afterAll(async () => {
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   // Clean database and Redis before each test

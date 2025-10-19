@@ -77,31 +77,31 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 - Empty password rejection
 - Invalid hash format rejection
 
-**Timing Attack Resistance (2 tests)**
+### Timing Attack Resistance (2 tests)
 
 - Similar time for correct/incorrect passwords
 - Similar time for different password lengths
 - Time difference < 50ms (constant-time comparison)
 
-**Configuration Tests (2 tests)**
+### Configuration Tests (2 tests)
 
 - Cost factor verification (12)
 - Estimated hashing time (200ms)
 
-**Real-world Scenarios (4 tests)**
+### Real-world Scenarios (4 tests)
 
 - User registration flow
 - Failed login attempts
 - Password change flow
 - Multiple users with same password
 
-**Edge Cases (3 tests)**
+### Edge Cases (3 tests)
 
 - Passwords with only spaces
 - Unicode characters (密码123🔒)
 - Newlines and special whitespace
 
-**Performance Tests (1 test)**
+### Performance Tests (1 test)
 
 - Multiple password hashing efficiency
 - Parallel hashing operations

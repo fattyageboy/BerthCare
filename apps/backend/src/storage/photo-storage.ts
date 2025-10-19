@@ -78,7 +78,7 @@ export async function requestPhotoUpload(
     }
 
     // Validate MIME type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedTypes.includes(request.mimeType)) {
       throw new Error(`Invalid MIME type: ${request.mimeType}`);
     }
@@ -280,7 +280,7 @@ export function validatePhotoMetadata(metadata: Partial<PhotoMetadata>): boolean
   }
 
   // Validate MIME type
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
   if (!allowedTypes.includes(metadata.mimeType)) {
     throw new Error(`Invalid MIME type: ${metadata.mimeType}`);
   }

@@ -21,6 +21,7 @@
 import { Pool } from 'pg';
 
 import { RedisClient } from '../cache/redis-client';
+import { logWarn } from '../config/logger';
 
 /**
  * Zone data
@@ -60,17 +61,28 @@ export class ZoneAssignmentService {
     private redisClient: RedisClient
   ) {}
 
-  private parseCoordinate(value: unknown): number | null {
+  private parseCoordinate(value: unknown, min?: number, max?: number): number | null {
+    let parsed: number | null = null;
+
     if (typeof value === 'number') {
-      return value;
+      parsed = Number.isFinite(value) ? value : null;
+    } else if (typeof value === 'string') {
+      const floatValue = Number.parseFloat(value);
+      parsed = Number.isNaN(floatValue) ? null : floatValue;
     }
-    if (typeof value === 'string') {
-      const parsed = Number.parseFloat(value);
-      if (!Number.isNaN(parsed)) {
-        return parsed;
-      }
+
+    if (parsed === null) {
+      return null;
     }
-    return null;
+
+    if (
+      (typeof min === 'number' && parsed < min) ||
+      (typeof max === 'number' && parsed > max)
+    ) {
+      return null;
+    }
+
+    return parsed;
   }
 
   /**
@@ -173,10 +185,16 @@ export class ZoneAssignmentService {
     const zones: Zone[] = [];
 
     for (const row of rows) {
-      const lat = this.parseCoordinate(row.center_latitude);
-      const lng = this.parseCoordinate(row.center_longitude);
+      const lat = this.parseCoordinate(row.center_latitude, -90, 90);
+      const lng = this.parseCoordinate(row.center_longitude, -180, 180);
 
       if (lat === null || lng === null) {
+        logWarn('Zone skipped due to invalid coordinates', {
+          zoneId: row.id,
+          zoneName: row.name,
+          rawLatitude: row.center_latitude,
+          rawLongitude: row.center_longitude,
+        });
         continue;
       }
 

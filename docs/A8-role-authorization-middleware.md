@@ -261,7 +261,7 @@ Ordering guarantees rate limiting → validation → authentication → authoriz
 5. Custom zone resolver behaviour
 6. Integration flow (authenticate → authorize → logout)
 
-```
+```plaintext
 PASS  apps/backend/tests/auth.middleware.test.ts
   JWT Authentication Middleware
     authenticateJWT ...

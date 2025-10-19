@@ -23,7 +23,6 @@ module.exports = {
   testMatch: ['**/tests/**/*.test.ts'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   globalTeardown: '<rootDir>/tests/teardown.ts',
-  maxWorkers: 1, // Run tests serially to avoid database connection issues
   forceExit: true, // Force exit after tests complete (important for CI)
   detectOpenHandles: false, // Disable for faster runs
   testTimeout: 30000, // 30 second timeout per test

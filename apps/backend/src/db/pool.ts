@@ -3,7 +3,14 @@ import { Pool, PoolConfig } from 'pg';
 const MAX_PRIMARY_CONNECTIONS = 20;
 const MAX_REPLICA_CONNECTIONS = 20;
 
-const primaryMaxConnections = clampPoolSize(process.env.DB_POOL_MAX, MAX_PRIMARY_CONNECTIONS, 20);
+const DEFAULT_PRIMARY_POOL_MAX = 20;
+const DEFAULT_REPLICA_POOL_MAX = 10;
+
+const primaryMaxConnections = clampPoolSize(
+  process.env.DB_POOL_MAX,
+  MAX_PRIMARY_CONNECTIONS,
+  DEFAULT_PRIMARY_POOL_MAX
+);
 
 const primaryMinConnections = (() => {
   const defaultMin = 2;
@@ -25,8 +32,35 @@ export const primaryPool = new Pool(primaryConfig);
 const replicaConfig = buildReplicaConfig();
 export const replicaPool = replicaConfig ? new Pool(replicaConfig) : null;
 
+type ReplicaHealth = 'unknown' | 'healthy' | 'unhealthy';
+let replicaHealth: ReplicaHealth = 'unknown';
+
 export function getReadPool(): Pool {
-  return replicaPool ?? primaryPool;
+  if (replicaPool && replicaHealth !== 'unhealthy') {
+    return replicaPool;
+  }
+
+  return primaryPool;
+}
+
+export function markReplicaHealthy(): void {
+  if (replicaPool) {
+    replicaHealth = 'healthy';
+  }
+}
+
+export function markReplicaUnhealthy(): void {
+  if (replicaPool) {
+    replicaHealth = 'unhealthy';
+  }
+}
+
+export function getReplicaHealth(): ReplicaHealth | 'not_configured' {
+  if (!replicaPool) {
+    return 'not_configured';
+  }
+
+  return replicaHealth;
 }
 
 function buildReplicaConfig(): PoolConfig | null {
@@ -37,7 +71,12 @@ function buildReplicaConfig(): PoolConfig | null {
 
   return {
     connectionString: replicaUrl,
-    max: clampPoolSize(process.env.DB_REPLICA_POOL_MAX, MAX_REPLICA_CONNECTIONS, 10),
+    // Replica defaults to a smaller pool (10) to reduce steady-state load but can be overridden via env.
+    max: clampPoolSize(
+      process.env.DB_REPLICA_POOL_MAX,
+      MAX_REPLICA_CONNECTIONS,
+      DEFAULT_REPLICA_POOL_MAX
+    ),
     idleTimeoutMillis: primaryConfig.idleTimeoutMillis,
     connectionTimeoutMillis: primaryConfig.connectionTimeoutMillis,
   };

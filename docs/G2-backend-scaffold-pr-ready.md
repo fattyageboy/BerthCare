@@ -1,9 +1,9 @@
 # G2: Backend Scaffold PR Ready for Merge - Completion Summary
 
-**Task ID:** G2  
-**Status:** ✅ Complete  
-**Date:** October 10, 2025  
-**Dependencies:** B1-B4 (Backend core infrastructure)
+Task ID: G2  
+Status: ✅ Complete  
+Date: October 10, 2025  
+Dependencies: B1-B4 (Backend core infrastructure)
 
 ## Overview
 
@@ -13,13 +13,13 @@ Successfully completed all pre-merge requirements for the backend scaffold PR. A
 
 ### 1. Code Quality Fixes ✅
 
-**ESLint Errors Fixed:**
+#### ESLint Errors Fixed
 
 - ✅ Import group spacing issues resolved
 - ✅ Console statement warnings suppressed for CLI tools (migrate.ts, test-s3.ts)
 - ✅ Code formatting issues resolved
 
-**TypeScript Errors Fixed:**
+#### TypeScript Errors Fixed
 
 - ✅ Redis client type compatibility issues resolved
 - ✅ Changed from `RedisClientType` to `ReturnType<typeof import('redis').createClient>`
@@ -29,7 +29,7 @@ Successfully completed all pre-merge requirements for the backend scaffold PR. A
   - `createLoginRateLimiter()` in rate-limiter.ts
   - `createRegistrationRateLimiter()` in rate-limiter.ts
 
-**Files Fixed:**
+#### Files Fixed
 
 - `apps/backend/src/main.ts` - No diagnostics
 - `apps/backend/src/routes/auth.routes.ts` - No diagnostics
@@ -41,7 +41,7 @@ Successfully completed all pre-merge requirements for the backend scaffold PR. A
 
 ### 2. Test Results ✅
 
-**S3 Tests:**
+#### S3 Tests
 
 ```bash
 $ npm run test:s3 --prefix apps/backend
@@ -54,7 +54,7 @@ $ npm run test:s3 --prefix apps/backend
 All tests passed successfully!
 ```
 
-**Database Tests:**
+#### Database Tests
 
 ```bash
 $ npm run db:verify --prefix apps/backend
@@ -67,7 +67,7 @@ $ npm run db:verify --prefix apps/backend
 Schema verification passed!
 ```
 
-**Connection Tests:**
+#### Connection Tests
 
 ```bash
 $ npm run test:connection --prefix apps/backend
@@ -79,7 +79,7 @@ $ npm run test:connection --prefix apps/backend
 
 ### 3. PR Checklist ✅
 
-**Code Quality:**
+#### Code Quality
 
 - ✅ No ESLint errors
 - ✅ No TypeScript errors
@@ -87,15 +87,16 @@ $ npm run test:connection --prefix apps/backend
 - ✅ All imports organized properly
 - ✅ No console.log in production code (only in CLI tools)
 
-**Testing:**
+#### Testing
 
 - ✅ S3 connection tests pass
 - ✅ Database migration tests pass
 - ✅ Schema verification passes
 - ✅ Health check endpoint works
 - ✅ All services start successfully
+- ✅ CI and local scripts export `JEST_WORKER_ID` when invoking Jest to maintain per-worker Redis/PostgreSQL isolation (Jest sets this automatically when workers > 1)
 
-**Documentation:**
+#### Documentation
 
 - ✅ B1 documentation complete (Express.js setup)
 - ✅ B2 documentation complete (Database connection)
@@ -104,7 +105,7 @@ $ npm run test:connection --prefix apps/backend
 - ✅ G1 documentation complete (Backend scaffold)
 - ✅ PR template ready with comprehensive checklist
 
-**Infrastructure:**
+#### Infrastructure
 
 - ✅ Docker Compose configuration complete
 - ✅ Environment variables documented
@@ -114,9 +115,11 @@ $ npm run test:connection --prefix apps/backend
 
 ### 4. PR Template ✅
 
-**Location:** `.github/PULL_REQUEST_TEMPLATE/backend-scaffold-pr.md`
+#### Location
 
-**Sections:**
+`.github/PULL_REQUEST_TEMPLATE/backend-scaffold-pr.md`
+
+#### Sections
 
 - Overview of changes
 - Tasks completed (G1, B1-B4, E3-E8)
@@ -128,7 +131,7 @@ $ npm run test:connection --prefix apps/backend
 
 ### 5. Commit History ✅
 
-**Current Commits:**
+#### Current Commits
 
 ```
 d86383f docs: add G1 backend scaffold PR template and completion summary
@@ -138,7 +141,7 @@ b7b6666 fix: resolve ESLint and TypeScript configuration issues
 303eb3f feat: configure Nx monorepo structure
 ```
 
-**Ready for Squash Merge:**
+### Ready for Squash Merge
 
 - Commit message: `feat: initialize backend core infrastructure`
 - Description: Complete backend scaffold with Express.js, PostgreSQL, Redis, S3, and monitoring
@@ -147,7 +150,7 @@ b7b6666 fix: resolve ESLint and TypeScript configuration issues
 
 ### Backend Core Infrastructure (B1-B4)
 
-**B1: Express.js Backend ✅**
+#### B1: Express.js Backend ✅
 
 - Express 4.18.2 with TypeScript
 - Security middleware (helmet, cors, compression)
@@ -155,21 +158,21 @@ b7b6666 fix: resolve ESLint and TypeScript configuration issues
 - Winston logging
 - Graceful shutdown
 
-**B2: PostgreSQL Connection ✅**
+#### B2: PostgreSQL Connection ✅
 
 - Connection pooling (max 20)
 - Migration framework
 - Health checks
 - Read replica support (placeholder)
 
-**B3: Redis Connection ✅**
+#### B3: Redis Connection ✅
 
 - Redis client with retry logic
 - Health checks
 - Session management ready
 - Caching configuration
 
-**B4: S3 Storage ✅**
+#### B4: S3 Storage ✅
 
 - AWS SDK v3 configured
 - Pre-signed URL generation
@@ -178,37 +181,37 @@ b7b6666 fix: resolve ESLint and TypeScript configuration issues
 
 ### Supporting Infrastructure (E3-E8)
 
-**E3: Monorepo Structure ✅**
+#### E3: Monorepo Structure ✅
 
 - Nx workspace configured
 - Apps and libs organized
 - Shared TypeScript config
 
-**E4: Local Development ✅**
+#### E4: Local Development ✅
 
 - Docker Compose setup
 - PostgreSQL, Redis, LocalStack
 - Environment variables documented
 
-**E5: AWS Infrastructure ✅**
+#### E5: AWS Infrastructure ✅
 
 - Terraform configurations
 - VPC, RDS, ElastiCache, S3
 - Canadian region (ca-central-1)
 
-**E6: Monitoring & Observability ✅**
+#### E6: Monitoring & Observability ✅
 
 - CloudWatch dashboards
 - Sentry error tracking
 - Log aggregation
 
-**E7: Twilio Configuration ✅**
+#### E7: Twilio Configuration ✅
 
 - Account setup documented
 - Phone numbers configured
 - Webhook URLs ready
 
-**E8: Architecture Documentation ✅**
+#### E8: Architecture Documentation ✅
 
 - Complete architecture docs
 - Diagrams updated

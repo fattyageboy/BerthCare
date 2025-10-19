@@ -29,15 +29,10 @@ import request from 'supertest';
 
 import { generateAccessToken } from '@berthcare/shared';
 
-import { createRedisClient, RedisClient } from '../src/cache/redis-client';
+import { RedisClient } from '../src/cache/redis-client';
 import { createClientRoutes } from '../src/routes/clients.routes';
 
-// Test configuration
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  'postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test';
-const TEST_REDIS_URL =
-  process.env.TEST_REDIS_URL || 'redis://:berthcare_redis_password@localhost:6379/1';
+import { setupTestConnections, teardownTestConnections } from './test-helpers';
 
 const BASE_VISIT_DATE = new Date('2025-01-20T10:00:00Z');
 
@@ -45,6 +40,7 @@ describe('GET /api/v1/clients/:clientId', () => {
   let app: express.Application;
   let pgPool: Pool;
   let redisClient: RedisClient;
+  let schemaName: string;
 
   // Test data
   let testZoneId1: string;
@@ -56,104 +52,21 @@ describe('GET /api/v1/clients/:clientId', () => {
 
   // Setup: Create app and database connections
   beforeAll(async () => {
-    // Create PostgreSQL connection
-    pgPool = new Pool({
-      connectionString: TEST_DATABASE_URL,
-      max: 5,
-    });
-
-    // Create Redis connection
-    redisClient = createRedisClient({
-      url: TEST_REDIS_URL,
-    });
-    await redisClient.connect();
+    const connections = await setupTestConnections();
+    pgPool = connections.pgPool;
+    redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app with client routes
     app = express();
     app.use(express.json());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     app.use('/api/v1/clients', createClientRoutes(pgPool, redisClient as any));
-
-    // Ensure test database has required tables
-    await pgPool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email VARCHAR(255) NOT NULL UNIQUE,
-        password_hash VARCHAR(255) NOT NULL,
-        first_name VARCHAR(100) NOT NULL,
-        last_name VARCHAR(100) NOT NULL,
-        role VARCHAR(20) NOT NULL CHECK (role IN ('caregiver', 'coordinator', 'admin')),
-        zone_id UUID,
-        is_active BOOLEAN NOT NULL DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-
-      CREATE TABLE IF NOT EXISTS clients (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        first_name VARCHAR(100) NOT NULL,
-        last_name VARCHAR(100) NOT NULL,
-        date_of_birth DATE NOT NULL,
-        address TEXT NOT NULL,
-        latitude DECIMAL(10,8) NOT NULL,
-        longitude DECIMAL(11,8) NOT NULL,
-        phone VARCHAR(20),
-        emergency_contact_name VARCHAR(200) NOT NULL,
-        emergency_contact_phone VARCHAR(20) NOT NULL,
-        emergency_contact_relationship VARCHAR(100) NOT NULL,
-        zone_id UUID NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-
-      CREATE TABLE IF NOT EXISTS care_plans (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-        summary TEXT NOT NULL,
-        medications JSONB NOT NULL DEFAULT '[]'::jsonb,
-        allergies JSONB NOT NULL DEFAULT '[]'::jsonb,
-        special_instructions TEXT,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-
-      CREATE TABLE IF NOT EXISTS visits (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        client_id UUID NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
-        staff_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-        scheduled_start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-        check_in_time TIMESTAMP WITH TIME ZONE,
-        check_in_latitude DECIMAL(10, 8),
-        check_in_longitude DECIMAL(11, 8),
-        check_out_time TIMESTAMP WITH TIME ZONE,
-        check_out_latitude DECIMAL(10, 8),
-        check_out_longitude DECIMAL(11, 8),
-        status VARCHAR(50) NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'completed', 'cancelled')),
-        duration_minutes INTEGER CHECK (duration_minutes >= 0 AND duration_minutes <= 10000),
-        copied_from_visit_id UUID REFERENCES visits(id) ON DELETE SET NULL,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        synced_at TIMESTAMP WITH TIME ZONE,
-        CONSTRAINT duration_requires_times CHECK (
-          duration_minutes IS NULL OR (
-            check_in_time IS NOT NULL
-            AND check_out_time IS NOT NULL
-          )
-        )
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_visits_client_scheduled ON visits(client_id, scheduled_start_time DESC);
-    `);
   });
 
   // Cleanup: Close connections
   afterAll(async () => {
-    await pgPool.end();
-    await redisClient.quit();
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   // Clean database and Redis before each test

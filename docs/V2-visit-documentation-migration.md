@@ -469,7 +469,9 @@ WHERE vd.concerns IS NOT NULL
     FOR SELECT
     USING (
       current_setting('app.current_role', true) = 'clinician'
-      AND visit_documentation.caregiver_id = current_setting('app.current_user_id', true)::uuid
+      AND visit_id IN (
+        SELECT id FROM visits WHERE staff_id = current_setting('app.current_user_id', true)::uuid
+      )
     );
 
   -- Auditors can SELECT only (read-only)
@@ -484,11 +486,11 @@ WHERE vd.concerns IS NOT NULL
 
 ### Compliance and Implementation References
 
-- PostgreSQL RLS docs: https://www.postgresql.org/docs/current/ddl-rowsecurity.html
-- Audit table and trigger patterns: https://wiki.postgresql.org/wiki/Audit_logging
-- AWS KMS & RDS encryption best practices: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Overview.Encryption.html
-- GCP disk encryption docs: https://cloud.google.com/compute/docs/disks/customer-supplied-encryption
-- GDPR/PHIPA/PIPEDA compliance guidance: include legal/compliance team's checklist and retention policy
+ - [PostgreSQL RLS docs](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+ - [Audit table and trigger patterns](https://wiki.postgresql.org/wiki/Audit_logging)
+ - [AWS KMS & RDS encryption best practices](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Overview.Encryption.html)
+ - [GCP disk encryption docs](https://cloud.google.com/compute/docs/disks/customer-supplied-encryption)
+ - GDPR/PHIPA/PIPEDA compliance guidance: include legal/compliance team's checklist and retention policy
 
 
 ---

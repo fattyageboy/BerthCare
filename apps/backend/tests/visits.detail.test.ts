@@ -37,6 +37,7 @@ describe('GET /api/v1/visits/:visitId', () => {
   let pgPool: Pool;
   let redisClient: RedisClient;
   let app: Express;
+  let schemaName: string;
 
   // Test users
   let caregiverId: string;
@@ -56,6 +57,7 @@ describe('GET /api/v1/visits/:visitId', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
     app = createTestApp(pgPool, redisClient);
 
     // Create test zones
@@ -182,7 +184,7 @@ describe('GET /api/v1/visits/:visitId', () => {
 
   afterAll(async () => {
     await cleanAllTestData(pgPool, redisClient);
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   beforeEach(async () => {

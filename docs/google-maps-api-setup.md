@@ -298,13 +298,15 @@ const geocodingService =
 
 ### AWS Secrets Manager
 
+Replace the region in the commands below with your AWS region.
+
 **Store API key:**
 
 ```bash
 aws secretsmanager create-secret \
   --name berthcare/google-maps-api-key \
   --secret-string "AIzaSyD...your_actual_key_here" \
-  --region ca-central-1
+  --region ${AWS_REGION}
 ```
 
 **Reference in ECS task definition:**
@@ -314,7 +316,7 @@ aws secretsmanager create-secret \
   "secrets": [
     {
       "name": "GOOGLE_MAPS_API_KEY",
-      "valueFrom": "arn:aws:secretsmanager:ca-central-1:ACCOUNT_ID:secret:berthcare/google-maps-api-key"
+      "valueFrom": "arn:aws:secretsmanager:${AWS_REGION}:ACCOUNT_ID:secret:berthcare/google-maps-api-key"
     }
   ]
 }

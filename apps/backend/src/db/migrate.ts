@@ -133,26 +133,31 @@ async function ensureMigrationsTable(client: Client) {
       run_on TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-
-  await client.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conrelid = 'schema_migrations'::regclass
-          AND conname = 'schema_migrations_name_key'
-      ) THEN
-        ALTER TABLE schema_migrations
-        ADD CONSTRAINT schema_migrations_name_key UNIQUE (name);
-      END IF;
-    END
-    $$;
-  `);
 }
 
 async function loadMigrationFiles(dir: string): Promise<MigrationFile[]> {
-  const entries = await fs.readdir(dir);
+  try {
+    await fs.access(dir);
+    const stats = await fs.stat(dir);
+    if (!stats.isDirectory()) {
+      throw new Error(`Migrations path is not a directory: ${dir}`);
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT'
+        ? `Migrations directory not found: ${dir}`
+        : `Unable to access migrations directory at ${dir}: ${error instanceof Error ? error.message : String(error)}`;
+    throw new Error(message);
+  }
+
+  let entries: string[];
+  try {
+    entries = await fs.readdir(dir);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error reading directory';
+    throw new Error(`Unable to read migrations directory at ${dir}: ${message}`);
+  }
+
   const migrations: MigrationFile[] = [];
 
   for (const fileName of entries) {
@@ -195,20 +200,42 @@ function selectUpMigrations(
   orderedAll: MigrationFile[],
   targetArg?: string
 ): MigrationFile[] {
-  if (!targetArg || targetArg.toLowerCase() === 'all') {
+  const normalizedTarget = targetArg?.trim();
+
+  if (!normalizedTarget || normalizedTarget.toLowerCase() === 'all') {
     return pending;
   }
 
-  if (/^\d+$/.test(targetArg) && targetArg.length !== 3) {
-    const count = Number.parseInt(targetArg, 10);
+  const codeTarget = extractMigrationCode(normalizedTarget);
+  if (codeTarget) {
+    return filterPendingToTarget(
+      pending,
+      orderedAll,
+      resolveMigrationName(normalizedTarget, orderedAll)
+    );
+  }
+
+  if (/^\d+$/.test(normalizedTarget)) {
+    const count = Number.parseInt(normalizedTarget, 10);
     return pending.slice(0, Math.max(count, 0));
   }
 
-  const resolvedName = resolveMigrationName(targetArg, orderedAll);
-  const limitIndex = orderedAll.findIndex((migration) => migration.baseName === resolvedName);
+  return filterPendingToTarget(
+    pending,
+    orderedAll,
+    resolveMigrationName(normalizedTarget, orderedAll)
+  );
+}
+
+function filterPendingToTarget(
+  pending: MigrationFile[],
+  orderedAll: MigrationFile[],
+  targetName: string
+): MigrationFile[] {
+  const limitIndex = orderedAll.findIndex((migration) => migration.baseName === targetName);
 
   if (limitIndex === -1) {
-    throw new Error(`Unknown migration target: ${targetArg}`);
+    throw new Error(`Unknown migration target: ${targetName}`);
   }
 
   const allowed = new Set(
@@ -219,14 +246,18 @@ function selectUpMigrations(
 }
 
 function resolveMigrationName(input: string, orderedAll: MigrationFile[]): string {
-  if (/^\d+$/.test(input) && input.length === 3) {
-    const match = orderedAll.find((migration) => migration.code === input);
-    if (match) {
-      return match.baseName;
+  const trimmed = input.trim();
+
+  const codeTarget = extractMigrationCode(trimmed);
+  if (codeTarget) {
+    const match = orderedAll.find((migration) => migration.code === codeTarget);
+    if (!match) {
+      throw new Error(`Unknown migration target: ${input}`);
     }
+    return match.baseName;
   }
 
-  const normalized = input.endsWith('.sql') ? input.slice(0, -'.sql'.length) : input;
+  const normalized = trimmed.endsWith('.sql') ? trimmed.slice(0, -'.sql'.length) : trimmed;
   const match = orderedAll.find(
     (migration) => migration.baseName === normalized || migration.fileName === `${normalized}.sql`
   );
@@ -252,37 +283,62 @@ function selectDownMigrations(
     return [];
   }
 
-  if (!targetArg) {
+  const normalizedTarget = targetArg?.trim();
+
+  if (!normalizedTarget) {
     return collectDownMigrations(executedSorted.slice(0, 1), downMap);
   }
 
-  if (targetArg.toLowerCase() === 'all' || targetArg === '0') {
+  if (normalizedTarget.toLowerCase() === 'all' || normalizedTarget === '0') {
     return collectDownMigrations(executedSorted, downMap);
   }
 
-  if (/^\d+$/.test(targetArg) && targetArg.length !== 3) {
-    const count = Number.parseInt(targetArg, 10);
+  const codeTarget = extractMigrationCode(normalizedTarget);
+  if (codeTarget) {
+    const resolvedName = resolveTargetForDown(normalizedTarget, orderIndex);
+    return collectDownMigrations(
+      selectNamesToRollback(executedSorted, orderIndex, resolvedName),
+      downMap
+    );
+  }
+
+  if (/^\d+$/.test(normalizedTarget)) {
+    const count = Number.parseInt(normalizedTarget, 10);
     return collectDownMigrations(executedSorted.slice(0, Math.max(count, 0)), downMap);
   }
 
-  const resolvedName = resolveTargetForDown(targetArg, orderIndex);
+  const resolvedName = resolveTargetForDown(normalizedTarget, orderIndex);
+  return collectDownMigrations(
+    selectNamesToRollback(executedSorted, orderIndex, resolvedName),
+    downMap
+  );
+}
+
+function selectNamesToRollback(
+  executedSorted: string[],
+  orderIndex: Map<string, number>,
+  resolvedName: string
+): string[] {
   const targetIndex = orderIndex.get(resolvedName);
 
   if (targetIndex === undefined) {
-    throw new Error(`Unknown migration target: ${targetArg}`);
+    throw new Error(`Unknown migration target: ${resolvedName}`);
   }
 
   const namesToRollback = executedSorted.filter(
     (name) => (orderIndex.get(name) ?? -1) >= targetIndex
   );
 
-  return collectDownMigrations(namesToRollback, downMap);
+  return namesToRollback;
 }
 
 function resolveTargetForDown(input: string, orderIndex: Map<string, number>): string {
-  if (/^\d+$/.test(input) && input.length === 3) {
+  const trimmed = input.trim();
+
+  const codeTarget = extractMigrationCode(trimmed);
+  if (codeTarget) {
     const candidates = Array.from(orderIndex.entries()).filter(([name]) =>
-      name.startsWith(`${input}_`)
+      name.startsWith(`${codeTarget}_`)
     );
     if (candidates.length === 0) {
       throw new Error(`Unknown migration target: ${input}`);
@@ -292,13 +348,22 @@ function resolveTargetForDown(input: string, orderIndex: Map<string, number>): s
     return candidates[0][0];
   }
 
-  const normalized = input.endsWith('.sql') ? input.slice(0, -'.sql'.length) : input;
+  const normalized = trimmed.endsWith('.sql') ? trimmed.slice(0, -'.sql'.length) : trimmed;
 
   if (!orderIndex.has(normalized)) {
     throw new Error(`Unknown migration target: ${input}`);
   }
 
   return normalized;
+}
+
+function extractMigrationCode(value?: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const match = /^(?:#|m)(\d{3})$/i.exec(value.trim());
+  return match ? match[1] : null;
 }
 
 function collectDownMigrations(

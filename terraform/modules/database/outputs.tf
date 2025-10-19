@@ -44,6 +44,21 @@ output "db_credentials_secret_arn" {
   value       = aws_secretsmanager_secret.db_credentials.arn
 }
 
+output "db_credentials_secret_access_policy_arn" {
+  description = "IAM policy ARN granting read access to the database credentials secret"
+  value       = aws_iam_policy.db_credentials_access.arn
+}
+
+output "db_credentials_secret_access_role_arn" {
+  description = "IAM role ARN with permissions to read the database credentials secret (if created or supplied)"
+  value = var.existing_secret_access_role_name != null ? coalesce(
+    var.existing_secret_access_role_arn,
+    try(data.aws_iam_role.existing_secret_access[0].arn, null)
+  ) : (
+    local.should_create_secret_access_role ? aws_iam_role.secret_access[0].arn : null
+  )
+}
+
 output "db_connection_string" {
   description = "PostgreSQL connection string"
   value       = "postgresql://${aws_db_instance.main.username}:${random_password.db_password.result}@${aws_db_instance.main.address}:${aws_db_instance.main.port}/${aws_db_instance.main.db_name}"

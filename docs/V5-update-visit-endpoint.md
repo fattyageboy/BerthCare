@@ -88,9 +88,15 @@ Implemented the PATCH /v1/visits/:visitId endpoint to enable caregivers to updat
 
 ### Complete Visit with Check-out
 
+Set your JWT token as an environment variable before running the command:
+
+```bash
+export TOKEN="your_jwt_token_here"
+```
+
 ```bash
 curl -X PATCH http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "checkOutTime": "2025-10-11T11:05:00Z",
@@ -126,9 +132,15 @@ curl -X PATCH http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3
 
 ### Update Documentation Only
 
+If you haven't already, export your JWT token before running the command:
+
+```bash
+export TOKEN="your_jwt_token_here"
+```
+
 ```bash
 curl -X PATCH http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "documentation": {
@@ -149,9 +161,15 @@ curl -X PATCH http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3
 
 ### Change Status Only
 
+Export your JWT token to an environment variable before calling the endpoint:
+
+```bash
+export TOKEN="your_jwt_token_here"
+```
+
 ```bash
 curl -X PATCH http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "status": "cancelled"
@@ -160,9 +178,15 @@ curl -X PATCH http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3
 
 ### Partial Update (Multiple Fields)
 
+Set the `TOKEN` environment variable so the Authorization header can reference it safely:
+
+```bash
+export TOKEN="your_jwt_token_here"
+```
+
 ```bash
 curl -X PATCH http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "checkOutTime": "2025-10-11T11:05:00Z",
@@ -628,7 +652,7 @@ duration_minutes = ROUND((check_out_time - check_in_time) / 60000);
 - 1 query: Check documentation existence (if documentation provided)
 - 1 query: Update/insert documentation (if documentation provided)
 
-**Total: 2-4 queries per request**
+Total: 2-4 queries per request
 
 ### Query Optimization
 

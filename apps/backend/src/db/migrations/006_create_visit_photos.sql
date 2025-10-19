@@ -24,9 +24,14 @@ CREATE TABLE IF NOT EXISTS visit_photos (
     thumbnail_s3_key TEXT,
     
     -- File metadata
-    file_name VARCHAR(255),
+    file_name VARCHAR(255) NOT NULL CHECK (char_length(file_name) <= 255),
     file_size INTEGER CHECK (file_size > 0),
-    mime_type VARCHAR(100),
+    mime_type VARCHAR(100) NOT NULL CHECK (mime_type IN (
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif'
+    )),
     
     -- Upload tracking
     uploaded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,10 +44,6 @@ CREATE TABLE IF NOT EXISTS visit_photos (
 -- INDEXES
 -- ============================================================================
 -- Optimized for common query patterns in photo management
-
--- Fast lookup by visit_id (most common query)
--- Query pattern: "Get all photos for this visit"
-CREATE INDEX IF NOT EXISTS idx_visit_photos_visit_id ON visit_photos(visit_id);
 
 -- Index on uploaded_at for chronological queries
 -- Query pattern: "Get recently uploaded photos" or "Photos uploaded in date range"

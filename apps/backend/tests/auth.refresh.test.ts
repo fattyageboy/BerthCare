@@ -24,77 +24,37 @@ import request from 'supertest';
 
 import { generateRefreshToken } from '@berthcare/shared';
 
-import { createRedisClient, RedisClient } from '../src/cache/redis-client';
+import { RedisClient } from '../src/cache/redis-client';
 import { createAuthRoutes } from '../src/routes/auth.routes';
 
-// Test configuration
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  'postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test';
-const TEST_REDIS_URL =
-  process.env.TEST_REDIS_URL || 'redis://:berthcare_redis_password@localhost:6379/1';
+import { setupTestConnections, teardownTestConnections } from './test-helpers';
 
 describe('POST /v1/auth/refresh', () => {
   let app: express.Application;
   let pgPool: Pool;
   let redisClient: RedisClient;
+  let schemaName: string;
   let testUserId: string;
   let validRefreshToken: string;
   let validTokenHash: string;
 
   // Setup: Create app and database connections
   beforeAll(async () => {
-    // Create PostgreSQL connection
-    pgPool = new Pool({
-      connectionString: TEST_DATABASE_URL,
-      max: 5,
-    });
-
-    // Create Redis connection
-    redisClient = createRedisClient({
-      url: TEST_REDIS_URL,
-    });
-    await redisClient.connect();
+    const connections = await setupTestConnections();
+    pgPool = connections.pgPool;
+    redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app with auth routes
     app = express();
     app.use(express.json());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     app.use('/v1/auth', createAuthRoutes(pgPool, redisClient as any));
-
-    // Ensure test database has required tables
-    await pgPool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email VARCHAR(255) NOT NULL UNIQUE,
-        password_hash VARCHAR(255) NOT NULL,
-        first_name VARCHAR(100) NOT NULL,
-        last_name VARCHAR(100) NOT NULL,
-        role VARCHAR(20) NOT NULL CHECK (role IN ('caregiver', 'coordinator', 'admin')),
-        zone_id UUID,
-        is_active BOOLEAN NOT NULL DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP WITH TIME ZONE
-      );
-
-      CREATE TABLE IF NOT EXISTS refresh_tokens (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        token_hash VARCHAR(255) NOT NULL UNIQUE,
-        device_id VARCHAR(255) NOT NULL,
-        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-        revoked_at TIMESTAMP WITH TIME ZONE,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
   });
 
   // Cleanup: Close connections
   afterAll(async () => {
-    await pgPool.end();
-    await redisClient.quit();
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   // Clean database and Redis before each test

@@ -30,7 +30,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "jest --forceExit --runInBand",
+        "command": "jest",
         "cwd": "apps/backend"
       }
     },

@@ -50,12 +50,8 @@ special_instructions TEXT,
 version INTEGER NOT NULL DEFAULT 1,
 
 -- Audit timestamps
-created_at TIMESTAMP
-WITH
-    TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP
-WITH
-    TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
 -- Soft delete support
 deleted_at TIMESTAMP WITH TIME ZONE,
@@ -214,3 +210,11 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 COMMENT ON FUNCTION validate_medication_structure IS 'Validates that medications JSONB has correct structure';
 
 COMMENT ON FUNCTION validate_allergies_structure IS 'Validates that allergies JSONB is an array of strings';
+
+ALTER TABLE care_plans
+    ADD CONSTRAINT care_plans_medications_valid
+    CHECK (validate_medication_structure(medications));
+
+ALTER TABLE care_plans
+    ADD CONSTRAINT care_plans_allergies_valid
+    CHECK (validate_allergies_structure(allergies));

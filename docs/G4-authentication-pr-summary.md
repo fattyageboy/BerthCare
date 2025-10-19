@@ -172,6 +172,7 @@ Authenticate user and issue tokens.
 ```
 
 **Response (200):**
+```json
 {
   "data": {
     "accessToken": "jwt-token",
@@ -186,6 +187,7 @@ Authenticate user and issue tokens.
     }
   }
 }
+```
 
 ### POST /v1/auth/refresh
 
@@ -277,7 +279,7 @@ Authorization: Bearer <access-token>
 - `apps/backend/src/routes/auth.routes.ts` - Authentication endpoints
 - `apps/backend/src/middleware/auth.ts` - JWT authentication middleware
 - `apps/backend/src/middleware/validation.ts` - Input validation middleware
-- `apps/backend/src/middleware/rate-limiter.ts` - Rate limiting middleware
+- `apps/backend/src/middleware/rate-limiter.ts` - Rate-limiting middleware
 - `apps/backend/src/db/migrations/001_create_users_auth.sql` - Database schema
 - `apps/backend/src/db/migrations/001_create_users_auth-down.sql` - Rollback script
 - `libs/shared/src/jwt-utils.ts` - JWT token utilities

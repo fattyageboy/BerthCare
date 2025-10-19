@@ -98,9 +98,6 @@ CREATE INDEX IF NOT EXISTS idx_users_zone_id ON users(zone_id) WHERE deleted_at 
 -- Fast lookup by role for authorization checks
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role) WHERE deleted_at IS NULL AND is_active = true;
 
--- Fast lookup for active users (common filter)
-CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active) WHERE deleted_at IS NULL AND is_active = true;
-
 -- Composite index for zone + role queries (common in coordinator dashboards)
 CREATE INDEX IF NOT EXISTS idx_users_zone_role ON users(zone_id, role) WHERE deleted_at IS NULL AND is_active = true;
 

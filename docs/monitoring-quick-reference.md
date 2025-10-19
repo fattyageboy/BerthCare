@@ -6,15 +6,15 @@ Quick reference guide for BerthCare monitoring and observability tools.
 
 ### CloudWatch
 
-- **Dashboard:** https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashboards:name=BerthCare-API-Performance-staging
-- **Logs:** https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#logsV2:log-groups
-- **Alarms:** https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#alarmsV2:
+- **Dashboard:** <https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashboards:name=BerthCare-API-Performance-staging>
+- **Logs:** <https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#logsV2:log-groups>
+- **Alarms:** <https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#alarmsV2:>
 
 ### Sentry
 
-- **Dashboard:** https://sentry.io/organizations/berthcare/
-- **Backend Issues:** https://sentry.io/organizations/berthcare/issues/?project=berthcare-backend-staging
-- **Mobile Issues:** https://sentry.io/organizations/berthcare/issues/?project=berthcare-mobile-staging
+- **Dashboard:** <https://sentry.io/organizations/berthcare/>
+- **Backend Issues:** <https://sentry.io/organizations/berthcare/issues/?project=berthcare-backend-staging>
+- **Mobile Issues:** <https://sentry.io/organizations/berthcare/issues/?project=berthcare-mobile-staging>
 
 ## 📊 Key Metrics
 
@@ -71,7 +71,7 @@ Quick reference guide for BerthCare monitoring and observability tools.
 
 ### CloudWatch Insights
 
-**Top 10 Errors (Last Hour)**
+#### Top 10 Errors (Last Hour)
 
 ```
 fields @timestamp, @message
@@ -81,7 +81,7 @@ fields @timestamp, @message
 | limit 10
 ```
 
-**Slow API Requests (>2s)**
+#### Slow API Requests (>2s)
 
 ```
 fields @timestamp, context.path, context.duration
@@ -90,7 +90,7 @@ fields @timestamp, context.path, context.duration
 | limit 20
 ```
 
-**User Activity**
+#### User Activity
 
 ```
 fields @timestamp, context.userId, context.action
@@ -98,7 +98,7 @@ fields @timestamp, context.userId, context.action
 | sort @timestamp desc
 ```
 
-**Error Rate by Endpoint**
+#### Error Rate by Endpoint
 
 ```
 fields @timestamp, context.path
@@ -107,7 +107,7 @@ fields @timestamp, context.path
 | sort errors desc
 ```
 
-**Database Query Performance**
+#### Database Query Performance
 
 ```
 fields @timestamp, context.query, context.duration
@@ -118,13 +118,13 @@ fields @timestamp, context.query, context.duration
 
 ### AWS CLI Commands
 
-**Tail API Logs**
+#### Tail API Logs
 
 ```bash
 aws logs tail /aws/ecs/staging/berthcare-api --follow --region ca-central-1
 ```
 
-**Query Recent Errors**
+#### Query Recent Errors
 
 ```bash
 aws logs filter-log-events \
@@ -133,7 +133,7 @@ aws logs filter-log-events \
   --region ca-central-1
 ```
 
-**Check Alarm Status**
+#### Check Alarm Status
 
 ```bash
 aws cloudwatch describe-alarms \
@@ -141,7 +141,7 @@ aws cloudwatch describe-alarms \
   --region ca-central-1
 ```
 
-**Test Alarm**
+#### Test Alarm
 
 ```bash
 aws cloudwatch set-alarm-state \
@@ -242,28 +242,28 @@ aws secretsmanager get-secret-value \
 
 ### Severity Levels
 
-**P0 - Critical (Immediate)**
+#### P0 - Critical (Immediate)
 
 - Complete service outage
 - Data loss or corruption
 - Security breach
 - Contact: On-call engineer + CTO
 
-**P1 - High (Within 1 hour)**
+#### P1 - High (Within 1 hour)
 
 - Partial service outage
 - Error rate >10%
 - Database down
 - Contact: On-call engineer
 
-**P2 - Medium (Within 4 hours)**
+#### P2 - Medium (Within 4 hours)
 
 - Performance degradation
 - Error rate >5%
 - Non-critical feature broken
 - Contact: Engineering team
 
-**P3 - Low (Next business day)**
+#### P3 - Low (Next business day)
 
 - Minor bugs
 - Slow queries

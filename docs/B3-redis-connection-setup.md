@@ -767,8 +767,8 @@ apps/backend/src/
 - Task Plan: `project-documentation/task-plan.md` (B3)
 - Architecture Blueprint: `project-documentation/architecture-output.md` (Redis section)
 - Redis Documentation: https://redis.io/docs/
-- ioredis npm package: https://www.npmjs.com/package/ioredis
-- connect-redis npm package: https://www.npmjs.com/package/connect-redis
+- ioredis npm package: [ioredis](https://www.npmjs.com/package/ioredis)
+- connect-redis npm package: [connect-redis](https://www.npmjs.com/package/connect-redis)
 - Local Setup Guide: `docs/E4-local-setup.md`
 
 ## Notes

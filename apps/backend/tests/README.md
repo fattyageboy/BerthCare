@@ -79,6 +79,13 @@ npm test -- auth.register.test.ts
 npm test -- --testNamePattern="Successful Registration"
 ```
 
+## Worker Isolation & Parallelism
+
+- Jest workers derive an isolated PostgreSQL schema and Redis logical database from `JEST_WORKER_ID`. The default Redis ceiling is 16 logical DBs (`0-15`); override with `TEST_REDIS_DB_LIMIT` if your Redis deployment exposes a different count.
+- `tests/setup.ts` flushes the worker-specific Redis DB before the first suite and again at global teardown. Each suite still calls `flushDb` in `setupTestConnections` to ensure clean state between tests.
+- PostgreSQL schemas are created per worker with unique suffixes and dropped after each suite; any leftover schemas with the `test_schema_w{worker}_*` prefix are removed automatically during teardown.
+- CI pipelines must ensure `JEST_WORKER_ID` is exported when invoking Jest manually. Jest sets this automatically per worker, so explicit exports are only required when overriding the worker count or running through custom wrappers.
+
 ## Test Database Setup
 
 The tests automatically create required tables if they don't exist. However, for best results:

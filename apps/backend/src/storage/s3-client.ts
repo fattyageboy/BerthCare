@@ -21,6 +21,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  NotFound,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -60,7 +61,7 @@ export const S3_BUCKETS = {
 export const FILE_CONFIGS = {
   PHOTO: {
     maxSize: 10 * 1024 * 1024, // 10MB
-    allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
+    allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
     bucket: S3_BUCKETS.PHOTOS,
   },
   DOCUMENT: {
@@ -330,7 +331,7 @@ export async function objectExists(bucket: string, key: string): Promise<boolean
     await s3Client.send(command);
     return true;
   } catch (error) {
-    if ((error as { name?: string }).name === 'NotFound') {
+    if (error instanceof NotFound) {
       return false;
     }
     logError('Failed to check object existence', error as Error, {
@@ -412,7 +413,7 @@ export async function verifyS3Connection(): Promise<boolean> {
     return true;
   } catch (error) {
     // NotFound is expected (key doesn't exist), but means bucket is accessible
-    if ((error as { name?: string }).name === 'NotFound') {
+    if (error instanceof NotFound) {
       logInfo('S3 connection verified', {
         bucket: S3_BUCKETS.PHOTOS,
         endpoint: process.env.AWS_ENDPOINT || 'AWS',

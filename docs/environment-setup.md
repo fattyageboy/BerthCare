@@ -382,9 +382,9 @@ terraform apply
 ### Tools & Services
 
 - **GitHub:** Repository and CI/CD
-- **AWS Console:** https://console.aws.amazon.com (ca-central-1)
-- **Twilio Console:** https://console.twilio.com
-- **Sentry:** https://sentry.io
+- **AWS Console:** <https://console.aws.amazon.com> (ca-central-1)
+- **Twilio Console:** <https://console.twilio.com>
+- **Sentry:** <https://sentry.io>
 
 ### Quick Reference
 

@@ -44,6 +44,7 @@ describe('Photo Upload Endpoints', () => {
   let pgPool: Pool;
   let redisClient: RedisClient;
   let app: Express;
+  let schemaName: string;
 
   let caregiverToken: string;
   let caregiverId: string;
@@ -59,6 +60,7 @@ describe('Photo Upload Endpoints', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
     app = createTestApp(pgPool, redisClient);
 
     // Create test zone
@@ -163,7 +165,7 @@ describe('Photo Upload Endpoints', () => {
 
   afterAll(async () => {
     await cleanAllTestData(pgPool, redisClient);
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   describe('POST /v1/visits/:visitId/photos/upload-url', () => {
@@ -227,7 +229,7 @@ describe('Photo Upload Endpoints', () => {
         expect(response.body).toHaveProperty('uploadUrl');
       });
 
-      it('should accept HEIC images', async () => {
+      it('should reject HEIC images (requires client-side conversion)', async () => {
         const response = await request(app)
           .post(`/api/v1/visits/${visitId}/photos/upload-url`)
           .set('Authorization', `Bearer ${caregiverToken}`)
@@ -236,9 +238,9 @@ describe('Photo Upload Endpoints', () => {
             mimeType: 'image/heic',
             fileSize: 1.5 * 1024 * 1024, // 1.5MB
           })
-          .expect(200);
+          .expect(400);
 
-        expect(response.body).toHaveProperty('uploadUrl');
+        expect(response.body.message).toContain('Invalid MIME type');
       });
 
       it('should allow coordinator to generate upload URL for any visit', async () => {

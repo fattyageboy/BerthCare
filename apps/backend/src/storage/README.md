@@ -110,39 +110,39 @@ await deletePhoto(photoKey);
 
 ### Photos
 
-```
+```text
 visits/{visitId}/photos/{timestamp}-{filename}
 ```
 
 Example:
 
-```
+```text
 visits/visit-123/photos/1696789012345-photo.jpg
 visits/visit-123/photos/1696789023456-photo2.jpg
 ```
 
 ### Documents
 
-```
+```text
 documents/{documentType}/{timestamp}-{filename}
 ```
 
 Example:
 
-```
+```text
 documents/care-plan/1696789012345-care-plan.pdf
 documents/assessment/1696789023456-assessment.pdf
 ```
 
 ### Signatures
 
-```
+```text
 visits/{visitId}/signatures/{signatureType}-{timestamp}.png
 ```
 
 Example:
 
-```
+```text
 visits/visit-123/signatures/caregiver-1696789012345.png
 visits/visit-123/signatures/client-1696789023456.png
 visits/visit-123/signatures/family-1696789034567.png
@@ -305,30 +305,30 @@ aws --endpoint-url=http://localhost:4566 s3 cp s3://berthcare-photos-dev/visits/
 
 ### Common Errors
 
-**Upload URL Expired**
+### Upload URL Expired
 
-```
+```text
 Error: Pre-signed URL has expired
 Solution: Generate new upload URL
 ```
 
-**File Too Large**
+### File Too Large
 
-```
+```text
 Error: Photo size exceeds maximum allowed size
 Solution: Compress photo before upload
 ```
 
-**Invalid MIME Type**
+### Invalid MIME Type
 
-```
+```text
 Error: Invalid MIME type: image/bmp
-Solution: Convert to supported format (JPEG, PNG, WebP, HEIC)
+Solution: Convert to supported format (JPEG, PNG, WebP). HEIC uploads must be converted before requesting an upload URL.
 ```
 
-**Bucket Not Found**
+### Bucket Not Found
 
-```
+```text
 Error: The specified bucket does not exist
 Solution: Check bucket name and AWS configuration
 ```

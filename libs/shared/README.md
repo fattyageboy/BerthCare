@@ -132,6 +132,14 @@ JWT_PUBLIC_KEY_SET={}
 JWT_KEYS_JSON=
 JWT_KEYS_SECRET_ARN=
 JWT_PUBLIC_KEY=your-rsa-public-key
+
+# Notes:
+# - JWT_KEY_ID identifies the signing key and must be set whenever you use JWKS (JWT_PUBLIC_KEY_SET) or a JSON keyset (JWT_KEYS_JSON / JWT_KEYS_SECRET_ARN).
+# - Single-key setups supply JWT_PRIVATE_KEY + JWT_PUBLIC_KEY and skip JWKS variables; multi-key setups should provide JWT_PUBLIC_KEY_SET or JWT_KEYS_JSON / JWT_KEYS_SECRET_ARN.
+# - Precedence: explicit JWT_KEYS_JSON or JWT_KEYS_SECRET_ARN (secret-managed keyset) overrides JWT_PUBLIC_KEY; if both single-key and JWKS values are provided, the JWKS/keyset is preferred.
+# - Use JWT_KEYS_SECRET_ARN to load JWKS/JSON keysets from Secrets Manager and ensure JWT_KEY_ID matches the active key in that set.
+# - JWT_PUBLIC_KEY_SET should hold a JWKS string for multi-key rotation; leave it empty when using single-key PEM values.
+# - JWT_PRIVATE_KEY is only required when signing tokens locally; consumers verifying tokens only need the corresponding public key or JWKS entry.
 ```
 
 See `.env.example` for complete configuration options.

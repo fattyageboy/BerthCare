@@ -104,7 +104,7 @@ describe('createGlobalRateLimiter', () => {
       expect(res1.headers['X-RateLimit-Remaining']).toBe('0');
 
       // Second request before window expires -> blocked
-      clock.mockReturnValue(500);
+      clock.mockReturnValue(50);
       const res2 = createResponse();
       const next2 = jest.fn();
       limiter(makeRequest('user-a'), res2, next2 as unknown as NextFunction);
@@ -115,8 +115,8 @@ describe('createGlobalRateLimiter', () => {
       expect(next2).not.toHaveBeenCalled();
 
       // Same user after window expires -> allowed again
-      clock.mockReturnValue(1500);
-      expect(Date.now()).toBe(1500);
+      clock.mockReturnValue(150);
+      expect(Date.now()).toBe(150);
       const res3 = createResponse();
       const next3 = jest.fn();
       limiter(makeRequest('user-a'), res3, next3 as unknown as NextFunction);

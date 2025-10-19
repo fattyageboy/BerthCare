@@ -56,7 +56,7 @@ Implemented the user login endpoint that authenticates users and issues JWT toke
 ### Security Features
 
 1. **Rate Limiting**
-  - 10 login attempts per 15 minutes
+   - 10 login attempts per 15 minutes
    - Prevents brute force attacks
    - Applies to both successful and failed attempts
    - Redis-backed for distributed rate limiting
@@ -117,7 +117,7 @@ Already implemented `createLoginRateLimiter`:
 
 Comprehensive integration tests covering:
 
-**Successful Login (5 tests)**
+### Successful Login (5 tests)
 
 - Valid credentials
 - Case-insensitive email
@@ -125,44 +125,44 @@ Comprehensive integration tests covering:
 - coordinator login
 - Admin login
 
-**Invalid Credentials (5 tests)**
+### Invalid Credentials (5 tests)
 
 - Non-existent email
 - Incorrect password
 - Disabled account
 - No information leakage about email existence
 
-**Email Format Validation (3 tests)**
+### Email Format Validation (3 tests)
 
 - Invalid email format
 - Email without domain
 - Email without @
 
-**Required Field Validation (3 tests)**
+### Required Field Validation (3 tests)
 
 - Missing email
 - Missing password
 - Missing deviceId
 
-**Rate Limiting (4 tests)**
+### Rate Limiting (4 tests)
 
 - Allow 10 attempts per 15 minutes
 - Block 11th attempt with 429
 - Rate limit failed attempts
 - Include rate limit headers
 
-**Security (3 tests)**
+### Security (3 tests)
 
 - Hash refresh token before storing
 - Constant-time password comparison
 - 30-day refresh token expiry
 
-**Token Generation (2 tests)**
+### Token Generation (2 tests)
 
 - Different tokens for each login
 - Correct user data in access token
 
-**Total: 25 integration tests**
+### Total: 25 integration tests
 
 ### 2. `docs/A5-login-endpoint.md`
 

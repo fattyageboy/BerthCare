@@ -127,7 +127,7 @@ jobs:
           POSTGRES_PASSWORD: berthcare_test_password
 
       - name: Run tests with coverage (backend only)
-        run: timeout 10m npx nx run backend:test --ci --coverage --maxWorkers=1
+        run: timeout 10m npx nx run backend:test --ci --coverage
         continue-on-error: false
         env:
           TEST_DATABASE_URL: postgresql://berthcare:berthcare_test_password@localhost:5432/berthcare_test
@@ -245,7 +245,8 @@ jobs:
       - name: Check build artifacts
         run: |
           if [ ! -d "dist" ] && [ ! -d "apps/backend/dist" ]; then
-            echo "Warning: No build artifacts found"
+            echo "::error::No build artifacts found"
+            exit 1
           fi
 
   # Job 7: CI Summary
@@ -270,6 +271,7 @@ jobs:
           needs.code-quality.result == 'failure' ||
           needs.type-check.result == 'failure' ||
           needs.test.result == 'failure' ||
+          needs.security-sast.result == 'failure' ||
           needs.dependency-audit.result == 'failure' ||
           needs.build.result == 'failure'
         run: exit 1

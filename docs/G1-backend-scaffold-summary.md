@@ -71,7 +71,7 @@ Successfully created the backend scaffold feature branch and implemented all cor
 **Configuration:**
 
 - Library: `redis` (v4.x)
-  - Note: project uses the official `redis` v4 client (promise-based API). See https://www.npmjs.com/package/redis for docs.
+- Note: project uses the official `redis` v4 client (promise-based API). See [redis package docs](https://www.npmjs.com/package/redis) for docs.
 - Connection URL from `REDIS_URL` env variable
 - Automatic connection on startup
 - Health check: `PING` command

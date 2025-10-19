@@ -36,7 +36,8 @@ Before starting, gather:
 
 ### 2. Budget Planning
 
-**Estimated Monthly Costs:**
+**Estimated Monthly Costs (Canada Region - ca-central-1):**
+Rates may vary by region; verify current pricing via [Twilio's pricing page](https://www.twilio.com/en-ca/pricing) before budgeting.
 
 | Service       | Usage                            | Cost           |
 | ------------- | -------------------------------- | -------------- |
@@ -501,7 +502,13 @@ Restrict calls/SMS to Canada and US only (security + cost control):
 
 ### 8.3 Enable Call Recording (Optional)
 
-**Important:** Call recording has privacy implications. Consult legal team before enabling.
+**Important:** Call recording has privacy and compliance implications:
+- **PIPEDA (Canada):** Must obtain explicit written consent from all parties before recording
+- **GDPR (if applicable):** Requires legal basis and explicit consent
+- **Healthcare Privacy:** Coordinate with Privacy Officer before implementing
+- **Audit & Retention:** Define retention period and secure storage requirements
+
+Recommendation: Consult Privacy Officer and Legal Team before enabling.
 
 ```bash
 # If approved, configure in code:

@@ -63,7 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_visit_documentation_activities ON visit_documenta
 -- ============================================================================
 -- Automatic timestamp management for updated_at column
 
--- Ensure the timestamp update helper exists (idempotent)
+-- Reuses or creates the shared update_updated_at_column helper (introduced in 001_create_users_auth.sql) via CREATE OR REPLACE to ensure it exists for idempotent reuse
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -72,7 +72,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger for visit_documentation table (reuses function from 001_create_users_auth.sql)
+-- Trigger for visit_documentation table (uses the idempotently defined shared update function above)
 CREATE TRIGGER update_visit_documentation_updated_at
     BEFORE UPDATE ON visit_documentation
     FOR EACH ROW

@@ -23,8 +23,15 @@ import {
   initSentry,
   configureSentryMiddleware,
   configureSentryErrorHandler,
+  captureMessage,
 } from './config/sentry';
-import { primaryPool, replicaPool, getReadPool } from './db/pool';
+import {
+  primaryPool,
+  replicaPool,
+  getReplicaHealth,
+  markReplicaHealthy,
+  markReplicaUnhealthy,
+} from './db/pool';
 
 // Load environment variables
 dotenv.config();
@@ -88,6 +95,7 @@ app.get('/health', async (_req, res) => {
     services: {
       postgres: 'unknown',
       redis: 'unknown',
+      readReplica: replicaPool ? 'unknown' : 'not_configured',
     },
   };
 
@@ -109,6 +117,10 @@ app.get('/health', async (_req, res) => {
     health.services.redis = 'disconnected';
     health.status = 'degraded';
     logError('Redis health check failed', error as Error);
+  }
+
+  if (replicaPool) {
+    health.services.readReplica = getReplicaHealth();
   }
 
   const statusCode = health.status === 'ok' ? 200 : 503;
@@ -205,11 +217,17 @@ async function startServer() {
 
     if (replicaPool) {
       try {
-        await getReadPool().query('SELECT 1');
+        await replicaPool.query('SELECT 1');
+        markReplicaHealthy();
         logInfo('Read replica connectivity verified');
       } catch (error) {
-        logWarn('Read replica verification failed', {
-          error: error instanceof Error ? error.message : String(error),
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        markReplicaUnhealthy();
+        logWarn('Read replica verification failed; routing read traffic to primary', {
+          error: errorMessage,
+        });
+        captureMessage('Read replica connectivity verification failed', 'warning', {
+          error: errorMessage,
         });
       }
     }

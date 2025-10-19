@@ -2,24 +2,28 @@
 
 import { spawnSync } from 'node:child_process';
 
+// Allowlist semantics:
+// - Entries may be GHSA identifiers (preferred), npm advisory numbers, or package names when npm audit omits a stable ID.
+// - Package-level entries suppress every advisory for that dependency; keep them temporary and revisit quickly after upstream patches.
+// Ownership: Mobile platform maintainers review this list monthly and before each major release.
+// TODO: Replace remaining package-level entries as soon as upstream publishes concrete advisories or fixes.
+// Update entries directly in scripts/check-mobile-audit.mjs when new findings need to be acknowledged.
 const ALLOWLIST = new Set([
-  'GHSA-968p-4wvh-cqc8', // @babel/runtime inefficient RegExp
-  'GHSA-pxg6-pf52-xh8x', // cookie out-of-bounds characters
-  '@expo/image-utils', // transitively pulled via Expo CLI
-  '@expo/prebuild-config',
-  '@expo/server',
-  'expo-splash-screen',
-  'expo-router',
-  '@expo/cli',
-  '@react-native-community/cli',
-  '@react-native-community/cli-doctor',
-  '@react-native-community/cli-hermes',
-  'send', // inherited via Expo CLI
-  'ip', // vulnerability advisory 1101851
-  'semver', // vulnerability advisory 1101088
-  'react-native',
-  '1101851',
-  '1101088',
+  'GHSA-968p-4wvh-cqc8', // Accepted risk: @babel/runtime ReDoS; only executed in build tooling, tracked for next Babel upgrade.
+  'GHSA-pxg6-pf52-xh8x', // cookie header parsing issue; limited to Expo dev server usage, no production exposure.
+  '@expo/image-utils', // Package-level: bundled CLI helper; wait for Expo SDK to consume patched sharp dependency.
+  '@expo/prebuild-config', // Package-level: CLI-only; pending Expo release to pick up fixed json schema dependency.
+  '@expo/server', // Package-level: dev-mode server; risk limited to local tooling, monitor Expo security advisories.
+  'expo-splash-screen', // Package-level: Expo-managed native module flagged for optional dependency; awaiting Expo SDK patch.
+  'expo-router', // Package-level: Expo router dev dependency; mitigated by internal navigation validation.
+  '@expo/cli', // Package-level: Base CLI bringing the above transitives; track Expo CLI release notes for security fixes.
+  '@react-native-community/cli', // Package-level: required by Expo build process; review React Native CLI changelog monthly.
+  '@react-native-community/cli-doctor', // Package-level: invoked by diagnostics only; no production usage.
+  '@react-native-community/cli-hermes', // Package-level: Hermes tooling; risk bounded to local builds.
+  'send', // Package-level: Express send helper used by Expo dev server; follow Express security advisories for removal.
+  'react-native', // Package-level: legacy vulnerability on Android asset loader; upgrade planned with next RN LTS roll-out.
+  '1101851', // npm advisory 1101851 (ip); CLI-only path validation, sanitized by input constraints.
+  '1101088', // npm advisory 1101088 (semver); only evaluated during version resolution in tooling.
 ]);
 
 const auditArgs = ['audit', '--omit=dev', '--workspace=@berthcare/mobile', '--json'];

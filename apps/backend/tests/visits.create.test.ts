@@ -41,6 +41,7 @@ describe('POST /v1/visits', () => {
   let pgPool: Pool;
   let redisClient: RedisClient;
   let app: Express;
+  let schemaName: string;
 
   let caregiverToken: string;
   let caregiverId: string;
@@ -52,6 +53,7 @@ describe('POST /v1/visits', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
     app = createTestApp(pgPool, redisClient);
 
     // Create test zone
@@ -123,7 +125,7 @@ describe('POST /v1/visits', () => {
 
   afterAll(async () => {
     await cleanAllTestData(pgPool, redisClient);
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   describe('Successful visit creation', () => {
@@ -284,6 +286,36 @@ describe('POST /v1/visits', () => {
           scheduledStartTime,
           checkInTime: '2025-10-15T09:10:00Z',
         });
+
+      expect(conflictResponse.status).toBe(409);
+      expect(conflictResponse.body.error).toBe('Conflict');
+      expect(conflictResponse.body.message).toContain('time slot');
+    });
+
+    it('should return 409 when the scheduled slots overlap for the same client', async () => {
+      const firstVisit = {
+        clientId,
+        scheduledStartTime: '2025-10-16T09:00:00Z',
+        scheduledEndTime: '2025-10-16T10:00:00Z',
+      };
+
+      const secondVisit = {
+        clientId,
+        scheduledStartTime: '2025-10-16T09:30:00Z',
+        scheduledEndTime: '2025-10-16T10:30:00Z',
+      };
+
+      const firstResponse = await request(app)
+        .post('/api/v1/visits')
+        .set('Authorization', `Bearer ${caregiverToken}`)
+        .send(firstVisit);
+
+      expect(firstResponse.status).toBe(201);
+
+      const conflictResponse = await request(app)
+        .post('/api/v1/visits')
+        .set('Authorization', `Bearer ${caregiverToken}`)
+        .send(secondVisit);
 
       expect(conflictResponse.status).toBe(409);
       expect(conflictResponse.body.error).toBe('Conflict');

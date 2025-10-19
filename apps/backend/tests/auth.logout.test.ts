@@ -18,25 +18,22 @@ import request from 'supertest';
 
 import { generateAccessToken, generateRefreshToken } from '@berthcare/shared';
 
-import { createRedisClient, RedisClient } from '../src/cache/redis-client';
+import { RedisClient } from '../src/cache/redis-client';
 import { createAuthRoutes } from '../src/routes/auth.routes';
+
+import { setupTestConnections, teardownTestConnections } from './test-helpers';
 
 describe('POST /v1/auth/logout', () => {
   let app: Express;
   let pgPool: Pool;
   let redisClient: RedisClient;
+  let schemaName: string;
 
   beforeAll(async () => {
-    // Initialize PostgreSQL connection
-    pgPool = new Pool({
-      connectionString: process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL,
-    });
-
-    // Initialize Redis connection
-    redisClient = createRedisClient({
-      url: process.env.TEST_REDIS_URL ?? process.env.REDIS_URL ?? 'redis://localhost:6379',
-    });
-    await redisClient.connect();
+    const connections = await setupTestConnections();
+    pgPool = connections.pgPool;
+    redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
 
     // Create Express app
     app = express();
@@ -49,16 +46,11 @@ describe('POST /v1/auth/logout', () => {
   });
 
   afterAll(async () => {
-    await pgPool.end();
-    await redisClient.quit();
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   beforeEach(async () => {
-    // Clear Redis test data
-    const keys = await redisClient.keys('token:blacklist:*');
-    if (keys.length > 0) {
-      await redisClient.del(keys);
-    }
+    await redisClient.flushDb();
 
     // Clear test refresh tokens from database
     const client = await pgPool.connect();
@@ -159,6 +151,7 @@ describe('POST /v1/auth/logout', () => {
           role: 'coordinator',
           zoneId: '00000000-0000-0000-0000-000000000000',
           email: 'test-logout-2@example.com',
+          deviceId: 'test-device-id',
         });
 
         await request(app)

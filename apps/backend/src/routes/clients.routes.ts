@@ -33,6 +33,7 @@ import { authenticateJWT, AuthenticatedRequest, requireRole } from '../middlewar
 import { validateCreateClient, validateUpdateClient } from '../middleware/validation';
 import { GeocodingService, GeocodingError } from '../services/geocoding.service';
 import { ZoneAssignmentService, ZoneAssignmentError } from '../services/zone-assignment.service';
+import { formatDateOnly, formatDateTime } from '../utils/date';
 
 /**
  * Client list response item
@@ -41,7 +42,7 @@ interface ClientListItem {
   id: string;
   firstName: string;
   lastName: string;
-  dateOfBirth: string;
+  dateOfBirth: string | null;
   address: string;
   latitude: number;
   longitude: number;
@@ -60,48 +61,41 @@ interface PaginationMeta {
   totalPages: number;
 }
 
-function formatDateOnly(value: unknown): string {
-  if (value instanceof Date) {
-    return value.toISOString().split('T')[0];
+export function calculateVisitDuration(
+  checkInTime: string | Date | null,
+  checkOutTime: string | Date | null,
+  durationMinutes: number | null | undefined
+): {
+  duration: number;
+  checkInIso: string | null;
+  checkOutIso: string | null;
+} {
+  const checkInIso = formatDateTime(checkInTime);
+  const checkOutIso = formatDateTime(checkOutTime);
+
+  if (typeof durationMinutes === 'number' && Number.isFinite(durationMinutes)) {
+    return {
+      duration: durationMinutes,
+      checkInIso,
+      checkOutIso,
+    };
   }
 
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString().split('T')[0];
-    }
-    return value;
+  if (checkInIso && checkOutIso) {
+    const diffMs = new Date(checkOutIso).getTime() - new Date(checkInIso).getTime();
+    const duration = Math.max(0, Math.floor(diffMs / 60000));
+    return {
+      duration,
+      checkInIso,
+      checkOutIso,
+    };
   }
 
-  return '';
-}
-
-function formatDateTime(value: unknown): string | null {
-  if (!value) {
-    return null;
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-
-  if (typeof value === 'number') {
-    // Numeric timestamps are expected in milliseconds; normalize second-based values for clarity.
-    const normalizedValue = value < 1_000_000_000_000 ? value * 1000 : value;
-    const parsed = new Date(normalizedValue);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  return null;
+  return {
+    duration: 0,
+    checkInIso,
+    checkOutIso,
+  };
 }
 
 export function createClientRoutes(pgPool: Pool, redisClient: RedisClient): Router {
@@ -1149,18 +1143,21 @@ export function createClientRoutes(pgPool: Pool, redisClient: RedisClient): Rout
       // Transform database results to API response format
       const clients: ClientListItem[] = dataResult.rows.map((row) => {
         const { last_visit_date: lastVisitRaw, next_scheduled_visit: nextVisitRaw } = row;
+        const formattedDob = formatDateOnly(row.date_of_birth);
+        const formattedLastVisit = formatDateTime(lastVisitRaw);
+        const formattedNextVisit = formatDateTime(nextVisitRaw);
 
         return {
           id: row.id,
           firstName: row.first_name,
           lastName: row.last_name,
-          dateOfBirth: row.date_of_birth,
+          dateOfBirth: formattedDob,
           address: row.address,
           latitude: parseFloat(row.latitude),
           longitude: parseFloat(row.longitude),
           carePlanSummary: row.care_plan_summary,
-          lastVisitDate: lastVisitRaw ? new Date(lastVisitRaw).toISOString() : null,
-          nextScheduledVisit: nextVisitRaw ? new Date(nextVisitRaw).toISOString() : null,
+          lastVisitDate: formattedLastVisit,
+          nextScheduledVisit: formattedNextVisit,
         };
       });
 
@@ -1399,28 +1396,14 @@ export function createClientRoutes(pgPool: Pool, redisClient: RedisClient): Rout
       );
 
       const recentVisits = recentVisitsResult.rows.map((visit) => {
-        const checkInIso = formatDateTime(visit.check_in_time);
+        const { duration, checkInIso, checkOutIso } = calculateVisitDuration(
+          visit.check_in_time,
+          visit.check_out_time,
+          visit.duration_minutes
+        );
+
         const scheduledIso = formatDateTime(visit.scheduled_start_time);
-        const checkOutIso = formatDateTime(visit.check_out_time);
-
         const visitDate = checkInIso ?? scheduledIso ?? new Date().toISOString();
-
-        const durationFromColumns =
-          typeof visit.duration_minutes === 'number' && Number.isFinite(visit.duration_minutes)
-            ? visit.duration_minutes
-            : null;
-
-        const computedDuration =
-          checkInIso && checkOutIso
-            ? Math.max(
-                0,
-                Math.floor(
-                  (new Date(checkOutIso).getTime() - new Date(checkInIso).getTime()) / 60000
-                )
-              )
-            : 0;
-
-        const duration = durationFromColumns !== null ? durationFromColumns : computedDuration;
 
         const staffName = [visit.staff_first_name, visit.staff_last_name]
           .filter((part) => typeof part === 'string' && part.trim().length > 0)

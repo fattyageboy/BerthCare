@@ -12,13 +12,22 @@ const baseOptions: RedisOptions = {
   },
 };
 
+type CreateRedisClientOptions = RedisOptions & { url?: string };
+
 export type RedisClient = Redis & {
   setEx: (key: string, seconds: number, value: string) => Promise<'OK' | null>;
   flushDb: () => Promise<'OK'>;
 };
 
-export function createRedisClient(options: Partial<RedisOptions> = {}): RedisClient {
-  const redis = new Redis(redisUrl, { ...baseOptions, ...options }) as RedisClient;
+export function createRedisClient(options: Partial<CreateRedisClientOptions> = {}): RedisClient {
+  const { url, ...connectionOptions } = options;
+  const connectionUrl = url ?? redisUrl;
+
+  const redis = new Redis(connectionUrl, {
+    ...baseOptions,
+    ...connectionOptions,
+  }) as RedisClient;
+
   redis.setEx = (key: string, seconds: number, value: string) => redis.setex(key, seconds, value);
   redis.flushDb = () => redis.flushdb();
 

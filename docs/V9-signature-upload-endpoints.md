@@ -14,7 +14,7 @@
 
 ## Overview
 
-Implemented the signature upload flow using S3 pre-signed URLs for secure, direct-to-S3 uploads. This two-step process generates a pre-signed URL for the mobile app to upload digital signatures directly to S3, then records the signature URL in the visit documentation. Supports caregiver, client, and family signatures with file size validation (max 1MB).
+Implemented the signature upload flow using S3 pre-signed URLs for secure, direct-to-S3 uploads. This two-step process generates a pre-signed URL for the mobile app to upload digital signatures directly to S3, then records the signature URL in the appropriate slot on the visit documentation. Supports caregiver, client, and family signatures with file size validation (max 1MB) so each visit can maintain distinct signatures per role.
 
 ---
 
@@ -34,7 +34,7 @@ Implemented the signature upload flow using S3 pre-signed URLs for secure, direc
 
 ```typescript
 {
-  signatureType: string; // Required - Type of signature ('caregiver', 'client', 'family')
+  signatureSlot: 'caregiver' | 'client' | 'family'; // Required - Slot to populate
   fileSize: number; // Required - File size in bytes (max 1MB)
 }
 ```
@@ -45,6 +45,7 @@ Implemented the signature upload flow using S3 pre-signed URLs for secure, direc
 {
   uploadUrl: string; // Pre-signed S3 URL (expires in 10 minutes)
   signatureKey: string; // S3 object key for later reference
+  signatureSlot: 'caregiver' | 'client' | 'family'; // Slot the upload will populate
   expiresAt: string; // ISO 8601 timestamp when URL expires
 }
 ```
@@ -63,8 +64,9 @@ Implemented the signature upload flow using S3 pre-signed URLs for secure, direc
 
 ```typescript
 {
-  signatureKey: string; // Required - S3 object key from upload-url endpoint
-  signatureType: string; // Required - Type of signature ('caregiver', 'client', 'family')
+  caregiverSignatureKey?: string; // Optional - provide to replace caregiver slot
+  clientSignatureKey?: string; // Optional - provide to replace client slot
+  familySignatureKey?: string; // Optional - provide to replace family slot
 }
 ```
 
@@ -72,9 +74,11 @@ Implemented the signature upload flow using S3 pre-signed URLs for secure, direc
 
 ```typescript
 {
-  signatureUrl: string; // Full S3 URL
-  signatureType: string; // Type of signature
-  uploadedAt: string; // ISO 8601 timestamp
+  visitId: string; // Visit the signature is attached to
+  caregiverSignatureUrl?: string; // Populated if caregiver slot was updated
+  clientSignatureUrl?: string; // Populated if client slot was updated
+  familySignatureUrl?: string; // Populated if family slot was updated
+  slotUpdatedAt: string; // ISO 8601 timestamp for the slot update
 }
 ```
 
@@ -99,7 +103,7 @@ curl -X POST http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3e
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "signatureType": "caregiver",
+    "signatureSlot": "caregiver",
     "fileSize": 524288
   }'
 ```
@@ -110,6 +114,7 @@ curl -X POST http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3e
 {
   "uploadUrl": "https://berthcare-signatures-dev.s3.ca-central-1.amazonaws.com/visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba/signatures/caregiver-1760246409476.png?X-Amz-Algorithm=...",
   "signatureKey": "visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba/signatures/caregiver-1760246409476.png",
+  "signatureSlot": "caregiver",
   "expiresAt": "2025-10-12T06:30:09.476Z"
 }
 ```
@@ -130,8 +135,7 @@ curl -X POST http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3e
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "signatureKey": "visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba/signatures/caregiver-1760246409476.png",
-    "signatureType": "caregiver"
+    "caregiverSignatureKey": "visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba/signatures/caregiver-1760246409476.png"
   }'
 ```
 
@@ -139,9 +143,9 @@ curl -X POST http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3e
 
 ```json
 {
-  "signatureUrl": "https://berthcare-signatures-dev.s3.ca-central-1.amazonaws.com/visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba/signatures/caregiver-1760246409476.png",
-  "signatureType": "caregiver",
-  "uploadedAt": "2025-10-12T05:20:09.575Z"
+  "visitId": "786bd901-f1bb-48e4-96d9-af0cd3ee84ba",
+  "caregiverSignatureUrl": "https://berthcare-signatures-dev.s3.ca-central-1.amazonaws.com/visits/786bd901-f1bb-48e4-96d9-af0cd3ee84ba/signatures/caregiver-1760246409476.png",
+  "slotUpdatedAt": "2025-10-12T05:20:09.575Z"
 }
 ```
 
@@ -155,7 +159,7 @@ curl -X POST http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3e
 
 - Generates secure, time-limited S3 upload URLs
 - Validates file size (max 1MB)
-- Validates signature type (caregiver, client, family)
+- Validates requested signature slot (`caregiver`, `client`, `family`)
 - Includes metadata in S3 object
 - Short expiration (10 minutes) for security
 
@@ -169,9 +173,9 @@ curl -X POST http://localhost:3000/api/v1/visits/786bd901-f1bb-48e4-96d9-af0cd3e
 **Implementation:**
 
 ```typescript
-const { url, key } = await generateSignatureUploadUrl(visitId, signatureType, userId);
+const { url, key, slot } = await generateSignatureUploadUrl(visitId, 'caregiver', userId);
 
-// Key format: visits/{visitId}/signatures/{signatureType}-{timestamp}.png
+// Key format: visits/{visitId}/signatures/{slot}-{timestamp}.png
 // Example: visits/786bd901.../signatures/caregiver-1760246409476.png
 ```
 
@@ -179,9 +183,10 @@ const { url, key } = await generateSignatureUploadUrl(visitId, signatureType, us
 
 **Functionality:**
 
-- Records signature URL in visit_documentation table
+- Records signature URLs in dedicated columns on the `visit_documentation` table
 - Links signature to visit
 - Updates existing documentation or creates new record
+- Tracks which slot changed most recently
 - Generates full S3 URLs for easy access
 - Invalidates visit detail cache
 
@@ -190,12 +195,26 @@ const { url, key } = await generateSignatureUploadUrl(visitId, signatureType, us
 ```sql
 -- Update existing documentation
 UPDATE visit_documentation
-SET signature_url = $1, updated_at = CURRENT_TIMESTAMP
-WHERE visit_id = $2
+SET caregiver_signature_url = COALESCE($1, caregiver_signature_url),
+    client_signature_url = COALESCE($2, client_signature_url),
+    family_signature_url = COALESCE($3, family_signature_url),
+    caregiver_signature_uploaded_at = COALESCE($4, caregiver_signature_uploaded_at),
+    client_signature_uploaded_at = COALESCE($5, client_signature_uploaded_at),
+    family_signature_uploaded_at = COALESCE($6, family_signature_uploaded_at),
+    updated_at = CURRENT_TIMESTAMP
+WHERE visit_id = $7;
 
 -- Or create new documentation
-INSERT INTO visit_documentation (visit_id, signature_url)
-VALUES ($1, $2)
+INSERT INTO visit_documentation (
+  visit_id,
+  caregiver_signature_url,
+  client_signature_url,
+  family_signature_url,
+  caregiver_signature_uploaded_at,
+  client_signature_uploaded_at,
+  family_signature_uploaded_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7);
 ```
 
 ### 3. File Size Validation
@@ -247,9 +266,9 @@ VALUES ($1, $2)
 - High-resolution signature: 500KB-1MB
 - Compressed PNG with transparency
 
-### 4. Signature Type Validation
+### 4. Signature Slot Validation
 
-**Supported Types:**
+**Supported Slots:**
 
 - `caregiver` - Caregiver's signature confirming service delivery
 - `client` - Client's signature acknowledging service
@@ -258,11 +277,23 @@ VALUES ($1, $2)
 **Implementation:**
 
 ```typescript
-const validTypes = ['caregiver', 'client', 'family'];
-if (!validTypes.includes(signatureType)) {
+const validSlots = ['caregiver', 'client', 'family'] as const;
+
+if (!validSlots.includes(signatureSlot)) {
   return res.status(400).json({
     error: 'Bad Request',
-    message: `Invalid signatureType. Allowed types: ${validTypes.join(', ')}`,
+    message: `Invalid signatureSlot. Allowed slots: ${validSlots.join(', ')}`,
+  });
+}
+
+const payloadKeys = Object.keys(req.body).filter((key) =>
+  ['caregiverSignatureKey', 'clientSignatureKey', 'familySignatureKey'].includes(key)
+);
+
+if (payloadKeys.length === 0) {
+  return res.status(400).json({
+    error: 'Bad Request',
+    message: 'Provide at least one signature slot to update.',
   });
 }
 ```
@@ -352,8 +383,8 @@ await redisClient.del(cacheKeyPattern);
 - ✅ Generate pre-signed URL for family signature
 - ✅ Allow coordinator to generate URL
 - ✅ Reject file size exceeding 1MB
-- ✅ Reject invalid signature type
-- ✅ Reject missing signatureType
+- ✅ Reject invalid signatureSlot value
+- ✅ Reject missing signatureSlot
 - ✅ Reject missing fileSize
 - ✅ Reject invalid visitId format
 - ✅ Reject unauthenticated requests
@@ -366,8 +397,8 @@ await redisClient.del(cacheKeyPattern);
 - ✅ Update existing documentation with signature
 - ✅ Allow coordinator to record signature
 - ✅ Generate correct S3 URL
-- ✅ Reject missing signatureKey
-- ✅ Reject missing signatureType
+- ✅ Reject payload without any signature slot keys
+- ✅ Reject missing signatureKey for caregiver slot
 - ✅ Reject signatureKey with wrong visit ID
 - ✅ Reject invalid visitId format
 - ✅ Reject unauthenticated requests
@@ -401,8 +432,8 @@ PASS  apps/backend/tests/visits.signature.test.ts
         ✓ should allow coordinator to generate upload URL for any visit (5ms)
       Validation Errors
         ✓ should reject file size exceeding 1MB (4ms)
-        ✓ should reject invalid signature type (2ms)
-        ✓ should reject missing signatureType (3ms)
+        ✓ should reject invalid signatureSlot (2ms)
+        ✓ should reject missing signatureSlot (3ms)
         ✓ should reject missing fileSize (2ms)
         ✓ should reject invalid visitId format (4ms)
       Authorization Errors
@@ -416,8 +447,8 @@ PASS  apps/backend/tests/visits.signature.test.ts
         ✓ should allow coordinator to record signature for any visit (4ms)
         ✓ should generate correct S3 URL (3ms)
       Validation Errors
-        ✓ should reject missing signatureKey (2ms)
-        ✓ should reject missing signatureType (1ms)
+        ✓ should reject payload without slot keys (2ms)
+        ✓ should reject caregiverSignatureKey with empty value (1ms)
         ✓ should reject signatureKey with wrong visit ID (1ms)
         ✓ should reject invalid visitId format (1ms)
       Authorization Errors
@@ -448,7 +479,7 @@ apps/backend/tests/
   └── visits.signature.test.ts      # Integration tests
 
 apps/backend/src/db/migrations/
-  └── 005_create_visit_documentation.sql  # signature_url field
+  └── 005_create_visit_documentation.sql  # caregiver/client/family signature columns
 ```
 
 ### Code Organization
@@ -471,18 +502,25 @@ apps/backend/src/db/migrations/
 ### Key Functions
 
 ```typescript
+type SignatureSlot = 'caregiver' | 'client' | 'family';
+
 // Generate pre-signed URL
 async function generateSignatureUploadUrl(
   visitId: string,
-  signatureType: string,
+  signatureSlot: SignatureSlot,
   uploadedBy: string
-): Promise<{ url: string; key: string }>;
+): Promise<{ url: string; key: string; slot: SignatureSlot }>;
+
+interface SignatureRecord {
+  signatureUrl: string;
+  signatureType: SignatureSlot;
+  uploadedAt: string;
+}
 
 // Record signature metadata
 async function recordSignatureMetadata(
   visitId: string,
-  signatureKey: string,
-  signatureType: string
+  signatureKeys: Partial<Record<SignatureSlot, string>>
 ): Promise<SignatureRecord>;
 ```
 
@@ -490,26 +528,27 @@ async function recordSignatureMetadata(
 
 ## Design Decisions
 
-### 1. Single Signature per Visit
+### 1. Distinct Signature Slots Per Visit
 
-**Decision:** Store one signature URL per visit (not multiple)
+**Decision:** Store independent signature URLs for caregiver, client, and family slots on each visit.
+
+**Implementation:** The `visit_documentation` table now carries three nullable columns—`caregiver_signature_url`, `client_signature_url`, and `family_signature_url`—so each role maintains its own slot. A new upload only overrides the URL in the targeted slot while the other slots remain untouched.
 
 **Rationale:**
 
-- **Simplicity**: One signature field in visit_documentation table
-- **Workflow**: Signature is final step, typically caregiver's signature
-- **Override**: New signature replaces old signature
-- **Audit**: Signature changes tracked via updated_at timestamp
+- **Role-Specific Evidence:** Supports agencies that require both caregiver and client acknowledgements.
+- **Predictable Replacement:** Clear mapping between slot and stored column keeps overwrite logic simple.
+- **Backwards Compatibility:** Existing one-slot consumers continue reading the caregiver column by default.
 
-**Trade-offs:**
+**Replacement Rules:**
 
-- Pros: Simple schema, clear workflow, easy to implement
-- Cons: Cannot store multiple signatures (caregiver + client)
+- Uploading to a slot replaces the existing URL and timestamp for that slot only.
+- Slots left out of the metadata request are ignored; their URLs remain unchanged.
+- Re-uploading to the same slot is permitted for corrections.
 
 **Future Enhancement:**
 
-- Add separate fields: caregiver_signature_url, client_signature_url, family_signature_url
-- Or create visit_signatures table for multiple signatures
+- If we need more than three roles, we can normalize into a `visit_signatures` join table that stores `(visit_id, role, s3_key, uploaded_by)` records without adding columns.
 
 ### 2. 10-Minute URL Expiration
 
@@ -542,7 +581,7 @@ async function recordSignatureMetadata(
 **Implementation:**
 
 ```typescript
-const key = `visits/${visitId}/signatures/${signatureType}-${timestamp}.png`;
+const key = `visits/${visitId}/signatures/${signatureSlot}-${timestamp}.png`;
 ```
 
 **Why Not JPEG:**
@@ -551,13 +590,13 @@ const key = `visits/${visitId}/signatures/${signatureType}-${timestamp}.png`;
 - Lossy compression artifacts on line art
 - Larger file sizes for signatures
 
-### 4. Signature Type in Filename
+### 4. Signature Slot in Filename
 
-**Decision:** Include signature type in S3 key
+**Decision:** Include signature slot in S3 key
 
 **Rationale:**
 
-- **Identification**: Easy to identify signature type from filename
+- **Identification**: Easy to identify signature slot from filename
 - **Organization**: Clear file naming convention
 - **Debugging**: Easier troubleshooting
 - **Future**: Supports multiple signatures per visit
@@ -565,7 +604,7 @@ const key = `visits/${visitId}/signatures/${signatureType}-${timestamp}.png`;
 **Key Format:**
 
 ```text
-visits/{visitId}/signatures/{signatureType}-{timestamp}.png
+visits/{visitId}/signatures/{slot}-{timestamp}.png
 ```
 
 **Examples:**
@@ -588,22 +627,69 @@ visits/{visitId}/signatures/{signatureType}-{timestamp}.png
 **Implementation:**
 
 ```typescript
+const slotColumns = {
+  caregiverSignatureKey: 'caregiver_signature_url',
+  clientSignatureKey: 'client_signature_url',
+  familySignatureKey: 'family_signature_url',
+} as const;
+
+// buildPublicUrl converts the stored S3 key into the public HTTPS URL returned to clients
+
+const updates = Object.entries(slotColumns)
+  .filter(([payloadKey]) => payload[payloadKey])
+  .map(([payloadKey, column]) => ({
+    column,
+    url: buildPublicUrl(payload[payloadKey]),
+  }));
+
+if (updates.length === 0) {
+  throw new BadRequestError('Provide at least one signature slot to update.');
+}
+
 const docResult = await client.query('SELECT id FROM visit_documentation WHERE visit_id = $1', [
   visitId,
 ]);
 
 if (docResult.rows.length > 0) {
-  // Update existing
-  await client.query('UPDATE visit_documentation SET signature_url = $1 WHERE visit_id = $2', [
-    signatureUrl,
-    visitId,
-  ]);
+  // Update existing documentation with targeted slots
+  const setClauses = updates
+    .map(
+      (update, idx) =>
+        `${update.column} = $${idx + 1}, ${update.column.replace('_url', '_uploaded_at')} = NOW()`
+    )
+    .join(', ');
+
+  await client.query(
+    `UPDATE visit_documentation SET ${setClauses}, updated_at = NOW() WHERE visit_id = $${
+      updates.length + 1
+    }`,
+    [...updates.map((u) => u.url), visitId]
+  );
 } else {
-  // Create new
-  await client.query('INSERT INTO visit_documentation (visit_id, signature_url) VALUES ($1, $2)', [
-    visitId,
-    signatureUrl,
-  ]);
+  // Create new documentation row with supplied slots populated
+  await client.query(
+    `
+      INSERT INTO visit_documentation (
+        visit_id,
+        caregiver_signature_url,
+        client_signature_url,
+        family_signature_url,
+        caregiver_signature_uploaded_at,
+        client_signature_uploaded_at,
+        family_signature_uploaded_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `,
+    [
+      visitId,
+      updates.find((u) => u.column === 'caregiver_signature_url')?.url ?? null,
+      updates.find((u) => u.column === 'client_signature_url')?.url ?? null,
+      updates.find((u) => u.column === 'family_signature_url')?.url ?? null,
+      updates.find((u) => u.column === 'caregiver_signature_url') ? new Date() : null,
+      updates.find((u) => u.column === 'client_signature_url') ? new Date() : null,
+      updates.find((u) => u.column === 'family_signature_url') ? new Date() : null,
+    ]
+  );
 }
 ```
 
@@ -639,7 +725,7 @@ if (docResult.rows.length > 0) {
 
 - 1 query: Get visit and verify ownership
 - 1 query: Check if documentation exists
-- 1 query: Insert or update signature URL
+- 1 query: Insert or update signature slots
 - Total: 3 queries (~30ms)
 
 **Indexes Used:**
@@ -667,7 +753,7 @@ if (docResult.rows.length > 0) {
 ### Input Validation
 
 - ✅ File size validation (max 1MB)
-- ✅ Signature type validation (whitelist)
+- ✅ Signature slot validation (whitelist)
 - ✅ UUID format validation
 - ✅ SignatureKey format validation
 
@@ -702,7 +788,7 @@ if (docResult.rows.length > 0) {
 **Causes:**
 
 - File size exceeds 1MB
-- Invalid signature type
+- Invalid signatureSlot
 - Missing required fields
 - Invalid UUID format
 - SignatureKey doesn't match visitId
@@ -719,7 +805,7 @@ if (docResult.rows.length > 0) {
 ```json
 {
   "error": "Bad Request",
-  "message": "Invalid signatureType. Allowed types: caregiver, client, family"
+  "message": "Invalid signatureSlot. Allowed slots: caregiver, client, family"
 }
 ```
 
@@ -812,12 +898,13 @@ const urlResponse = await fetch(`/api/v1/visits/${visitId}/signature/upload-url`
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
-    signatureType: 'caregiver',
+    signatureSlot: 'caregiver',
     fileSize: signatureBlob.size,
   }),
 });
 
-const { uploadUrl, signatureKey } = await urlResponse.json();
+const { uploadUrl, signatureKey, signatureSlot } = await urlResponse.json();
+// signatureSlot echoes the server-validated slot ('caregiver' | 'client' | 'family')
 
 // Step 3: Upload to S3
 await fetch(uploadUrl, {
@@ -836,8 +923,7 @@ await fetch(`/api/v1/visits/${visitId}/signature`, {
     'Content-Type': 'application/json',
   },
   body: JSON.stringify({
-    signatureKey,
-    signatureType: 'caregiver',
+    caregiverSignatureKey: signatureKey,
   }),
 });
 ```
@@ -849,8 +935,8 @@ try {
   // Upload flow
 } catch (error) {
   if (error.status === 400) {
-    // File too large or invalid type
-    showError('Signature file is too large. Please try again.');
+    // File too large or invalid slot selection
+    showError('Signature file is too large or slot is invalid. Please try again.');
   } else if (error.status === 403) {
     // Not authorized
     showError('You are not authorized to add a signature to this visit');
@@ -868,16 +954,15 @@ try {
 
 ## Future Enhancements
 
-### 1. Multiple Signatures per Visit
+### 1. Normalize Signature Storage
 
-**Current:** Single signature URL per visit
-**Future:** Support caregiver, client, and family signatures simultaneously
+**Goal:** Support additional signature roles or maintain a history of signature revisions.
 
 **Implementation:**
 
-- Add fields: caregiver_signature_url, client_signature_url, family_signature_url
-- Or create visit_signatures table with signature_type column
-- Update GET visit endpoint to return all signatures
+- Introduce a `visit_signatures` table with `(id, visit_id, role, s3_key, uploaded_by, uploaded_at, deleted_at)`.
+- Backfill existing caregiver/client/family columns into role-based records.
+- Update read models to aggregate rows back into the three-slot response for backwards compatibility.
 
 ### 2. Signature Verification
 
@@ -910,7 +995,7 @@ try {
 - Generate pre-signed download URL
 - Time-limited URL (1 hour)
 - Access control (same as upload)
-- Support for different signature types
+- Support for each signature slot (`caregiver`, `client`, `family`)
 
 ### 5. Signature Deletion
 
@@ -918,7 +1003,7 @@ try {
 
 **Functionality:**
 
-- Soft delete (mark as deleted)
+- Soft delete (mark slot as cleared)
 - Hard delete after 30 days
 - Delete from S3 and database
 - Audit trail
@@ -950,7 +1035,7 @@ try {
 - ✅ Pre-signed URL generation endpoint implemented
 - ✅ Signature metadata recording endpoint implemented
 - ✅ File size validation (max 1MB)
-- ✅ Signature type validation (caregiver, client, family)
+- ✅ Signature slot validation (caregiver, client, family)
 - ✅ Authorization checks (visit ownership)
 - ✅ Coordinator override support
 - ✅ Short URL expiration (10 minutes)
@@ -974,7 +1059,7 @@ logInfo('Signature upload URL generated', {
   visitId,
   signatureKey,
   userId,
-  signatureType,
+  signatureSlot,
   fileSize,
 });
 ```
@@ -984,8 +1069,8 @@ logInfo('Signature upload URL generated', {
 ```typescript
 logInfo('Signature metadata recorded', {
   visitId,
-  signatureKey,
-  signatureType,
+  signatureKeys,
+  slotsUpdated,
   userId,
 });
 ```
@@ -996,13 +1081,13 @@ logInfo('Signature metadata recorded', {
 logError('Error generating signature upload URL', error as Error, {
   visitId,
   userId,
-  signatureType,
+  signatureSlot,
 });
 
 logError('Error recording signature metadata', error as Error, {
   visitId,
   userId,
-  signatureKey,
+  signatureKeys,
 });
 ```
 

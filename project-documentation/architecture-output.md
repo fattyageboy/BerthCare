@@ -970,7 +970,6 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_zone_id ON users(zone_id);
 CREATE INDEX idx_users_role ON users(role);
-CREATE INDEX idx_users_active ON users(is_active) WHERE is_active = true;
 
 -- Trigger for updated_at
 CREATE TRIGGER update_users_updated_at
@@ -984,7 +983,7 @@ CREATE TRIGGER update_users_updated_at
 - `email`: Login queries (most frequent)
 - `zone_id`: Filter caregivers by zone
 - `role`: Role-based queries
-- `is_active`: Partial index for active users only (smaller, faster)
+- Partial indexes on `zone_id` and `(zone_id, role)` already scope to active users, so no standalone `is_active` index (reduces write overhead)
 
 **Philosophy:** "Perfection in details" - Every index is measured and justified. No index without a query pattern to support.
 

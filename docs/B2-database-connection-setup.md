@@ -61,11 +61,21 @@ const primaryPool = new Pool({
 # Apply all pending migrations
 npm run migrate:up
 
-# Apply a limited number of pending migrations
-npm run migrate:up -- 1
+# Apply all pending migrations explicitly
+npm run migrate:up -- all
+
+# Apply the next 5 pending migrations
+npm run migrate:up -- 5
+
+# Apply migrations through code 100 (prefix with # or m)
+npm run migrate:up -- #100
+npm run migrate:up -- m100
 
 # Roll back one migration
 npm run migrate:down -- 1
+
+# Roll back down through migration code 100
+npm run migrate:down -- #100
 
 # Roll back everything, then re-apply
 npm run db:reset

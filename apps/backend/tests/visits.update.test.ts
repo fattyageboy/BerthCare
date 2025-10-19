@@ -44,6 +44,7 @@ describe('PATCH /v1/visits/:visitId', () => {
   let pgPool: Pool;
   let redisClient: RedisClient;
   let app: Express;
+  let schemaName: string;
 
   let caregiverToken: string;
   let caregiverId: string;
@@ -56,6 +57,7 @@ describe('PATCH /v1/visits/:visitId', () => {
     const connections = await setupTestConnections();
     pgPool = connections.pgPool;
     redisClient = connections.redisClient;
+    schemaName = connections.schemaName;
     app = createTestApp(pgPool, redisClient);
 
     // Create test zone
@@ -129,7 +131,7 @@ describe('PATCH /v1/visits/:visitId', () => {
 
   afterAll(async () => {
     await cleanAllTestData(pgPool, redisClient);
-    await teardownTestConnections(pgPool, redisClient);
+    await teardownTestConnections(pgPool, redisClient, { schemaName, dropSchema: true });
   });
 
   describe('Successful visit updates', () => {
@@ -212,6 +214,8 @@ describe('PATCH /v1/visits/:visitId', () => {
       );
       const otherVisitId = otherVisitResult.rows[0].id;
 
+      registerCleanup(() => pgPool.query('DELETE FROM visits WHERE id = $1', [otherVisitId]));
+
       const response = await request(app)
         .patch(`/api/v1/visits/${otherVisitId}`)
         .set('Authorization', `Bearer ${caregiverToken}`)
@@ -221,9 +225,6 @@ describe('PATCH /v1/visits/:visitId', () => {
 
       expect(response.status).toBe(403);
       expect(response.body.message).toBe('You can only update your own visits');
-
-      // Clean up
-      await pgPool.query('DELETE FROM visits WHERE id = $1', [otherVisitId]);
     });
   });
 

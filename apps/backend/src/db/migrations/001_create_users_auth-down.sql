@@ -18,7 +18,6 @@ DROP INDEX IF EXISTS idx_refresh_tokens_expires_at;
 DROP INDEX IF EXISTS idx_refresh_tokens_device_id;
 DROP INDEX IF EXISTS idx_refresh_tokens_token_hash;
 DROP INDEX IF EXISTS idx_refresh_tokens_user_id;
-DROP INDEX IF EXISTS idx_users_active;
 DROP INDEX IF EXISTS idx_users_zone_role;
 DROP INDEX IF EXISTS idx_users_role;
 DROP INDEX IF EXISTS idx_users_zone_id;
