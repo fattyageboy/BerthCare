@@ -10,6 +10,9 @@
  * Photos are organized by visit ID for easy retrieval and management.
  */
 
+import { Pool } from 'pg';
+
+import { getPostgresPoolConfig } from '../config/env';
 import { logError, logInfo } from '../config/logger';
 
 import {
@@ -21,6 +24,18 @@ import {
   PhotoMetadata,
   S3_BUCKETS,
 } from './s3-client';
+
+let photoDbPool: Pool | null = null;
+
+function getPhotoDbPool(): Pool {
+  if (!photoDbPool) {
+    photoDbPool = new Pool(getPostgresPoolConfig());
+    photoDbPool.on('error', (error) => {
+      logError('Unexpected PostgreSQL error in photo storage pool', error as Error);
+    });
+  }
+  return photoDbPool;
+}
 
 /**
  * Photo upload request
@@ -193,23 +208,38 @@ export async function getPhotoDownloadUrl(
 /**
  * Get all photos for a visit
  *
- * Note: This is a simplified implementation. In production, you would
- * maintain a database table with photo metadata for efficient querying.
+ * Queries the visit_photos table for stored S3 keys and hydrates each object
+ * with a pre-signed download URL plus metadata.
  *
  * @param visitId - Visit ID
  * @returns Array of photo info
  */
 export async function getVisitPhotos(visitId: string): Promise<PhotoInfo[]> {
-  // In production, query database for photo keys associated with visit
-  // For now, this is a placeholder that would need database integration
   logInfo('Getting visit photos', { visitId });
 
-  // TODO: Implement database query to get photo keys for visit
-  // Example:
-  // const photos = await db.query('SELECT photo_key FROM photos WHERE visit_id = $1', [visitId]);
-  // return Promise.all(photos.map(p => getPhotoDownloadUrl(p.photo_key)));
+  try {
+    const pool = getPhotoDbPool();
+    const result = await pool.query<{ photo_key: string }>(
+      `
+        SELECT photo_key
+        FROM visit_photos
+        WHERE visit_id = $1
+        ORDER BY uploaded_at DESC, photo_key ASC
+      `,
+      [visitId]
+    );
 
-  return [];
+    if (result.rowCount === 0) {
+      return [];
+    }
+
+    return await Promise.all(result.rows.map((row) => getPhotoDownloadUrl(row.photo_key)));
+  } catch (error) {
+    logError('Failed to get visit photos', error as Error, {
+      visitId,
+    });
+    throw error;
+  }
 }
 
 /**

@@ -85,7 +85,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'John',
         lastName: 'Doe',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-001',
       });
 
@@ -97,7 +97,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'John',
         lastName: 'Doe',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
       });
       expect(response.body.data.user).toHaveProperty('id');
 
@@ -130,7 +130,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Jane',
         lastName: 'Smith',
         role: 'coordinator',
-        zoneId: '123e4567-e89b-12d3-a456-426614174001',
+        zoneId: '550e8400-e29b-41d4-a716-446655440002',
         deviceId: 'test-device-002',
       });
 
@@ -160,7 +160,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-004',
       });
 
@@ -178,7 +178,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'First',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-005',
       });
 
@@ -189,7 +189,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Second',
         lastName: 'User',
         role: 'coordinator',
-        zoneId: '123e4567-e89b-12d3-a456-426614174001',
+        zoneId: '550e8400-e29b-41d4-a716-446655440002',
         deviceId: 'test-device-006',
       });
 
@@ -206,7 +206,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'First',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-007',
       });
 
@@ -217,7 +217,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Second',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-008',
       });
 
@@ -234,7 +234,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-009',
       });
 
@@ -250,7 +250,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-010',
       });
 
@@ -265,7 +265,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-011',
       });
 
@@ -282,7 +282,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-012',
       });
 
@@ -298,7 +298,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-013',
       });
 
@@ -314,7 +314,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-014',
       });
 
@@ -331,7 +331,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-015',
       });
 
@@ -346,7 +346,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-016',
       });
 
@@ -361,7 +361,7 @@ describe('POST /v1/auth/register', () => {
         password: 'SecurePass123',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-017',
       });
 
@@ -376,7 +376,7 @@ describe('POST /v1/auth/register', () => {
         password: 'SecurePass123',
         firstName: 'Test',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-018',
       });
 
@@ -391,7 +391,7 @@ describe('POST /v1/auth/register', () => {
         password: 'SecurePass123',
         firstName: 'Test',
         lastName: 'User',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-019',
       });
 
@@ -407,7 +407,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'invalid_role',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-020',
       });
 
@@ -461,7 +461,7 @@ describe('POST /v1/auth/register', () => {
             firstName: 'Test',
             lastName: 'User',
             role: 'caregiver',
-            zoneId: '123e4567-e89b-12d3-a456-426614174000',
+            zoneId: '550e8400-e29b-41d4-a716-446655440001',
             deviceId: `test-device-${i}`,
           });
 
@@ -483,7 +483,7 @@ describe('POST /v1/auth/register', () => {
             firstName: 'Test',
             lastName: 'User',
             role: 'caregiver',
-            zoneId: '123e4567-e89b-12d3-a456-426614174000',
+            zoneId: '550e8400-e29b-41d4-a716-446655440001',
             deviceId: `test-device-${i}`,
           });
       }
@@ -495,7 +495,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-6',
       });
 
@@ -512,7 +512,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Test',
         lastName: 'User',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-001',
       });
 
@@ -532,7 +532,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Security',
         lastName: 'Test',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-security',
       });
 
@@ -557,7 +557,7 @@ describe('POST /v1/auth/register', () => {
         firstName: 'Token',
         lastName: 'Test',
         role: 'caregiver',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
         deviceId: 'test-device-token',
       });
 

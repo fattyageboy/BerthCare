@@ -11,6 +11,7 @@
 
 import winston from 'winston';
 
+import { env } from './env';
 import { captureException } from './sentry';
 
 // Define log levels
@@ -56,26 +57,26 @@ const consoleFormat = winston.format.combine(
 // Create logger instance
 const logger = winston.createLogger({
   levels,
-  level: process.env.LOG_LEVEL || 'info',
+  level: env.app.logLevel,
   format: structuredFormat,
   defaultMeta: {
     service: 'berthcare-api',
-    environment: process.env.NODE_ENV || 'development',
+    environment: env.app.nodeEnv,
   },
   transports: [
     // Console transport (always enabled)
     new winston.transports.Console({
-      format: process.env.NODE_ENV === 'production' ? structuredFormat : consoleFormat,
+      format: env.app.nodeEnv === 'production' ? structuredFormat : consoleFormat,
     }),
   ],
 });
 
 // Add CloudWatch transport for production
-if (process.env.NODE_ENV === 'production' && process.env.CLOUDWATCH_LOG_GROUP) {
+if (env.app.nodeEnv === 'production' && env.logging.cloudwatchLogGroup) {
   // CloudWatch logs are handled by ECS/Fargate automatically
   // Just ensure we're using JSON format
   logger.info('CloudWatch logging enabled', {
-    logGroup: process.env.CLOUDWATCH_LOG_GROUP,
+    logGroup: env.logging.cloudwatchLogGroup,
   });
 }
 

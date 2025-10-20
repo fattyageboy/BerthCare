@@ -1,21 +1,18 @@
 import compression from 'compression';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import express, { Router } from 'express';
 import helmet from 'helmet';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 
+import { env, getPostgresPoolConfig, getRedisClientConfig } from './config/env';
 import { logError, logInfo } from './config/logger';
 import { createAuthRoutes } from './routes/auth.routes';
 import { createCarePlanRoutes } from './routes/care-plans.routes';
 import { createClientRoutes } from './routes/clients.routes';
 
-// Load environment variables
-dotenv.config({ path: '../../.env' });
-
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = env.app.port;
 
 // Middleware
 app.use(helmet());
@@ -25,17 +22,11 @@ app.use(express.json());
 
 // PostgreSQL connection
 const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: parseInt(process.env.DB_POOL_MAX || '10'),
-  min: parseInt(process.env.DB_POOL_MIN || '2'),
-  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT_MS || '30000'),
-  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT_MS || '2000'),
+  ...getPostgresPoolConfig(),
 });
 
 // Redis connection
-const redisClient = createClient({
-  url: process.env.REDIS_URL,
-});
+const redisClient = createClient(getRedisClientConfig());
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
@@ -74,8 +65,8 @@ app.get('/health', async (_req, res) => {
 app.get('/api/v1', (_req, res) => {
   res.json({
     name: 'BerthCare API',
-    version: '2.0.0',
-    environment: process.env.NODE_ENV || 'development',
+    version: env.app.version,
+    environment: env.app.nodeEnv,
     endpoints: {
       health: '/health',
       api: '/api/v1',
@@ -122,7 +113,7 @@ async function startServer() {
     // Start Express server
     app.listen(PORT, () => {
       logInfo('BerthCare Backend Server started', {
-        environment: process.env.NODE_ENV || 'development',
+        environment: env.app.nodeEnv,
         port: PORT,
         serverUrl: `http://localhost:${PORT}`,
         healthUrl: `http://localhost:${PORT}/health`,

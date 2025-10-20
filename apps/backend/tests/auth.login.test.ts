@@ -86,7 +86,7 @@ describe('POST /v1/auth/login', () => {
     email: string,
     password: string,
     role: string = 'caregiver',
-    zoneId: string = '123e4567-e89b-12d3-a456-426614174000',
+    zoneId: string = '550e8400-e29b-41d4-a716-446655440001',
     isActive: boolean = true
   ) {
     const response = await request(app).post('/v1/auth/register').send({
@@ -562,7 +562,7 @@ describe('POST /v1/auth/login', () => {
         'test@example.com',
         'SecurePass123',
         'coordinator',
-        '123e4567-e89b-12d3-a456-426614174000'
+        '550e8400-e29b-41d4-a716-446655440001'
       );
 
       const response = await request(app).post('/v1/auth/login').send({
@@ -575,7 +575,7 @@ describe('POST /v1/auth/login', () => {
 
       expect(payload.userId).toBe(user.id);
       expect(payload.role).toBe('coordinator');
-      expect(payload.zoneId).toBe('123e4567-e89b-12d3-a456-426614174000');
+      expect(payload.zoneId).toBe('550e8400-e29b-41d4-a716-446655440001');
       expect(payload.email).toBe('test@example.com');
     });
   });

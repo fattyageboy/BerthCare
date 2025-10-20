@@ -123,7 +123,7 @@ describe('POST /v1/auth/refresh', () => {
         'Refresh',
         'Test',
         'caregiver',
-        '123e4567-e89b-12d3-a456-426614174000',
+        '550e8400-e29b-41d4-a716-446655440001',
       ]
     );
     testUserId = userResult.rows[0].id;
@@ -132,7 +132,7 @@ describe('POST /v1/auth/refresh', () => {
     validRefreshToken = generateRefreshToken({
       userId: testUserId,
       role: 'caregiver',
-      zoneId: '123e4567-e89b-12d3-a456-426614174000',
+      zoneId: '550e8400-e29b-41d4-a716-446655440001',
     });
 
     // Hash the token for database storage
@@ -173,7 +173,7 @@ describe('POST /v1/auth/refresh', () => {
 
       expect(payload.userId).toBe(testUserId);
       expect(payload.role).toBe('caregiver');
-      expect(payload.zoneId).toBe('123e4567-e89b-12d3-a456-426614174000');
+      expect(payload.zoneId).toBe('550e8400-e29b-41d4-a716-446655440001');
       expect(payload.email).toBe('refresh-test@example.com');
     });
   });
@@ -364,14 +364,14 @@ describe('POST /v1/auth/refresh', () => {
           'Coord',
           'Test',
           'coordinator',
-          '123e4567-e89b-12d3-a456-426614174000',
+          '550e8400-e29b-41d4-a716-446655440001',
         ]
       );
 
       const coordToken = generateRefreshToken({
         userId: coordResult.rows[0].id,
         role: 'coordinator',
-        zoneId: '123e4567-e89b-12d3-a456-426614174000',
+        zoneId: '550e8400-e29b-41d4-a716-446655440001',
       });
 
       const coordTokenHash = crypto.createHash('sha256').update(coordToken).digest('hex');

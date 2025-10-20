@@ -61,7 +61,7 @@ export function createClientRoutes(
 
   // Initialize services
   const geocodingService = new GeocodingService(redisClient);
-  const zoneAssignmentService = new ZoneAssignmentService(redisClient);
+  const zoneAssignmentService = new ZoneAssignmentService(redisClient, pgPool);
 
   /**
    * POST /v1/clients

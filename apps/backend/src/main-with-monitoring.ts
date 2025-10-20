@@ -11,12 +11,12 @@
 
 import compression from 'compression';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import express from 'express';
 import helmet from 'helmet';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 
+import { env, getPostgresPoolConfig, getRedisClientConfig } from './config/env';
 import { logInfo, logError, logRequest } from './config/logger';
 import {
   initSentry,
@@ -24,20 +24,17 @@ import {
   configureSentryErrorHandler,
 } from './config/sentry';
 
-// Load environment variables
-dotenv.config();
-
 const app = express();
-const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const PORT = env.app.port;
+const NODE_ENV = env.app.nodeEnv;
 
 // Initialize Sentry (must be first)
 initSentry({
-  dsn: process.env.SENTRY_DSN || '',
+  dsn: env.sentry.dsn || '',
   environment: NODE_ENV,
-  release: process.env.APP_VERSION || '2.0.0',
-  tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || '0.1'),
-  profilesSampleRate: parseFloat(process.env.SENTRY_PROFILES_SAMPLE_RATE || '0.1'),
+  release: env.app.version,
+  tracesSampleRate: env.sentry.tracesSampleRate,
+  profilesSampleRate: env.sentry.profilesSampleRate,
 });
 
 // Sentry request handler (must be first middleware)
@@ -67,24 +64,18 @@ app.use((req, res, next) => {
 
 // PostgreSQL connection
 const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: parseInt(process.env.DB_POOL_MAX || '10'),
-  min: parseInt(process.env.DB_POOL_MIN || '2'),
-  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT_MS || '30000'),
-  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT_MS || '2000'),
+  ...getPostgresPoolConfig(),
 });
 
 // Redis connection
-const redisClient = createClient({
-  url: process.env.REDIS_URL,
-});
+const redisClient = createClient(getRedisClientConfig());
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
-    version: process.env.APP_VERSION || '2.0.0',
+    version: env.app.version,
     environment: NODE_ENV,
     services: {
       postgres: 'unknown',
@@ -120,7 +111,7 @@ app.get('/health', async (_req, res) => {
 app.get('/api/v1', (_req, res) => {
   res.json({
     name: 'BerthCare API',
-    version: process.env.APP_VERSION || '2.0.0',
+    version: env.app.version,
     environment: NODE_ENV,
     endpoints: {
       health: '/health',
@@ -189,7 +180,7 @@ async function startServer() {
       logInfo('BerthCare Backend Server started', {
         port: PORT,
         environment: NODE_ENV,
-        version: process.env.APP_VERSION || '2.0.0',
+        version: env.app.version,
         healthEndpoint: `http://localhost:${PORT}/health`,
         apiEndpoint: `http://localhost:${PORT}/api/v1`,
       });

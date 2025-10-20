@@ -19,23 +19,20 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import dotenv from 'dotenv';
 
+import { env } from '../config/env';
 import { logDebug, logError, logInfo } from '../config/logger';
-
-// Load environment variables
-dotenv.config({ path: '../../.env' });
 
 // S3 Client Configuration
 const s3Config = {
-  region: process.env.AWS_REGION || 'ca-central-1',
+  region: env.aws.region,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+    accessKeyId: env.aws.accessKeyId,
+    secretAccessKey: env.aws.secretAccessKey,
   },
   // LocalStack endpoint for local development
-  ...(process.env.AWS_ENDPOINT && {
-    endpoint: process.env.AWS_ENDPOINT,
+  ...(env.aws.endpoint && {
+    endpoint: env.aws.endpoint,
     forcePathStyle: true, // Required for LocalStack
   }),
 };
@@ -45,9 +42,9 @@ export const s3Client = new S3Client(s3Config);
 
 // S3 Bucket Names
 export const S3_BUCKETS = {
-  PHOTOS: process.env.S3_BUCKET_PHOTOS || 'berthcare-photos-dev',
-  DOCUMENTS: process.env.S3_BUCKET_DOCUMENTS || 'berthcare-documents-dev',
-  SIGNATURES: process.env.S3_BUCKET_SIGNATURES || 'berthcare-signatures-dev',
+  PHOTOS: env.aws.buckets.photos,
+  DOCUMENTS: env.aws.buckets.documents,
+  SIGNATURES: env.aws.buckets.signatures,
 } as const;
 
 // File type configurations
@@ -409,7 +406,7 @@ export async function verifyS3Connection(): Promise<boolean> {
     if ((error as { name?: string }).name === 'NotFound') {
       logInfo('S3 connection verified', {
         bucket: S3_BUCKETS.PHOTOS,
-        endpoint: process.env.AWS_ENDPOINT || 'AWS',
+        endpoint: env.aws.endpoint || 'AWS',
       });
       return true;
     }
@@ -424,6 +421,6 @@ export async function verifyS3Connection(): Promise<boolean> {
 // Log S3 configuration on module load
 logInfo('S3 Client initialized', {
   region: s3Config.region,
-  endpoint: process.env.AWS_ENDPOINT || 'AWS',
+  endpoint: env.aws.endpoint || 'AWS',
   buckets: S3_BUCKETS,
 });

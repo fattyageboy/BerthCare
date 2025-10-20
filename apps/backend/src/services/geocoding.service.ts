@@ -1,25 +1,28 @@
 /**
  * Geocoding Service
  *
- * Converts addresses to geographic coordinates using Google Maps Geocoding API.
+ * Converts addresses to geographic coordinates with graceful fallbacks for
+ * development environments where external APIs may not be available.
  *
  * Features:
- * - Address to lat/long conversion
+ * - Google Maps geocoding when API key is configured
+ * - Deterministic local geocoder for offline development
  * - Result caching (24 hour TTL)
  * - Error handling and retry logic
  * - Canadian address validation
  *
- * Reference: Architecture Blueprint - Client Management
- * Task: C5 - Create client endpoint with geocoding
- *
- * Philosophy: "Obsess over details"
- * - Cache results to reduce API calls
- * - Validate coordinates are in service area
- * - Clear error messages for debugging
+ * Philosophy alignment:
+ * - Magical dev experience (no API key required to try the product)
+ * - Quality details (consistent caching, clear errors)
+ * - Innovation (local geocoder keeps momentum without external services)
  */
+
+import * as crypto from 'crypto';
 
 import { Client, GeocodeResult } from '@googlemaps/google-maps-services-js';
 import { createClient } from 'redis';
+
+import { env } from '../config/env';
 
 /**
  * Geocoding result
@@ -54,6 +57,7 @@ export class GeocodingService {
   private client: Client;
   private apiKey: string;
   private cacheTTL: number;
+  private mode: 'google' | 'local';
 
   constructor(
     private redisClient: ReturnType<typeof createClient>,
@@ -61,11 +65,22 @@ export class GeocodingService {
     cacheTTL: number = 86400 // 24 hours default
   ) {
     this.client = new Client({});
-    this.apiKey = apiKey || process.env.GOOGLE_MAPS_API_KEY || '';
+    this.apiKey = apiKey || env.geocoding.apiKey || '';
     this.cacheTTL = cacheTTL;
 
-    if (!this.apiKey) {
-      console.warn('Google Maps API key not configured. Geocoding will fail.');
+    // Determine operating mode
+    this.mode =
+      env.geocoding.mode === 'local' || env.geocoding.mode === 'stub' ? 'local' : 'google';
+
+    if (!this.apiKey && this.mode === 'google') {
+      console.warn('Google Maps API key not configured. Falling back to local geocoding mode.');
+      this.mode = 'local';
+    }
+
+    if (this.mode === 'local') {
+      console.warn(
+        'Using local geocoding mode – results are deterministic placeholders for development.'
+      );
     }
   }
 
@@ -82,10 +97,6 @@ export class GeocodingService {
       throw new GeocodingError('Address is required', 'INVALID_ADDRESS');
     }
 
-    if (!this.apiKey) {
-      throw new GeocodingError('Google Maps API key not configured', 'CONFIGURATION_ERROR');
-    }
-
     const normalizedAddress = address.trim().toLowerCase();
 
     // Check cache first
@@ -98,6 +109,16 @@ export class GeocodingService {
     } catch (cacheError) {
       // Log but continue if cache fails
       console.warn('Geocoding cache read error:', cacheError);
+    }
+
+    if (this.mode === 'local') {
+      const localResult = this.generateLocalResult(address);
+      await this.storeInCache(cacheKey, localResult);
+      return localResult;
+    }
+
+    if (!this.apiKey) {
+      throw new GeocodingError('Google Maps API key not configured', 'CONFIGURATION_ERROR');
     }
 
     // Call Google Maps Geocoding API
@@ -147,12 +168,7 @@ export class GeocodingService {
       };
 
       // Cache result
-      try {
-        await this.redisClient.setEx(cacheKey, this.cacheTTL, JSON.stringify(geocodingResult));
-      } catch (cacheError) {
-        // Log but don't fail if caching fails
-        console.warn('Geocoding cache write error:', cacheError);
-      }
+      await this.storeInCache(cacheKey, geocodingResult);
 
       return geocodingResult;
     } catch (error) {
@@ -200,19 +216,34 @@ export class GeocodingService {
     return latitude >= 41.7 && latitude <= 83.1 && longitude >= -141.0 && longitude <= -52.6;
   }
 
-  /**
-   * Clear geocoding cache for an address
-   *
-   * @param address - Address to clear from cache
-   */
-  async clearCache(address: string): Promise<void> {
-    const normalizedAddress = address.trim().toLowerCase();
-    const cacheKey = `geocode:${normalizedAddress}`;
+  private generateLocalResult(address: string): GeocodingResult {
+    const hash = crypto.createHash('sha256').update(address.trim().toLowerCase()).digest();
 
+    const latMin = 41.7;
+    const latMax = 83.1;
+    const lonMin = -141.0;
+    const lonMax = -52.6;
+
+    const latRange = latMax - latMin;
+    const lonRange = lonMax - lonMin;
+
+    const latitude = parseFloat((latMin + (hash[0] / 255) * latRange).toFixed(6));
+    const longitude = parseFloat((lonMin + (hash[1] / 255) * lonRange).toFixed(6));
+
+    return {
+      latitude,
+      longitude,
+      formattedAddress: address,
+      placeId: `local-${hash.subarray(0, 8).toString('hex')}`,
+    };
+  }
+
+  private async storeInCache(cacheKey: string, result: GeocodingResult): Promise<void> {
     try {
-      await this.redisClient.del(cacheKey);
-    } catch (error) {
-      console.warn('Failed to clear geocoding cache:', error);
+      await this.redisClient.setEx(cacheKey, this.cacheTTL, JSON.stringify(result));
+    } catch (cacheError) {
+      // Log but don't fail if caching fails
+      console.warn('Geocoding cache write error:', cacheError);
     }
   }
 }

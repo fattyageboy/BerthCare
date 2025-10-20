@@ -1,9 +1,7 @@
-import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 
-// Load environment variables
-dotenv.config({ path: '../../.env' });
+import { env, getPostgresPoolConfig, getRedisClientConfig } from './config/env';
 
 async function testConnections() {
   console.log('🔍 Testing BerthCare Backend Connections...\n');
@@ -12,11 +10,13 @@ async function testConnections() {
 
   // Test PostgreSQL
   console.log('Testing PostgreSQL connection...');
-  const pgPool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: 1,
-    connectionTimeoutMillis: 5000,
-  });
+  const pgPool = new Pool(
+    getPostgresPoolConfig({
+      max: 1,
+      min: 0,
+      connectionTimeoutMillis: 5000,
+    })
+  );
 
   try {
     const result = await pgPool.query(
@@ -50,9 +50,7 @@ async function testConnections() {
 
   // Test Redis
   console.log('Testing Redis connection...');
-  const redisClient = createClient({
-    url: process.env.REDIS_URL,
-  });
+  const redisClient = createClient(getRedisClientConfig());
 
   try {
     await redisClient.connect();
@@ -81,8 +79,8 @@ async function testConnections() {
     console.log('✅ All connections successful!');
     console.log('');
     console.log('Next steps:');
-    console.log('  1. Start backend: npm run dev');
-    console.log('  2. Test health endpoint: curl http://localhost:3000/health');
+    console.log(`  1. Start backend: npm run dev (PORT=${env.app.port})`);
+    console.log(`  2. Test health endpoint: curl http://localhost:${env.app.port}/health`);
   } else {
     console.log('❌ Some connections failed. Check the errors above.');
   }

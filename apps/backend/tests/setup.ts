@@ -62,7 +62,7 @@ ZQIDAQAB
 jest.setTimeout(60000);
 
 // Global test utilities
-export const TEST_ZONE_ID = '123e4567-e89b-12d3-a456-426614174000';
+export const TEST_ZONE_ID = '550e8400-e29b-41d4-a716-446655440001';
 
 export const createTestUser = (overrides = {}) => ({
   email: 'test@example.com',

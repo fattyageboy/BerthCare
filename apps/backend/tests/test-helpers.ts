@@ -165,6 +165,15 @@ export async function setupTestConnections(): Promise<{
   const redisClient = createClient({ url: TEST_REDIS_URL });
   await redisClient.connect();
 
+  // Ensure zone fixtures exist for tests that rely on them
+  await pgPool.query(
+    `INSERT INTO zones (id, name, slug, description, center_latitude, center_longitude, radius_km)
+     VALUES
+       ('550e8400-e29b-41d4-a716-446655440001', 'North Zone', 'north', 'Greater Montreal region', 45.5017, -73.5673, 25),
+       ('550e8400-e29b-41d4-a716-446655440002', 'South Zone', 'south', 'Greater Toronto Area', 43.6532, -79.3832, 35)
+     ON CONFLICT (id) DO NOTHING`
+  );
+
   return { pgPool, redisClient };
 }
 

@@ -14,8 +14,6 @@
 
 /* eslint-disable no-console */
 
-import dotenv from 'dotenv';
-
 import { logError, logInfo } from '../config/logger';
 
 import {
@@ -25,9 +23,6 @@ import {
   S3_BUCKETS,
   verifyS3Connection,
 } from './s3-client';
-
-// Load environment variables
-dotenv.config({ path: '../../.env' });
 
 async function testS3Connection() {
   console.log('\n🧪 Testing S3 Connection...\n');

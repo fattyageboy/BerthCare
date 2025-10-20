@@ -11,25 +11,17 @@
  * WARNING: This will delete existing data! Only use in development.
  */
 
-import * as crypto from 'crypto';
-
 import { Pool } from 'pg';
 
-const pool = new Pool({
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT || '5432'),
-  database: process.env.POSTGRES_DB || 'berthcare_dev',
-  user: process.env.POSTGRES_USER || 'berthcare',
-  password: process.env.POSTGRES_PASSWORD || 'berthcare_dev_password',
-});
+import { hashPassword } from '../../../../libs/shared/src';
+import { getPostgresPoolConfig } from '../config/env';
 
-/**
- * Simple password hashing for development
- * NOTE: In production, use bcrypt with proper salt rounds
- */
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
+const pool = new Pool(
+  getPostgresPoolConfig({
+    max: 2,
+    min: 0,
+  })
+);
 
 /**
  * Generate sample zone IDs
@@ -104,15 +96,82 @@ const SAMPLE_USERS = [
 ];
 
 /**
+ * Zone fixtures for development
+ */
+const ZONE_FIXTURES = [
+  {
+    id: ZONES.NORTH,
+    name: 'North Zone',
+    slug: 'north',
+    description: 'Greater Montreal region',
+    centerLatitude: 45.5017,
+    centerLongitude: -73.5673,
+  },
+  {
+    id: ZONES.SOUTH,
+    name: 'South Zone',
+    slug: 'south',
+    description: 'Greater Toronto Area',
+    centerLatitude: 43.6532,
+    centerLongitude: -79.3832,
+  },
+  {
+    id: ZONES.EAST,
+    name: 'East Zone',
+    slug: 'east',
+    description: 'Ottawa & Eastern Ontario',
+    centerLatitude: 45.4215,
+    centerLongitude: -75.6972,
+  },
+  {
+    id: ZONES.WEST,
+    name: 'West Zone',
+    slug: 'west',
+    description: 'Metro Vancouver region',
+    centerLatitude: 49.2827,
+    centerLongitude: -123.1207,
+  },
+];
+
+/**
  * Clear existing data
  */
 async function clearData(): Promise<void> {
   console.log('🗑️  Clearing existing data...');
 
+  await pool.query('DELETE FROM care_plans');
+  await pool.query('DELETE FROM clients');
   await pool.query('DELETE FROM refresh_tokens');
   await pool.query('DELETE FROM users');
+  await pool.query('DELETE FROM zones');
 
   console.log('✅ Data cleared');
+}
+
+/**
+ * Seed zones for development
+ */
+async function seedZones(): Promise<void> {
+  console.log('\n📍 Seeding zones...');
+
+  for (const zone of ZONE_FIXTURES) {
+    await pool.query(
+      `INSERT INTO zones (id, name, slug, description, center_latitude, center_longitude, radius_km, is_active, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, 15, true, '{}'::jsonb)
+       ON CONFLICT (id) DO UPDATE
+         SET name = EXCLUDED.name,
+             slug = EXCLUDED.slug,
+             description = EXCLUDED.description,
+             center_latitude = EXCLUDED.center_latitude,
+             center_longitude = EXCLUDED.center_longitude,
+             updated_at = NOW()`,
+      [zone.id, zone.name, zone.slug, zone.description, zone.centerLatitude, zone.centerLongitude]
+    );
+
+    console.log(`  ✅ Zone ready: ${zone.name}`);
+  }
+
+  console.log(`\n✅ Prepared ${ZONE_FIXTURES.length} service zones`);
 }
 
 /**
@@ -122,7 +181,7 @@ async function seedUsers(): Promise<void> {
   console.log('\n👥 Seeding users...');
 
   for (const user of SAMPLE_USERS) {
-    const passwordHash = hashPassword(user.password);
+    const passwordHash = await hashPassword(user.password);
 
     await pool.query(
       `INSERT INTO users (email, password_hash, first_name, last_name, role, zone_id)
@@ -159,14 +218,12 @@ async function displaySummary(): Promise<void> {
   // Count users by zone
   const zoneCount = await pool.query(
     `SELECT 
-       CASE 
-         WHEN zone_id IS NULL THEN 'All Zones (Admin)'
-         ELSE zone_id::text
-       END as zone,
+       COALESCE(z.name, 'All Zones (Admin)') AS zone,
        COUNT(*) as count 
-     FROM users 
-     GROUP BY zone_id 
-     ORDER BY zone_id NULLS FIRST`
+     FROM users u
+     LEFT JOIN zones z ON z.id = u.zone_id
+     GROUP BY z.name, u.zone_id
+     ORDER BY z.name NULLS FIRST`
   );
 
   console.log('\nUsers by zone:');
@@ -204,6 +261,7 @@ async function main() {
 
     // Clear and seed
     await clearData();
+    await seedZones();
     await seedUsers();
     await displaySummary();
 

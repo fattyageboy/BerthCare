@@ -11,13 +11,14 @@
 
 import { Pool } from 'pg';
 
-const pool = new Pool({
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT || '5432'),
-  database: process.env.POSTGRES_DB || 'berthcare_dev',
-  user: process.env.POSTGRES_USER || 'berthcare',
-  password: process.env.POSTGRES_PASSWORD || 'berthcare_dev_password',
-});
+import { getPostgresPoolConfig } from '../config/env';
+
+const pool = new Pool(
+  getPostgresPoolConfig({
+    max: 1,
+    min: 0,
+  })
+);
 
 interface VerificationResult {
   passed: boolean;
@@ -137,6 +138,24 @@ async function verifySchema(): Promise<void> {
     ])
   );
 
+  // Verify zones table
+  results.push(await verifyTableExists('zones'));
+  results.push(
+    await verifyColumns('zones', [
+      'id',
+      'name',
+      'slug',
+      'description',
+      'center_latitude',
+      'center_longitude',
+      'radius_km',
+      'is_active',
+      'metadata',
+      'created_at',
+      'updated_at',
+    ])
+  );
+
   // Verify indexes
   const indexes = [
     'idx_users_email',
@@ -147,6 +166,8 @@ async function verifySchema(): Promise<void> {
     'idx_refresh_tokens_token_hash',
     'idx_refresh_tokens_device_id',
     'idx_refresh_tokens_expires_at',
+    'idx_zones_slug',
+    'idx_zones_active',
   ];
 
   for (const indexName of indexes) {

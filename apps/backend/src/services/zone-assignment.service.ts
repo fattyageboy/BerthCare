@@ -1,23 +1,17 @@
 /**
  * Zone Assignment Service
  *
- * Assigns clients to zones based on geographic location.
+ * Assigns clients to zones based on geographic proximity using authoritative
+ * zone definitions stored in PostgreSQL. Results are cached in Redis to keep
+ * lookups fast while ensuring a single source of truth.
  *
- * Features:
- * - Proximity-based zone assignment
- * - Distance calculation using Haversine formula
- * - Zone data caching
- * - Fallback to default zone
- *
- * Reference: Architecture Blueprint - Client Management
- * Task: C5 - Create client endpoint with zone assignment
- *
- * Philosophy: "Start with user experience"
- * - Fast zone assignment via caching
- * - Accurate distance calculations
- * - Graceful fallback for edge cases
+ * Philosophy alignment:
+ * - Integration of data sources (Postgres + Redis) for a seamless experience
+ * - Focus on simplicity: a single, well-defined place for zone definitions
+ * - Perfection in details: deterministic behaviour, informative errors
  */
 
+import { Pool } from 'pg';
 import { createClient } from 'redis';
 
 /**
@@ -28,6 +22,7 @@ export interface Zone {
   name: string;
   centerLatitude: number;
   centerLongitude: number;
+  radiusKm: number | null;
 }
 
 /**
@@ -44,6 +39,8 @@ export class ZoneAssignmentError extends Error {
   }
 }
 
+const ZONE_CACHE_KEY = 'zones:all:v1';
+
 /**
  * Zone Assignment Service
  *
@@ -52,7 +49,10 @@ export class ZoneAssignmentError extends Error {
 export class ZoneAssignmentService {
   private cacheTTL: number = 3600; // 1 hour
 
-  constructor(private redisClient: ReturnType<typeof createClient>) {}
+  constructor(
+    private redisClient: ReturnType<typeof createClient>,
+    private pgPool: Pool
+  ) {}
 
   /**
    * Assign a zone based on latitude/longitude
@@ -62,15 +62,15 @@ export class ZoneAssignmentService {
    * @param latitude - Client latitude
    * @param longitude - Client longitude
    * @returns Zone ID
-   * @throws ZoneAssignmentError if no zones available
+   * @throws ZoneAssignmentError if no zones available or invalid coordinates
    */
   async assignZone(latitude: number, longitude: number): Promise<string> {
     // Validate coordinates
     if (
       typeof latitude !== 'number' ||
       typeof longitude !== 'number' ||
-      isNaN(latitude) ||
-      isNaN(longitude) ||
+      Number.isNaN(latitude) ||
+      Number.isNaN(longitude) ||
       latitude < -90 ||
       latitude > 90 ||
       longitude < -180 ||
@@ -86,7 +86,10 @@ export class ZoneAssignmentService {
     const zones = await this.getAllZones();
 
     if (zones.length === 0) {
-      throw new ZoneAssignmentError('No zones available for assignment', 'NO_ZONES_AVAILABLE');
+      throw new ZoneAssignmentError(
+        'No zones available for assignment — seed the database with zones first.',
+        'NO_ZONES_AVAILABLE'
+      );
     }
 
     // Find nearest zone
@@ -123,11 +126,9 @@ export class ZoneAssignmentService {
    * @returns Array of zones
    */
   private async getAllZones(): Promise<Zone[]> {
-    const cacheKey = 'zones:all';
-
     // Try cache first
     try {
-      const cachedData = await this.redisClient.get(cacheKey);
+      const cachedData = await this.redisClient.get(ZONE_CACHE_KEY);
       if (cachedData) {
         return JSON.parse(cachedData);
       }
@@ -136,33 +137,34 @@ export class ZoneAssignmentService {
     }
 
     // Query database
-    // Note: For MVP, we'll create a simple zones table
-    // For now, return hardcoded zones for development
-    // TODO: Replace with actual database query when zones table exists
-    const zones: Zone[] = [
-      {
-        id: '00000000-0000-0000-0000-000000000001',
-        name: 'North Zone',
-        centerLatitude: 45.5017,
-        centerLongitude: -73.5673, // Montreal area
-      },
-      {
-        id: '00000000-0000-0000-0000-000000000002',
-        name: 'South Zone',
-        centerLatitude: 43.6532,
-        centerLongitude: -79.3832, // Toronto area
-      },
-      {
-        id: '00000000-0000-0000-0000-000000000003',
-        name: 'West Zone',
-        centerLatitude: 49.2827,
-        centerLongitude: -123.1207, // Vancouver area
-      },
-    ];
+    const result = await this.pgPool.query<{
+      id: string;
+      name: string;
+      center_latitude: number;
+      center_longitude: number;
+      radius_km: number | null;
+    }>(
+      `SELECT id, name, center_latitude, center_longitude, radius_km
+       FROM zones
+       WHERE is_active = true
+       ORDER BY name ASC`
+    );
+
+    const zones: Zone[] = result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      centerLatitude: Number(row.center_latitude),
+      centerLongitude: Number(row.center_longitude),
+      radiusKm: row.radius_km,
+    }));
+
+    if (zones.length === 0) {
+      console.warn('Zone lookup returned zero records. Ensure zones are seeded.');
+    }
 
     // Cache zones
     try {
-      await this.redisClient.setEx(cacheKey, this.cacheTTL, JSON.stringify(zones));
+      await this.redisClient.setEx(ZONE_CACHE_KEY, this.cacheTTL, JSON.stringify(zones));
     } catch (cacheError) {
       console.warn('Zone cache write error:', cacheError);
     }
@@ -214,6 +216,10 @@ export class ZoneAssignmentService {
    * @returns true if zone exists
    */
   async validateZoneId(zoneId: string): Promise<boolean> {
+    if (!zoneId) {
+      return false;
+    }
+
     const zones = await this.getAllZones();
     return zones.some((zone) => zone.id === zoneId);
   }
@@ -223,7 +229,7 @@ export class ZoneAssignmentService {
    */
   async clearCache(): Promise<void> {
     try {
-      await this.redisClient.del('zones:all');
+      await this.redisClient.del(ZONE_CACHE_KEY);
     } catch (error) {
       console.warn('Failed to clear zone cache:', error);
     }

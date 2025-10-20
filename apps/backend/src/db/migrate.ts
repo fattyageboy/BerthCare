@@ -20,14 +20,15 @@ import { join } from 'path';
 
 import { Pool, PoolClient } from 'pg';
 
+import { getPostgresPoolConfig } from '../config/env';
+
 // Database connection configuration
-const pool = new Pool({
-  host: process.env.POSTGRES_HOST || 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT || '5432'),
-  database: process.env.POSTGRES_DB || 'berthcare_dev',
-  user: process.env.POSTGRES_USER || 'berthcare',
-  password: process.env.POSTGRES_PASSWORD || 'berthcare_dev_password',
-});
+const pool = new Pool(
+  getPostgresPoolConfig({
+    max: 1,
+    min: 0,
+  })
+);
 
 // Migration file paths
 const MIGRATIONS_DIR = join(__dirname, 'migrations');
@@ -127,6 +128,7 @@ async function migrateUp(migrationNumber?: string): Promise<void> {
 
   // Define all available migrations
   const allMigrations = [
+    { version: '000', filename: '000_create_zones.sql' },
     { version: '001', filename: '001_create_users_auth.sql' },
     { version: '002', filename: '002_create_clients.sql' },
     { version: '003', filename: '003_create_care_plans.sql' },
@@ -184,7 +186,7 @@ async function migrateDown(migrationNumber: string): Promise<void> {
   }
 
   // Define ordered list of all migrations
-  const orderedMigrations = ['001', '002', '003'];
+  const orderedMigrations = ['000', '001', '002', '003'];
 
   // Check for dependent migrations (migrations applied after the target)
   const targetIndex = orderedMigrations.indexOf(migrationNumber);
@@ -209,6 +211,7 @@ async function migrateDown(migrationNumber: string): Promise<void> {
   }
 
   const rollbackFiles: Record<string, string> = {
+    '000': '000_create_zones_rollback.sql',
     '001': '001_create_users_auth_rollback.sql',
     '002': '002_create_clients_rollback.sql',
     '003': '003_create_care_plans_rollback.sql',
