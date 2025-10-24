@@ -6,8 +6,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import rateLimit from 'express-rate-limit';
-import RedisStore from 'rate-limit-redis';
+import { rateLimit } from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
 import { createClient } from 'redis';
 
 import { env, getRedisClientConfig } from '../config/env';
