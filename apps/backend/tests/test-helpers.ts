@@ -122,6 +122,8 @@ export async function cleanAllTestData(
 
     // Delete in order to respect foreign key constraints
     // Note: refresh_tokens has ON DELETE CASCADE, so deleting users will cascade
+    await client.query('DELETE FROM care_alerts');
+    await client.query('DELETE FROM coordinators');
     await client.query('DELETE FROM care_plans');
     await client.query('DELETE FROM clients');
     await client.query('DELETE FROM refresh_tokens');

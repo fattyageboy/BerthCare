@@ -110,7 +110,85 @@ export const env = {
     tracesSampleRate: toNumber(process.env.SENTRY_TRACES_SAMPLE_RATE, 0.1),
     profilesSampleRate: toNumber(process.env.SENTRY_PROFILES_SAMPLE_RATE, 0.1),
   },
+  twilio: {
+    accountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    authToken: process.env.TWILIO_AUTH_TOKEN || '',
+    phoneNumber: process.env.TWILIO_PHONE_NUMBER || '',
+    // Default to http://localhost for local development, but production must use https
+    webhookBaseUrl: process.env.TWILIO_WEBHOOK_BASE_URL || 'http://localhost:3000',
+    // SMS rate limiter fail-open behavior
+    // When true: Allow SMS when Redis is unavailable (prioritizes availability)
+    // When false: Block SMS when Redis is unavailable (prioritizes security/rate limiting)
+    // Production default: false (fail-closed) for standard SMS
+    // Override to true for critical alerts where availability is paramount
+    smsRateLimiterFailOpen: toBoolean(process.env.SMS_RATE_LIMITER_FAIL_OPEN, false),
+  },
 };
+
+/**
+ * Validate Twilio configuration
+ * Ensures required credentials are present and webhook URLs use HTTPS in production
+ */
+function validateTwilioConfig(): void {
+  const { accountSid, authToken, phoneNumber, webhookBaseUrl } = env.twilio;
+
+  // Skip validation in test environment
+  if (env.app.nodeEnv === 'test') {
+    return;
+  }
+
+  // Check if Twilio is configured (at least one credential provided)
+  const isDefaultWebhook =
+    webhookBaseUrl === 'http://localhost:3000' ||
+    webhookBaseUrl.includes('localhost') ||
+    webhookBaseUrl.includes('127.0.0.1');
+
+  const isTwilioConfigured = accountSid || authToken || phoneNumber || !isDefaultWebhook;
+
+  if (isTwilioConfigured) {
+    // If any Twilio config is provided, all required fields must be present
+    const missingFields: string[] = [];
+
+    if (!accountSid) missingFields.push('TWILIO_ACCOUNT_SID');
+    if (!authToken) missingFields.push('TWILIO_AUTH_TOKEN');
+    if (!phoneNumber) missingFields.push('TWILIO_PHONE_NUMBER');
+
+    if (missingFields.length > 0) {
+      throw new Error(
+        `Twilio integration is partially configured but missing required environment variables: ${missingFields.join(', ')}. ` +
+          `Either provide all Twilio credentials or remove them to disable Twilio integration.`
+      );
+    }
+
+    // Validate webhook URL uses HTTPS in non-local environments
+    const isLocalhost =
+      webhookBaseUrl.includes('localhost') || webhookBaseUrl.includes('127.0.0.1');
+
+    if (!isLocalhost && !webhookBaseUrl.startsWith('https://')) {
+      throw new Error(
+        `TWILIO_WEBHOOK_BASE_URL must use HTTPS in production environments. ` +
+          `Current value: ${webhookBaseUrl}. ` +
+          `Use HTTPS or set to localhost for development.`
+      );
+    }
+
+    if (env.app.nodeEnv === 'development') {
+      // eslint-disable-next-line no-console
+      console.log('✅ Twilio integration configured:', {
+        accountSid: accountSid.substring(0, 8) + '...',
+        phoneNumber: phoneNumber.substring(0, 5) + '...',
+        webhookBaseUrl,
+      });
+    }
+  } else if (env.app.nodeEnv === 'development') {
+    // Twilio not configured - this is OK for development
+    // eslint-disable-next-line no-console
+    console.log('ℹ️  Twilio integration not configured (optional for development)');
+  }
+}
+
+// Run validation on module load
+validateTwilioConfig();
 
 /**
  * Generate a pg Pool configuration that respects either DATABASE_URL or

@@ -7,11 +7,13 @@ Quick commands and information for managing Twilio integration.
 ## Phone Numbers
 
 ### Staging
+
 - **Number:** [To be configured]
 - **Subaccount SID:** [To be configured]
 - **Friendly Name:** BerthCare Staging
 
 ### Production
+
 - **Number:** [To be configured]
 - **Subaccount SID:** [To be configured]
 - **Friendly Name:** BerthCare Production
@@ -21,6 +23,7 @@ Quick commands and information for managing Twilio integration.
 ## Webhook URLs
 
 ### Staging
+
 ```
 Voice: https://api-staging.berthcare.ca/v1/twilio/voice
 Voice Status: https://api-staging.berthcare.ca/v1/twilio/voice/status
@@ -29,6 +32,7 @@ SMS Status: https://api-staging.berthcare.ca/v1/twilio/sms/status
 ```
 
 ### Production
+
 ```
 Voice: https://api.berthcare.ca/v1/twilio/voice
 Voice Status: https://api.berthcare.ca/v1/twilio/voice/status
@@ -41,6 +45,7 @@ SMS Status: https://api.berthcare.ca/v1/twilio/sms/status
 ## AWS Secrets Manager
 
 ### Retrieve Staging Credentials
+
 ```bash
 aws secretsmanager get-secret-value \
   --secret-id berthcare/staging/twilio \
@@ -50,6 +55,7 @@ aws secretsmanager get-secret-value \
 ```
 
 ### Retrieve Production Credentials
+
 ```bash
 aws secretsmanager get-secret-value \
   --secret-id berthcare/production/twilio \
@@ -59,6 +65,7 @@ aws secretsmanager get-secret-value \
 ```
 
 ### Update Credentials
+
 ```bash
 # Run the setup script
 ./scripts/setup-twilio-secrets.sh
@@ -69,6 +76,7 @@ aws secretsmanager get-secret-value \
 ## Testing
 
 ### Test Voice Call (Staging)
+
 ```bash
 # Using Twilio CLI
 twilio api:core:calls:create \
@@ -80,6 +88,7 @@ twilio api:core:calls:create \
 ```
 
 ### Test SMS (Staging)
+
 ```bash
 # Using Twilio CLI
 twilio api:core:messages:create \
@@ -91,6 +100,7 @@ twilio api:core:messages:create \
 ```
 
 ### Test Webhook (After Backend Deployment)
+
 ```bash
 # Test voice webhook
 curl -X POST https://api-staging.berthcare.ca/v1/twilio/voice \
@@ -112,6 +122,7 @@ curl -X POST https://api-staging.berthcare.ca/v1/twilio/sms \
 ## Common Commands
 
 ### Install Twilio CLI
+
 ```bash
 # macOS
 brew tap twilio/brew && brew install twilio
@@ -121,27 +132,32 @@ twilio --version
 ```
 
 ### Login to Twilio CLI
+
 ```bash
 twilio login
 # Enter Account SID and Auth Token when prompted
 ```
 
 ### List Phone Numbers
+
 ```bash
 twilio api:core:incoming-phone-numbers:list
 ```
 
 ### Check Account Balance
+
 ```bash
 twilio api:core:accounts:fetch --account-sid "AC..."
 ```
 
 ### View Recent Calls
+
 ```bash
 twilio api:core:calls:list --limit 10
 ```
 
 ### View Recent Messages
+
 ```bash
 twilio api:core:messages:list --limit 10
 ```
@@ -151,6 +167,7 @@ twilio api:core:messages:list --limit 10
 ## Monitoring
 
 ### Twilio Console URLs
+
 - **Dashboard:** https://console.twilio.com
 - **Phone Numbers:** https://console.twilio.com/us1/develop/phone-numbers/manage/incoming
 - **Call Logs:** https://console.twilio.com/us1/monitor/logs/calls
@@ -159,6 +176,7 @@ twilio api:core:messages:list --limit 10
 - **Usage:** https://console.twilio.com/us1/monitor/usage
 
 ### Check Service Status
+
 ```bash
 # Twilio Status Page
 open https://status.twilio.com
@@ -169,6 +187,7 @@ open https://status.twilio.com
 ## Cost Tracking
 
 ### Current Rates (Canada)
+
 - **Phone Number:** $1.00/month
 - **Voice (outbound):** $0.013/minute
 - **Voice (inbound):** $0.0085/minute
@@ -176,12 +195,14 @@ open https://status.twilio.com
 - **SMS (inbound):** $0.0075/message
 
 ### View Usage
+
 ```bash
 # Navigate to: Console → Monitor → Usage
 # Filter by date range and service type
 ```
 
 ### Set Billing Alerts
+
 ```bash
 # Navigate to: Console → Billing → Alerts
 # Configure alerts at $50, $100, $200
@@ -192,12 +213,14 @@ open https://status.twilio.com
 ## Troubleshooting
 
 ### Check Twilio Debugger
+
 ```bash
 # Navigate to: Console → Monitor → Logs → Debugger
 # Shows errors and warnings for recent API calls
 ```
 
 ### Validate Phone Number Format
+
 ```bash
 # Phone numbers must be in E.164 format
 # Correct: +12345678900
@@ -205,6 +228,7 @@ open https://status.twilio.com
 ```
 
 ### Test Webhook Locally (ngrok)
+
 ```bash
 # Install ngrok
 brew install ngrok
@@ -221,9 +245,97 @@ ngrok http 3000
 
 ---
 
+## Rate Limiting Configuration
+
+### SMS Rate Limiter Fail-Open Behavior
+
+The SMS service uses Redis-backed rate limiting (100 SMS per hour per user). When Redis is unavailable, you can configure whether to block or allow SMS:
+
+#### Fail-Closed (Default - Recommended for Production)
+
+```bash
+# .env or environment variable
+SMS_RATE_LIMITER_FAIL_OPEN=false
+```
+
+**Behavior:** Blocks all SMS when Redis is unavailable
+**Priority:** Security and rate limit enforcement
+**Use case:** Standard SMS operations (family portal notifications, routine alerts)
+**Risk:** Service unavailability during Redis outages
+
+#### Fail-Open (For Critical Alerts)
+
+```bash
+# .env or environment variable
+SMS_RATE_LIMITER_FAIL_OPEN=true
+```
+
+**Behavior:** Allows SMS to proceed when Redis is unavailable (logs warning)
+**Priority:** Availability and message delivery
+**Use case:** Critical emergency alerts, care coordinator notifications
+**Risk:** Potential rate limit bypass during Redis outages
+
+### Production Recommendations
+
+#### Standard Production Environment
+
+```bash
+# Prioritize security and rate limiting
+SMS_RATE_LIMITER_FAIL_OPEN=false
+```
+
+#### Critical Alert Service (Separate Instance)
+
+```bash
+# Prioritize availability for emergency notifications
+SMS_RATE_LIMITER_FAIL_OPEN=true
+```
+
+#### Programmatic Override
+
+For services that need both behaviors, override at the service level:
+
+```typescript
+// Standard SMS service (fail-closed)
+const standardSMSService = new TwilioSMSService(
+  undefined, // use env defaults
+  undefined,
+  undefined,
+  undefined,
+  { failOpen: false } // enforce rate limits
+);
+
+// Critical alert SMS service (fail-open)
+const criticalAlertSMSService = new TwilioSMSService(
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  { failOpen: true } // prioritize delivery
+);
+```
+
+### Monitoring Rate Limiter Behavior
+
+When Redis fails and fail-open is enabled, the service logs:
+
+```json
+WARN: Redis rate limit check failed
+{
+  "key": "sms:ratelimit:user123",
+  "failOpen": true,
+  "rateLimitUnavailable": true
+}
+```
+
+Monitor these logs to detect Redis issues and potential rate limit bypasses.
+
+---
+
 ## Security
 
 ### Rotate Auth Token
+
 ```bash
 # Navigate to: Console → Account → API keys & tokens
 # Click "View" next to Auth Token
@@ -232,25 +344,22 @@ ngrok http 3000
 ```
 
 ### Validate Webhook Signatures
-```javascript
-// In your webhook handler
-const twilio = require('twilio');
 
-app.post('/v1/twilio/voice', (req, res) => {
-  const signature = req.headers['x-twilio-signature'];
+```typescript
+// In your webhook handler
+import { validateRequest } from 'twilio/lib/webhooks/webhooks';
+import { Request, Response } from 'express';
+
+app.post('/v1/twilio/voice', (req: Request, res: Response) => {
+  const signature = req.headers['x-twilio-signature'] as string;
   const url = `https://${req.headers.host}${req.url}`;
-  
-  const isValid = twilio.validateRequest(
-    process.env.TWILIO_AUTH_TOKEN,
-    signature,
-    url,
-    req.body
-  );
-  
+
+  const isValid = validateRequest(process.env.TWILIO_AUTH_TOKEN!, signature, url, req.body);
+
   if (!isValid) {
     return res.status(403).send('Invalid signature');
   }
-  
+
   // Process webhook...
 });
 ```

@@ -11,12 +11,14 @@ These migrations establish the database schema for BerthCare's voice alert and c
 Creates the `care_alerts` table for tracking voice alerts from caregivers to coordinators.
 
 **Key Features:**
+
 - Voice-first alert tracking (no messaging platform needed)
 - SLA monitoring with timestamp tracking
 - Escalation support for backup coordinators
 - Comprehensive outcome documentation
 
 **Schema:**
+
 ```sql
 care_alerts (
   id UUID PRIMARY KEY,
@@ -35,6 +37,7 @@ care_alerts (
 ```
 
 **Alert Types:**
+
 - `medical_concern` - Health issues requiring immediate attention
 - `medication_issue` - Problems with medication administration
 - `behavioral_change` - Unusual client behavior
@@ -44,13 +47,15 @@ care_alerts (
 - `other` - Other urgent matters
 
 **Status Flow:**
-```
+
+```text
 initiated → ringing → answered → resolved
                    ↓
               no_answer → escalated → resolved
 ```
 
 **Indexes:**
+
 - `idx_care_alerts_coordinator_status` - Fast coordinator dashboard queries
 - `idx_care_alerts_client_id` - Client alert history
 - `idx_care_alerts_staff_id` - Caregiver alert history
@@ -63,12 +68,14 @@ initiated → ringing → answered → resolved
 Creates the `coordinators` table for care coordinator management and alert routing.
 
 **Key Features:**
+
 - Zone-based coordinator assignment
 - Backup coordinator failover support
 - Active/inactive status tracking
 - Phone number for Twilio voice alerts
 
 **Schema:**
+
 ```sql
 coordinators (
   id UUID PRIMARY KEY,
@@ -81,6 +88,7 @@ coordinators (
 ```
 
 **Indexes:**
+
 - `idx_coordinators_zone_active` - Fast alert routing by zone
 - `idx_coordinators_user_id` - Coordinator profile lookup
 - `idx_coordinators_backup` - Backup coordinator escalation
@@ -106,17 +114,20 @@ psql -U postgres -d berthcare -f 008_create_care_alerts_rollback.sql
 
 ## Design Philosophy Alignment
 
-**Simplicity is the Ultimate Sophistication**
+#### Simplicity is the Ultimate Sophistication
+
 - Voice alerts, not messaging platform
 - Simple status flow, not complex state machine
 - Clear relationships, not over-normalized schema
 
-**Obsess Over Details**
+#### Obsess Over Details
+
 - Comprehensive indexes for sub-second queries
 - Timestamp constraints ensure data integrity
 - Soft deletes preserve audit trail
 
-**Start with User Experience**
+#### Start with User Experience
+
 - Schema designed for <15 second alert delivery
 - SLA monitoring built into timestamps
 - Escalation support for reliability
@@ -124,12 +135,14 @@ psql -U postgres -d berthcare -f 008_create_care_alerts_rollback.sql
 ## Performance Considerations
 
 **Expected Query Patterns:**
+
 1. Get active alerts for coordinator (most frequent)
 2. Find coordinator for zone (alert routing)
 3. Track alert SLA metrics (monitoring)
 4. Client alert history (care planning)
 
 **Optimization:**
+
 - All common queries use indexes
 - Soft deletes with WHERE clauses on indexes
 - Composite indexes for multi-column queries
@@ -139,28 +152,35 @@ psql -U postgres -d berthcare -f 008_create_care_alerts_rollback.sql
 
 ```sql
 -- Verify tables exist
-SELECT table_name FROM information_schema.tables 
-WHERE table_schema = 'public' 
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'public'
 AND table_name IN ('care_alerts', 'coordinators');
 
 -- Verify indexes exist
-SELECT indexname FROM pg_indexes 
+SELECT indexname FROM pg_indexes
 WHERE tablename IN ('care_alerts', 'coordinators');
 
 -- Test alert creation
+-- Note: Replace UUIDs with actual IDs from your database, or use gen_random_uuid()
+-- Requires existing client, staff (user), and coordinator records
 INSERT INTO care_alerts (
-  client_id, staff_id, coordinator_id, 
+  client_id, staff_id, coordinator_id,
   alert_type, status
 ) VALUES (
-  'client-uuid', 'staff-uuid', 'coordinator-uuid',
+  gen_random_uuid(), -- Replace with actual client_id
+  gen_random_uuid(), -- Replace with actual staff_id (user)
+  gen_random_uuid(), -- Replace with actual coordinator_id (user)
   'medical_concern', 'initiated'
 );
 
 -- Test coordinator creation
+-- Note: Requires existing user and zone records
 INSERT INTO coordinators (
   user_id, zone_id, phone_number, is_active
 ) VALUES (
-  'user-uuid', 'zone-uuid', '+1234567890', true
+  gen_random_uuid(), -- Replace with actual user_id
+  gen_random_uuid(), -- Replace with actual zone_id
+  '+15551234567', true
 );
 ```
 
