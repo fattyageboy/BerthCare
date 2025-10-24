@@ -71,6 +71,9 @@ jobs:
         run: npm run type-check
         continue-on-error: false
 
+      - name: Build shared library
+        run: npx nx run shared:build
+
       - name: Setup test database
         run: |
           cd apps/backend
