@@ -15,6 +15,7 @@ This document provides step-by-step instructions for provisioning the complete A
 ## Architecture Components
 
 ### Networking
+
 - **VPC:** 10.0.0.0/16 CIDR block
 - **Public Subnets:** 2 subnets across 2 AZs (ca-central-1a, ca-central-1b)
 - **Private Subnets:** 2 subnets across 2 AZs
@@ -23,6 +24,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **VPC Flow Logs:** Enabled for network monitoring
 
 ### Database
+
 - **Engine:** PostgreSQL 15.5
 - **Instance Class:** db.t4g.medium (ARM-based, cost-effective)
 - **Storage:** 100 GB initial, auto-scaling up to 500 GB
@@ -32,6 +34,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Performance Insights:** Enabled
 
 ### Cache
+
 - **Engine:** Redis 7.1
 - **Node Type:** cache.t4g.micro
 - **Cluster Size:** 2 nodes
@@ -41,6 +44,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Auth Token:** Enabled
 
 ### Storage
+
 - **S3 Buckets:**
   - `berthcare-photos-staging` - Visit photos
   - `berthcare-documents-staging` - Care plans and documents
@@ -52,6 +56,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Public Access:** Blocked
 
 ### CDN
+
 - **CloudFront Distribution:** Global edge locations
 - **Origins:** S3 buckets (photos, documents, signatures)
 - **SSL/TLS:** TLS 1.2+ enforced
@@ -60,6 +65,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Compression:** Enabled
 
 ### Security
+
 - **IAM Roles:**
   - ECS Task Execution Role (pull images, write logs)
   - ECS Task Role (application runtime permissions)
@@ -72,6 +78,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Secrets Manager:** Database and Redis credentials
 
 ### Monitoring
+
 - **CloudWatch Dashboard:** Pre-configured metrics
 - **CloudWatch Alarms:**
   - RDS CPU utilization > 80%
@@ -124,6 +131,7 @@ aws sts get-caller-identity
 ### 3. Required AWS Permissions
 
 Your AWS user/role needs the following permissions:
+
 - VPC management (create VPC, subnets, route tables, NAT gateways)
 - RDS management (create databases, parameter groups, subnet groups)
 - ElastiCache management (create Redis clusters)
@@ -150,6 +158,7 @@ cd terraform/scripts
 ```
 
 This script creates:
+
 - S3 bucket: `berthcare-terraform-state`
 - DynamoDB table: `berthcare-terraform-locks`
 
@@ -379,16 +388,16 @@ echo "https://ca-central-1.console.aws.amazon.com/cloudwatch/home?region=ca-cent
 
 ### Monthly Costs (Approximate)
 
-| Service | Configuration | Monthly Cost (USD) |
-|---------|--------------|-------------------|
-| RDS PostgreSQL | db.t4g.medium, Multi-AZ, 100 GB | $120 |
-| ElastiCache Redis | cache.t4g.micro x2, Multi-AZ | $30 |
-| NAT Gateways | 2 NAT Gateways | $65 |
-| S3 Storage | 100 GB + requests | $5 |
-| CloudFront | 100 GB data transfer | $10 |
-| Data Transfer | Inter-AZ, outbound | $10 |
-| CloudWatch | Logs, metrics, alarms | $5 |
-| **Total** | | **~$245/month** |
+| Service           | Configuration                   | Monthly Cost (USD) |
+| ----------------- | ------------------------------- | ------------------ |
+| RDS PostgreSQL    | db.t4g.medium, Multi-AZ, 100 GB | $120               |
+| ElastiCache Redis | cache.t4g.micro x2, Multi-AZ    | $30                |
+| NAT Gateways      | 2 NAT Gateways                  | $65                |
+| S3 Storage        | 100 GB + requests               | $5                 |
+| CloudFront        | 100 GB data transfer            | $10                |
+| Data Transfer     | Inter-AZ, outbound              | $10                |
+| CloudWatch        | Logs, metrics, alarms           | $5                 |
+| **Total**         |                                 | **~$245/month**    |
 
 ### Cost Optimization Tips
 
@@ -417,6 +426,7 @@ echo "https://ca-central-1.console.aws.amazon.com/cloudwatch/home?region=ca-cent
 **Symptom:** `Error acquiring the state lock`
 
 **Solution:**
+
 ```bash
 # Check DynamoDB for stale locks
 aws dynamodb scan \
@@ -432,6 +442,7 @@ terraform force-unlock <LOCK_ID>
 **Symptom:** `Error creating DB Instance: timeout while waiting for state to become 'available'`
 
 **Solution:**
+
 - Multi-AZ RDS takes 10-15 minutes to create
 - Check AWS Console for actual status
 - If stuck, check VPC subnet configuration
@@ -441,6 +452,7 @@ terraform force-unlock <LOCK_ID>
 **Symptom:** `Error creating S3 bucket: BucketAlreadyExists`
 
 **Solution:**
+
 ```bash
 # S3 bucket names are globally unique
 # Update bucket names in terraform.tfvars:
@@ -452,6 +464,7 @@ terraform force-unlock <LOCK_ID>
 **Symptom:** `403 Forbidden` when accessing CloudFront URL
 
 **Solution:**
+
 - CloudFront takes 15-20 minutes to fully deploy
 - Check Origin Access Control configuration
 - Verify S3 bucket policy allows CloudFront access
@@ -461,6 +474,7 @@ terraform force-unlock <LOCK_ID>
 **Symptom:** Connection timeout
 
 **Solution:**
+
 - RDS is in private subnet (by design for security)
 - To connect, use one of these methods:
   1. SSH tunnel through bastion host
@@ -475,16 +489,19 @@ terraform force-unlock <LOCK_ID>
 ### Regular Tasks
 
 **Weekly:**
+
 - Review CloudWatch alarms and metrics
 - Check RDS and Redis performance
 - Monitor S3 storage growth
 
 **Monthly:**
+
 - Review AWS costs and optimize
 - Update Terraform modules to latest versions
 - Review security group rules
 
 **Quarterly:**
+
 - Review and update IAM policies
 - Test disaster recovery procedures
 - Update RDS and Redis to latest minor versions
@@ -492,19 +509,23 @@ terraform force-unlock <LOCK_ID>
 ### Backup and Recovery
 
 **RDS Backups:**
+
 - Automated daily backups (7-day retention)
 - Manual snapshots before major changes
 - Point-in-time recovery available
 
 **Redis Backups:**
+
 - Automated daily snapshots (5-day retention)
 - Manual snapshots before major changes
 
 **S3 Versioning:**
+
 - Enabled on all buckets
 - Recover deleted objects within 90 days
 
 **Terraform State:**
+
 - Stored in S3 with versioning
 - DynamoDB state locking prevents corruption
 
@@ -515,6 +536,7 @@ terraform force-unlock <LOCK_ID>
 ### RDS Failover
 
 Multi-AZ RDS automatically fails over to standby in case of:
+
 - Primary AZ failure
 - Primary instance failure
 - Maintenance operations
@@ -525,6 +547,7 @@ Multi-AZ RDS automatically fails over to standby in case of:
 ### Redis Failover
 
 Multi-AZ Redis automatically fails over to replica in case of:
+
 - Primary node failure
 - Primary AZ failure
 
@@ -536,6 +559,7 @@ Multi-AZ Redis automatically fails over to replica in case of:
 In case of complete ca-central-1 region failure:
 
 1. **Restore from backups:**
+
    ```bash
    # Restore RDS from snapshot in another region
    aws rds restore-db-instance-from-db-snapshot \
@@ -549,10 +573,11 @@ In case of complete ca-central-1 region failure:
    - Restore from versioned objects
 
 3. **Redeploy infrastructure:**
+
    ```bash
    # Update region in terraform.tfvars
    aws_region = "us-east-1"
-   
+
    # Apply in new region
    terraform apply
    ```
@@ -562,24 +587,28 @@ In case of complete ca-central-1 region failure:
 ## Security Best Practices
 
 ### Network Security
+
 - ✅ RDS and Redis in private subnets (no internet access)
 - ✅ Security groups with least privilege
 - ✅ VPC Flow Logs enabled for monitoring
 - ✅ NAT Gateways for outbound traffic only
 
 ### Data Security
+
 - ✅ Encryption at rest (RDS, Redis, S3) with KMS
 - ✅ Encryption in transit (TLS 1.2+)
 - ✅ S3 bucket public access blocked
 - ✅ Versioning enabled for data recovery
 
 ### Access Security
+
 - ✅ IAM roles with least privilege
 - ✅ Credentials stored in Secrets Manager
 - ✅ No hardcoded credentials in code
 - ✅ MFA required for AWS Console access (recommended)
 
 ### Monitoring Security
+
 - ✅ CloudWatch alarms for anomalies
 - ✅ VPC Flow Logs for network analysis
 - ✅ S3 access logging enabled
@@ -622,6 +651,7 @@ After infrastructure is deployed:
 ## Support
 
 For issues or questions:
+
 - Check troubleshooting section above
 - Review Terraform documentation: https://www.terraform.io/docs
 - Review AWS documentation: https://docs.aws.amazon.com

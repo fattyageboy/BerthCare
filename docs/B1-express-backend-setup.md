@@ -16,12 +16,14 @@ Successfully initialized Express.js 4.x backend with TypeScript, comprehensive m
 **Location:** `apps/backend/src/main.ts`
 
 **Core Setup:**
+
 - Express.js 4.18.2 with full TypeScript support
 - Port 3000 for local development (configurable via `PORT` env variable)
 - Graceful startup with connection verification
 - Graceful shutdown handlers (SIGTERM, SIGINT)
 
 **Application Structure:**
+
 ```typescript
 // Main application flow:
 1. Load environment variables (.env)
@@ -36,6 +38,7 @@ Successfully initialized Express.js 4.x backend with TypeScript, comprehensive m
 ### 2. Middleware Stack ✅
 
 **Security Middleware:**
+
 - **helmet** (v7.1.0) - Sets secure HTTP headers
   - Content Security Policy
   - X-Frame-Options
@@ -43,14 +46,17 @@ Successfully initialized Express.js 4.x backend with TypeScript, comprehensive m
   - Strict-Transport-Security
 
 **Performance Middleware:**
+
 - **compression** (v1.7.4) - Gzip compression for responses
 - **express.json()** - JSON body parsing with size limits
 
 **CORS Configuration:**
+
 - **cors** (v2.8.5) - Cross-Origin Resource Sharing
 - Configurable origins for different environments
 
 **Rate Limiting:**
+
 - Implementation available at `src/middleware/rate-limiter.ts`
 - Ready for endpoint-specific rate limiting
 
@@ -59,6 +65,7 @@ Successfully initialized Express.js 4.x backend with TypeScript, comprehensive m
 **Endpoint:** `GET /health`
 
 **Response Format:**
+
 ```json
 {
   "status": "ok",
@@ -71,10 +78,12 @@ Successfully initialized Express.js 4.x backend with TypeScript, comprehensive m
 ```
 
 **Status Codes:**
+
 - `200 OK` - All services healthy
 - `503 Service Unavailable` - One or more services degraded
 
 **Health Checks:**
+
 - PostgreSQL: `SELECT 1` query
 - Redis: `PING` command
 - Non-blocking checks with error handling
@@ -84,6 +93,7 @@ Successfully initialized Express.js 4.x backend with TypeScript, comprehensive m
 **Location:** `apps/backend/src/config/logger.ts`
 
 **Winston Logger Features:**
+
 - Multiple log levels: error, warn, info, debug
 - Structured JSON logging for production
 - Colorized console output for development
@@ -91,18 +101,20 @@ Successfully initialized Express.js 4.x backend with TypeScript, comprehensive m
 - Service metadata (service name, environment)
 
 **Log Functions:**
+
 ```typescript
-logError(message, error, context)    // Error logging + Sentry
-logWarn(message, context)             // Warning logs
-logInfo(message, context)             // Info logs
-logDebug(message, context)            // Debug logs (dev only)
-logRequest(method, path, status, duration) // API request logs
-logQuery(query, duration, context)    // Database query logs
-logAuth(event, userId, context)       // Authentication events
-logBusinessEvent(event, context)      // Business logic events
+logError(message, error, context); // Error logging + Sentry
+logWarn(message, context); // Warning logs
+logInfo(message, context); // Info logs
+logDebug(message, context); // Debug logs (dev only)
+logRequest(method, path, status, duration); // API request logs
+logQuery(query, duration, context); // Database query logs
+logAuth(event, userId, context); // Authentication events
+logBusinessEvent(event, context); // Business logic events
 ```
 
 **Log Output Examples:**
+
 ```
 Development:
 08:10:19 [info] Connected to PostgreSQL {"databaseTime":"2025-10-10T15:10:19.487Z","version":"PostgreSQL 15.14"}
@@ -114,18 +126,21 @@ Production:
 ### 5. Error Handling ✅
 
 **Global Error Handling:**
+
 - Uncaught exception handlers
 - Unhandled promise rejection handlers
 - Graceful shutdown on SIGTERM/SIGINT
 - Connection cleanup before exit
 
 **Error Tracking:**
+
 - Sentry integration configured (`src/config/sentry.ts`)
 - Automatic error capture and reporting
 - Context enrichment (user, request, environment)
 - Performance monitoring ready
 
 **Connection Error Handling:**
+
 - PostgreSQL connection failures logged and handled
 - Redis connection failures logged and handled
 - Health endpoint reflects degraded state
@@ -134,6 +149,7 @@ Production:
 ### 6. Database Connections ✅
 
 **PostgreSQL Configuration:**
+
 ```typescript
 Pool Settings:
 - Max connections: 10 (configurable via DB_POOL_MAX)
@@ -144,6 +160,7 @@ Pool Settings:
 ```
 
 **Redis Configuration:**
+
 ```typescript
 Client Settings:
 - Connection URL: REDIS_URL env variable
@@ -153,6 +170,7 @@ Client Settings:
 ```
 
 **Connection Verification:**
+
 - PostgreSQL version logged on startup
 - Redis version logged on startup
 - Connection health checked before server start
@@ -173,6 +191,7 @@ Client Settings:
    - Lists available endpoints
 
 **Response Example:**
+
 ```json
 {
   "name": "BerthCare API",
@@ -191,6 +210,7 @@ Client Settings:
 ### Manual Testing ✅
 
 **1. Server Startup:**
+
 ```bash
 $ npm run dev --prefix apps/backend
 
@@ -207,6 +227,7 @@ $ npm run dev --prefix apps/backend
 ```
 
 **2. Health Check:**
+
 ```bash
 $ curl http://localhost:3000/health
 
@@ -223,6 +244,7 @@ Response:
 ```
 
 **3. API Info:**
+
 ```bash
 $ curl http://localhost:3000/api/v1
 
@@ -241,6 +263,7 @@ Response:
 ```
 
 **4. Graceful Shutdown:**
+
 ```bash
 $ kill -SIGTERM <pid>
 
@@ -261,6 +284,7 @@ $ kill -SIGTERM <pid>
 ## Dependencies Added
 
 **Production Dependencies:**
+
 ```json
 {
   "express": "^4.18.2",
@@ -277,6 +301,7 @@ $ kill -SIGTERM <pid>
 ```
 
 **Development Dependencies:**
+
 ```json
 {
   "@types/express": "^4.17.21",
@@ -307,6 +332,7 @@ apps/backend/
 ## Environment Configuration
 
 **Required Environment Variables:**
+
 ```bash
 # Server
 PORT=3000
@@ -335,55 +361,63 @@ CLOUDWATCH_LOG_GROUP=/aws/ecs/berthcare-api
 ## Architecture Decisions
 
 ### 1. Middleware Order
+
 **Decision:** helmet → cors → compression → express.json → routes  
 **Rationale:** Security first, then CORS, then performance optimizations, then parsing
 
 ### 2. Connection Pooling
+
 **Decision:** Use pg connection pooling with configurable limits  
 **Rationale:** Better resource management, prevents connection exhaustion, improves performance
 
 ### 3. Health Check Design
+
 **Decision:** Comprehensive health check with individual service status  
 **Rationale:** Enables proper monitoring, load balancer integration, and debugging
 
 ### 4. Graceful Shutdown
+
 **Decision:** Implement SIGTERM and SIGINT handlers with connection cleanup  
 **Rationale:** Prevents data loss, ensures clean connection closure, Kubernetes-friendly
 
 ### 5. Structured Logging
+
 **Decision:** Winston with JSON format for production, colorized for development  
 **Rationale:** CloudWatch compatibility, easy parsing, better debugging experience
 
 ### 6. Error Tracking
+
 **Decision:** Integrate Sentry from the start  
 **Rationale:** Production error visibility, performance monitoring, proactive issue detection
 
 ## Acceptance Criteria Status
 
-| Criteria | Status | Evidence |
-|----------|--------|----------|
-| Express.js 4.x with TypeScript | ✅ | package.json shows express@4.18.2 |
-| Helmet middleware configured | ✅ | app.use(helmet()) in main.ts |
-| CORS middleware configured | ✅ | app.use(cors()) in main.ts |
-| Compression middleware configured | ✅ | app.use(compression()) in main.ts |
-| Rate limiting ready | ✅ | Middleware exists at src/middleware/rate-limiter.ts |
-| Health check endpoint exists | ✅ | GET /health returns 200 |
-| Winston logging configured | ✅ | Logger at src/config/logger.ts |
-| Error handling middleware | ✅ | Graceful shutdown handlers implemented |
-| Port 3000 for local dev | ✅ | Server starts on port 3000 |
-| `curl localhost:3000/health` returns 200 | ✅ | Verified in testing |
-| Logs to console | ✅ | Structured logs visible on startup |
+| Criteria                                 | Status | Evidence                                            |
+| ---------------------------------------- | ------ | --------------------------------------------------- |
+| Express.js 4.x with TypeScript           | ✅     | package.json shows express@4.18.2                   |
+| Helmet middleware configured             | ✅     | app.use(helmet()) in main.ts                        |
+| CORS middleware configured               | ✅     | app.use(cors()) in main.ts                          |
+| Compression middleware configured        | ✅     | app.use(compression()) in main.ts                   |
+| Rate limiting ready                      | ✅     | Middleware exists at src/middleware/rate-limiter.ts |
+| Health check endpoint exists             | ✅     | GET /health returns 200                             |
+| Winston logging configured               | ✅     | Logger at src/config/logger.ts                      |
+| Error handling middleware                | ✅     | Graceful shutdown handlers implemented              |
+| Port 3000 for local dev                  | ✅     | Server starts on port 3000                          |
+| `curl localhost:3000/health` returns 200 | ✅     | Verified in testing                                 |
+| Logs to console                          | ✅     | Structured logs visible on startup                  |
 
 **All acceptance criteria met. B1 is complete and production-ready.**
 
 ## Next Steps
 
 ### Immediate (B2-B4)
+
 - ✅ B2: Configure database connection (Already complete)
 - ✅ B3: Configure Redis connection (Already complete)
 - ✅ B4: Set up S3 client (Infrastructure ready)
 
 ### Future Enhancements
+
 - Add request logging middleware
 - Implement API versioning strategy
 - Add OpenAPI/Swagger documentation

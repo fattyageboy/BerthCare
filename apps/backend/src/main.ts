@@ -7,9 +7,12 @@ import { createClient } from 'redis';
 
 import { env, getPostgresPoolConfig, getRedisClientConfig } from './config/env';
 import { logError, logInfo } from './config/logger';
+import { closeWebhookRateLimiter } from './middleware/webhook-rate-limit';
+import { createAlertRoutes } from './routes/alerts.routes';
 import { createAuthRoutes } from './routes/auth.routes';
 import { createCarePlanRoutes } from './routes/care-plans.routes';
 import { createClientRoutes } from './routes/clients.routes';
+import { createWebhookRoutes } from './routes/webhooks.routes';
 
 const app = express();
 const PORT = env.app.port;
@@ -73,6 +76,8 @@ app.get('/api/v1', (_req, res) => {
       auth: '/api/v1/auth',
       clients: '/api/v1/clients',
       carePlans: '/api/v1/care-plans',
+      alerts: '/api/v1/alerts',
+      webhooks: '/webhooks',
     },
   });
 });
@@ -81,6 +86,8 @@ app.get('/api/v1', (_req, res) => {
 let authRoutes: Router | null = null;
 let clientRoutes: Router | null = null;
 let carePlanRoutes: Router | null = null;
+let alertRoutes: Router | null = null;
+let webhookRoutes: Router | null = null;
 
 // Initialize connections and start server
 async function startServer() {
@@ -110,6 +117,12 @@ async function startServer() {
     carePlanRoutes = createCarePlanRoutes(pgPool, redisClient);
     app.use('/api/v1/care-plans', carePlanRoutes);
 
+    alertRoutes = createAlertRoutes(pgPool, redisClient);
+    app.use('/api/v1/alerts', alertRoutes);
+
+    webhookRoutes = await createWebhookRoutes(pgPool);
+    app.use('/webhooks', webhookRoutes);
+
     // Start Express server
     app.listen(PORT, () => {
       logInfo('BerthCare Backend Server started', {
@@ -129,6 +142,7 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logInfo('SIGTERM received, shutting down gracefully...');
+  await closeWebhookRateLimiter();
   await pgPool.end();
   await redisClient.quit();
   process.exit(0);
@@ -136,6 +150,7 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   logInfo('SIGINT received, shutting down gracefully...');
+  await closeWebhookRateLimiter();
   await pgPool.end();
   await redisClient.quit();
   process.exit(0);

@@ -76,17 +76,20 @@ npm run db:reset
 Creates the authentication system tables:
 
 **users table:**
+
 - Stores user accounts (caregivers, coordinators, admins)
 - Supports role-based access control
 - Zone-based data isolation
 - Soft delete support
 
 **refresh_tokens table:**
+
 - JWT refresh token management
 - Multi-device session support
 - Token revocation for security
 
 **Indexes:**
+
 - Optimized for authentication flows
 - Fast email lookup for login
 - Efficient zone-based queries
@@ -97,6 +100,7 @@ Creates the authentication system tables:
 Creates the client management table:
 
 **clients table:**
+
 - Stores client (patient) information
 - Personal details (name, DOB, address)
 - Geographic coordinates for route optimization
@@ -105,6 +109,7 @@ Creates the client management table:
 - Soft delete support
 
 **Indexes:**
+
 - Zone-based queries for caregiver assignment
 - Name search (last name, full name)
 - Geographic proximity searches
@@ -115,6 +120,7 @@ Creates the client management table:
 Creates the care plan management table:
 
 **care_plans table:**
+
 - Stores care plan information for clients
 - Summary of care needs
 - Medications (JSONB array with name, dosage, frequency)
@@ -124,16 +130,19 @@ Creates the care plan management table:
 - Foreign key to clients with CASCADE delete
 
 **Indexes:**
+
 - Fast client lookup
 - GIN indexes for JSONB medication/allergy searches
 - Version tracking for conflict detection
 - Unique constraint: one active care plan per client
 
 **Triggers:**
+
 - Auto-increment version on content changes
 - Auto-update timestamps
 
 **Functions:**
+
 - `increment_care_plan_version()` - Version management
 - `validate_medication_structure()` - JSONB validation
 - `validate_allergies_structure()` - JSONB validation
@@ -167,6 +176,7 @@ These are configured in your `.env` file and match the `docker-compose.yml` setu
 ### Migration Best Practices
 
 **DO:**
+
 - ✅ Use descriptive migration names
 - ✅ Include comments explaining the purpose
 - ✅ Create rollback scripts for every migration
@@ -176,6 +186,7 @@ These are configured in your `.env` file and match the `docker-compose.yml` setu
 - ✅ Document table and column purposes
 
 **DON'T:**
+
 - ❌ Modify existing migration files after deployment
 - ❌ Skip rollback script creation
 - ❌ Use database-specific features without fallbacks
@@ -258,11 +269,11 @@ care_plans
 
 ### Migration History
 
-| Migration | Description | Status |
-|-----------|-------------|--------|
-| 001 | Users & Authentication | ✅ Applied |
-| 002 | Clients | ✅ Applied |
-| 003 | Care Plans | ✅ Applied |
+| Migration | Description            | Status     |
+| --------- | ---------------------- | ---------- |
+| 001       | Users & Authentication | ✅ Applied |
+| 002       | Clients                | ✅ Applied |
+| 003       | Care Plans             | ✅ Applied |
 
 ## Reference
 

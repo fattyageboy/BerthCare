@@ -18,9 +18,7 @@
             },
             "build": {
               "executor": "@nx/js:tsc",
-              "outputs": [
-                "{options.outputPath}"
-              ],
+              "outputs": ["{options.outputPath}"],
               "options": {
                 "outputPath": "apps/backend/dist",
                 "main": "apps/backend/src/main.ts",
@@ -38,11 +36,7 @@
             },
             "test": {
               "executor": "nx:run-commands",
-              "inputs": [
-                "default",
-                "^production",
-                "{workspaceRoot}/jest.preset.js"
-              ],
+              "inputs": ["default", "^production", "{workspaceRoot}/jest.preset.js"],
               "cache": true,
               "options": {
                 "command": "jest",
@@ -52,18 +46,11 @@
             },
             "lint": {
               "executor": "@nx/eslint:lint",
-              "inputs": [
-                "default",
-                "{workspaceRoot}/.eslintrc.json"
-              ],
+              "inputs": ["default", "{workspaceRoot}/.eslintrc.json"],
               "cache": true,
-              "outputs": [
-                "{options.outputFile}"
-              ],
+              "outputs": ["{options.outputFile}"],
               "options": {
-                "lintFilePatterns": [
-                  "apps/backend/**/*.ts"
-                ]
+                "lintFilePatterns": ["apps/backend/**/*.ts"]
               },
               "configurations": {}
             }
@@ -71,10 +58,7 @@
           "sourceRoot": "apps/backend/src",
           "projectType": "application",
           "$schema": "../../node_modules/nx/schemas/project-schema.json",
-          "tags": [
-            "type:app",
-            "platform:backend"
-          ],
+          "tags": ["type:app", "platform:backend"],
           "implicitDependencies": []
         }
       },
@@ -115,13 +99,8 @@
             },
             "build": {
               "executor": "nx:run-commands",
-              "dependsOn": [
-                "^build"
-              ],
-              "inputs": [
-                "production",
-                "^production"
-              ],
+              "dependsOn": ["^build"],
+              "inputs": ["production", "^production"],
               "cache": true,
               "options": {
                 "commands": [
@@ -135,11 +114,7 @@
             },
             "test": {
               "executor": "nx:run-commands",
-              "inputs": [
-                "default",
-                "^production",
-                "{workspaceRoot}/jest.preset.js"
-              ],
+              "inputs": ["default", "^production", "{workspaceRoot}/jest.preset.js"],
               "cache": true,
               "options": {
                 "command": "jest",
@@ -149,18 +124,11 @@
             },
             "lint": {
               "executor": "@nx/eslint:lint",
-              "inputs": [
-                "default",
-                "{workspaceRoot}/.eslintrc.json"
-              ],
+              "inputs": ["default", "{workspaceRoot}/.eslintrc.json"],
               "cache": true,
-              "outputs": [
-                "{options.outputFile}"
-              ],
+              "outputs": ["{options.outputFile}"],
               "options": {
-                "lintFilePatterns": [
-                  "apps/mobile/**/*.{ts,tsx,js,jsx}"
-                ]
+                "lintFilePatterns": ["apps/mobile/**/*.{ts,tsx,js,jsx}"]
               },
               "configurations": {}
             },
@@ -177,10 +145,7 @@
           "sourceRoot": "apps/mobile/src",
           "projectType": "application",
           "$schema": "../../node_modules/nx/schemas/project-schema.json",
-          "tags": [
-            "type:app",
-            "platform:mobile"
-          ],
+          "tags": ["type:app", "platform:mobile"],
           "implicitDependencies": []
         }
       },
@@ -193,9 +158,7 @@
           "targets": {
             "build": {
               "executor": "@nx/js:tsc",
-              "outputs": [
-                "{options.outputPath}"
-              ],
+              "outputs": ["{options.outputPath}"],
               "options": {
                 "outputPath": "libs/shared/dist",
                 "main": "libs/shared/src/index.ts",
@@ -206,28 +169,17 @@
             },
             "lint": {
               "executor": "@nx/eslint:lint",
-              "inputs": [
-                "default",
-                "{workspaceRoot}/.eslintrc.json"
-              ],
+              "inputs": ["default", "{workspaceRoot}/.eslintrc.json"],
               "cache": true,
-              "outputs": [
-                "{options.outputFile}"
-              ],
+              "outputs": ["{options.outputFile}"],
               "options": {
-                "lintFilePatterns": [
-                  "libs/shared/**/*.ts"
-                ]
+                "lintFilePatterns": ["libs/shared/**/*.ts"]
               },
               "configurations": {}
             },
             "test": {
               "executor": "nx:run-commands",
-              "inputs": [
-                "default",
-                "^production",
-                "{workspaceRoot}/jest.preset.js"
-              ],
+              "inputs": ["default", "^production", "{workspaceRoot}/jest.preset.js"],
               "cache": true,
               "options": {
                 "command": "jest",
@@ -239,10 +191,7 @@
           "sourceRoot": "libs/shared/src",
           "projectType": "library",
           "$schema": "../../node_modules/nx/schemas/project-schema.json",
-          "tags": [
-            "type:lib",
-            "scope:shared"
-          ],
+          "tags": ["type:lib", "scope:shared"],
           "implicitDependencies": []
         }
       }

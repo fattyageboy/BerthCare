@@ -27,6 +27,7 @@ BerthCare uses Twilio for two critical communication features:
 ### 1. Required Information
 
 Before starting, gather:
+
 - [ ] Business email address (for Twilio account)
 - [ ] Business phone number (for verification)
 - [ ] Credit card for account setup
@@ -37,12 +38,12 @@ Before starting, gather:
 
 **Estimated Monthly Costs:**
 
-| Service | Usage | Cost |
-|---------|-------|------|
-| Phone Numbers | 2 numbers (staging + production) | $2.00/month |
-| Voice Calls | ~500 calls/month @ 1 min avg | $25.00/month |
-| SMS Messages | ~1,000 messages/month | $7.50/month |
-| **Total** | | **~$35/month** |
+| Service       | Usage                            | Cost           |
+| ------------- | -------------------------------- | -------------- |
+| Phone Numbers | 2 numbers (staging + production) | $2.00/month    |
+| Voice Calls   | ~500 calls/month @ 1 min avg     | $25.00/month   |
+| SMS Messages  | ~1,000 messages/month            | $7.50/month    |
+| **Total**     |                                  | **~$35/month** |
 
 ---
 
@@ -56,6 +57,7 @@ open https://www.twilio.com/try-twilio
 ```
 
 **Account Setup:**
+
 1. Click "Sign up and start building"
 2. Enter business email and create password
 3. Verify email address
@@ -84,6 +86,7 @@ Trial accounts have limitations (verified numbers only). Upgrade immediately:
 ### 1.3 Enable Required Products
 
 Navigate to **Console → Products** and enable:
+
 - ✅ Programmable Voice
 - ✅ Programmable SMS
 - ✅ Phone Numbers
@@ -100,6 +103,7 @@ Navigate to **Console → Products** and enable:
 ```
 
 **Search Criteria:**
+
 - **Country:** Canada
 - **Capabilities:** Voice + SMS
 - **Type:** Local
@@ -110,12 +114,14 @@ Navigate to **Console → Products** and enable:
   - ✅ MMS (optional, for future features)
 
 **Purchase Process:**
+
 1. Search for available numbers
 2. Select a number with both Voice and SMS capabilities
 3. Click "Buy" ($1.00/month)
 4. Confirm purchase
 
 **Configure Number:**
+
 1. Click on the purchased number
 2. Set **Friendly Name:** "BerthCare Staging"
 3. **Voice Configuration:**
@@ -136,9 +142,11 @@ Navigate to **Console → Products** and enable:
 Repeat the same process for production:
 
 **Search Criteria:**
+
 - Same as staging (Canada, Voice + SMS, Local)
 
 **Configure Number:**
+
 - **Friendly Name:** "BerthCare Production"
 - **Voice URL:** `https://api.berthcare.ca/v1/twilio/voice` (placeholder)
 - **SMS URL:** `https://api.berthcare.ca/v1/twilio/sms` (placeholder)
@@ -159,10 +167,12 @@ Subaccounts provide isolation between environments and separate billing tracking
 ```
 
 **Configuration:**
+
 - **Friendly Name:** BerthCare Staging
 - **Status:** Active
 
 **After Creation:**
+
 1. Note the **Account SID** (starts with `AC...`)
 2. Note the **Auth Token** (click "Show" to reveal)
 3. Transfer staging phone number to subaccount:
@@ -177,10 +187,12 @@ Subaccounts provide isolation between environments and separate billing tracking
 Repeat for production:
 
 **Configuration:**
+
 - **Friendly Name:** BerthCare Production
 - **Status:** Active
 
 **After Creation:**
+
 1. Note the **Account SID**
 2. Note the **Auth Token**
 3. Transfer production phone number to subaccount
@@ -222,6 +234,7 @@ POST /v1/twilio/sms/status
 Once your backend is deployed (after E5), update the webhook URLs:
 
 **For Staging Number:**
+
 ```bash
 # Navigate to: Console → Phone Numbers → Active Numbers → [Staging Number]
 
@@ -235,6 +248,7 @@ Message Status Changes: https://api-staging.berthcare.ca/v1/twilio/sms/status
 ```
 
 **For Production Number:**
+
 ```bash
 # Same URLs but with production domain
 A Call Comes In: https://api.berthcare.ca/v1/twilio/voice
@@ -271,6 +285,7 @@ aws secretsmanager tag-resource \
 ```
 
 **Replace placeholders:**
+
 - `AC...` - Your staging subaccount SID
 - `your_auth_token` - Your staging auth token
 - `+1234567890` - Your staging phone number
@@ -539,6 +554,7 @@ Prevent abuse and control costs:
 ## Security Best Practices
 
 ### Credential Management
+
 - ✅ Never commit Twilio credentials to Git
 - ✅ Use AWS Secrets Manager for production credentials
 - ✅ Rotate auth tokens every 90 days
@@ -546,18 +562,21 @@ Prevent abuse and control costs:
 - ✅ Enable IP whitelisting for API access (optional)
 
 ### Webhook Security
+
 - ✅ Validate Twilio request signatures
 - ✅ Use HTTPS only for webhooks
 - ✅ Implement rate limiting on webhook endpoints
 - ✅ Log all webhook requests for audit
 
 ### Cost Control
+
 - ✅ Set billing alerts at multiple thresholds
 - ✅ Enable geo permissions (Canada + US only)
 - ✅ Configure rate limits per number
 - ✅ Monitor usage daily during initial rollout
 
 ### Privacy & Compliance
+
 - ✅ Disable call recording by default
 - ✅ Implement data retention policies
 - ✅ Log all communications for audit (PIPEDA)
@@ -572,6 +591,7 @@ Prevent abuse and control costs:
 **Symptom:** No Canadian numbers available in search
 
 **Solution:**
+
 ```bash
 # Try different area codes:
 - 416, 647 (Toronto)
@@ -589,6 +609,7 @@ Prevent abuse and control costs:
 **Symptom:** Calls/SMS work but webhooks not triggered
 
 **Solution:**
+
 ```bash
 # Check webhook URL configuration:
 1. Verify URL is publicly accessible (not localhost)
@@ -603,6 +624,7 @@ Prevent abuse and control costs:
 **Symptom:** `[HTTP 401] Unable to create record: Authenticate`
 
 **Solution:**
+
 ```bash
 # Verify credentials:
 1. Check Account SID starts with "AC"
@@ -616,6 +638,7 @@ Prevent abuse and control costs:
 **Symptom:** SMS shows "sent" but not received
 
 **Solution:**
+
 ```bash
 # Check SMS logs:
 1. Navigate to: Console → Monitor → Logs → Messaging
@@ -722,4 +745,3 @@ After Twilio configuration is complete:
 - [x] Documentation complete
 
 **Status:** ✅ Ready for backend integration
-

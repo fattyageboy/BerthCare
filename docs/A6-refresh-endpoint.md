@@ -19,6 +19,7 @@ Implemented the token refresh endpoint that allows users to obtain new access to
 **URL:** `POST /v1/auth/refresh`
 
 **Request Body:**
+
 ```json
 {
   "refreshToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -26,6 +27,7 @@ Implemented the token refresh endpoint that allows users to obtain new access to
 ```
 
 **Success Response (200):**
+
 ```json
 {
   "data": {
@@ -37,6 +39,7 @@ Implemented the token refresh endpoint that allows users to obtain new access to
 **Error Responses:**
 
 - **400 Bad Request** - Missing or invalid token format
+
 ```json
 {
   "error": {
@@ -50,6 +53,7 @@ Implemented the token refresh endpoint that allows users to obtain new access to
 ```
 
 - **401 Unauthorized** - Invalid, expired, or revoked token
+
 ```json
 {
   "error": {
@@ -116,21 +120,22 @@ The endpoint implements multiple layers of security validation:
 
 ### Error Codes
 
-| Code | HTTP Status | Description | User Action |
-|------|-------------|-------------|-------------|
-| `VALIDATION_ERROR` | 400 | Missing or malformed token | Check request format |
-| `INVALID_TOKEN` | 401 | Token signature invalid or not in database | Re-authenticate |
-| `TOKEN_REVOKED` | 401 | Token has been explicitly revoked | Re-authenticate |
-| `TOKEN_EXPIRED` | 401 | Token expiration time has passed | Re-authenticate |
-| `USER_NOT_FOUND` | 401 | User account deleted | Contact support |
-| `ACCOUNT_DISABLED` | 401 | User account deactivated | Contact support |
-| `INTERNAL_SERVER_ERROR` | 500 | Server error | Retry or contact support |
+| Code                    | HTTP Status | Description                                | User Action              |
+| ----------------------- | ----------- | ------------------------------------------ | ------------------------ |
+| `VALIDATION_ERROR`      | 400         | Missing or malformed token                 | Check request format     |
+| `INVALID_TOKEN`         | 401         | Token signature invalid or not in database | Re-authenticate          |
+| `TOKEN_REVOKED`         | 401         | Token has been explicitly revoked          | Re-authenticate          |
+| `TOKEN_EXPIRED`         | 401         | Token expiration time has passed           | Re-authenticate          |
+| `USER_NOT_FOUND`        | 401         | User account deleted                       | Contact support          |
+| `ACCOUNT_DISABLED`      | 401         | User account deactivated                   | Contact support          |
+| `INTERNAL_SERVER_ERROR` | 500         | Server error                               | Retry or contact support |
 
 ## Files Modified
 
 ### 1. Validation Middleware (`apps/backend/src/middleware/validation.ts`)
 
 Added `validateRefreshToken` middleware:
+
 - Validates refresh token presence
 - Checks JWT format (3 parts)
 - Returns clear error messages
@@ -138,6 +143,7 @@ Added `validateRefreshToken` middleware:
 ### 2. Auth Routes (`apps/backend/src/routes/auth.routes.ts`)
 
 Implemented refresh endpoint:
+
 - JWT signature verification
 - Database token validation
 - User account validation
@@ -147,6 +153,7 @@ Implemented refresh endpoint:
 ### 3. Integration Tests (`apps/backend/tests/auth.refresh.test.ts`)
 
 Created comprehensive test suite:
+
 - Success cases (valid token refresh)
 - Validation errors (missing/invalid format)
 - Authentication errors (invalid/expired/revoked tokens)
@@ -213,6 +220,7 @@ curl -X GET http://localhost:3000/v1/clients \
 ### Token Storage
 
 **Refresh tokens are stored as SHA-256 hashes:**
+
 - Never store raw tokens in database
 - Hash comparison prevents token theft from database breach
 - One-way hashing ensures tokens cannot be reconstructed
@@ -220,6 +228,7 @@ curl -X GET http://localhost:3000/v1/clients \
 ### Error Messages
 
 **Generic error messages prevent information leakage:**
+
 - Don't reveal whether token exists in database
 - Don't reveal specific validation failure reason
 - Consistent "Invalid or expired refresh token" message
@@ -227,6 +236,7 @@ curl -X GET http://localhost:3000/v1/clients \
 ### Token Revocation
 
 **Tokens can be revoked for security events:**
+
 - User logout (revoke specific device token)
 - Password change (revoke all user tokens)
 - Security breach (revoke all tokens)
@@ -235,6 +245,7 @@ curl -X GET http://localhost:3000/v1/clients \
 ### Rate Limiting
 
 **Note:** Rate limiting not implemented on refresh endpoint because:
+
 - Refresh tokens are already rate-limited by their 30-day expiry
 - Failed refresh attempts require re-login (which is rate-limited)
 - Legitimate use case: multiple devices refreshing simultaneously
@@ -244,20 +255,23 @@ curl -X GET http://localhost:3000/v1/clients \
 ### Database Queries
 
 **Single query for token validation:**
+
 ```sql
-SELECT id, user_id, expires_at, revoked_at 
-FROM refresh_tokens 
+SELECT id, user_id, expires_at, revoked_at
+FROM refresh_tokens
 WHERE token_hash = $1
 ```
 
 **Single query for user validation:**
+
 ```sql
-SELECT id, email, role, zone_id, is_active 
-FROM users 
+SELECT id, email, role, zone_id, is_active
+FROM users
 WHERE id = $1 AND deleted_at IS NULL
 ```
 
 **Indexes used:**
+
 - `idx_refresh_tokens_token_hash` - Fast token lookup
 - `users.id` primary key - Fast user lookup
 
@@ -279,21 +293,21 @@ async function apiRequest(url, options) {
   let response = await fetch(url, {
     ...options,
     headers: {
-      Authorization: `Bearer ${accessToken}`
-    }
+      Authorization: `Bearer ${accessToken}`,
+    },
   });
 
   // If access token expired, refresh and retry
   if (response.status === 401) {
     const newAccessToken = await refreshAccessToken();
-    
+
     if (newAccessToken) {
       // Retry original request with new token
       response = await fetch(url, {
         ...options,
         headers: {
-          Authorization: `Bearer ${newAccessToken}`
-        }
+          Authorization: `Bearer ${newAccessToken}`,
+        },
       });
     } else {
       // Refresh failed, redirect to login
@@ -308,7 +322,7 @@ async function refreshAccessToken() {
   try {
     const response = await fetch('/v1/auth/refresh', {
       method: 'POST',
-      body: JSON.stringify({ refreshToken })
+      body: JSON.stringify({ refreshToken }),
     });
 
     if (response.ok) {
@@ -327,11 +341,13 @@ async function refreshAccessToken() {
 ### Token Expiry Handling
 
 **Proactive refresh (recommended):**
+
 - Check access token expiry before each request
 - Refresh if token expires within 5 minutes
 - Prevents 401 errors and retry overhead
 
 **Reactive refresh (implemented):**
+
 - Wait for 401 response
 - Refresh token and retry request
 - Simpler but causes brief delay
@@ -361,11 +377,13 @@ return {
 ```
 
 **Benefits:**
+
 - Limits token lifetime even if stolen
 - Detects token theft (old token used after rotation)
 - Industry best practice for high-security applications
 
 **Trade-offs:**
+
 - More complex mobile app logic
 - Must handle token update failures
 - Increased database writes
@@ -406,6 +424,7 @@ WHERE user_id = $1 AND device_id = $2;
 ### Immediate (Task A7)
 
 Implement JWT authentication middleware:
+
 - Verify access token on protected routes
 - Extract user information from token
 - Attach user to request object
@@ -414,6 +433,7 @@ Implement JWT authentication middleware:
 ### Future (Task A8)
 
 Implement role-based authorization middleware:
+
 - Check user role against required roles
 - Support multiple roles per endpoint
 - Return 403 for insufficient permissions

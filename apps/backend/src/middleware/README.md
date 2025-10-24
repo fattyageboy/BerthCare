@@ -16,16 +16,14 @@ Provides JWT token verification and role-based access control.
 import { authenticateJWT, requireRole, AuthenticatedRequest } from './middleware/auth';
 
 // Protect a route (any authenticated user)
-router.get('/protected', 
-  authenticateJWT(redisClient), 
-  (req: AuthenticatedRequest, res) => {
-    const userId = req.user?.userId;
-    res.json({ userId });
-  }
-);
+router.get('/protected', authenticateJWT(redisClient), (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.userId;
+  res.json({ userId });
+});
 
 // Protect a route (specific roles only)
-router.get('/admin', 
+router.get(
+  '/admin',
   authenticateJWT(redisClient),
   requireRole(['admin']),
   (req: AuthenticatedRequest, res) => {
@@ -35,6 +33,7 @@ router.get('/admin',
 ```
 
 **Features:**
+
 - JWT signature verification
 - Token expiration checking
 - Token blacklist support (logout)
@@ -64,6 +63,7 @@ router.post('/register', createRegistrationRateLimiter(redisClient), registerHan
 ```
 
 **Features:**
+
 - Per-IP rate limiting
 - Configurable time windows and max attempts
 - Redis-backed for multi-instance support
@@ -88,6 +88,7 @@ router.post('/refresh', validateRefreshToken, refreshHandler);
 ```
 
 **Features:**
+
 - Email format validation
 - Password strength validation
 - Clear error messages
@@ -108,11 +109,12 @@ When using multiple middleware, apply them in this order:
 **Example:**
 
 ```typescript
-router.post('/protected-endpoint',
-  createRateLimiter(redisClient, config),  // 1. Rate limiting
-  validateRequest,                          // 2. Validation
-  authenticateJWT(redisClient),            // 3. Authentication
-  requireRole(['admin']),                  // 4. Authorization
+router.post(
+  '/protected-endpoint',
+  createRateLimiter(redisClient, config), // 1. Rate limiting
+  validateRequest, // 2. Validation
+  authenticateJWT(redisClient), // 3. Authentication
+  requireRole(['admin']), // 4. Authorization
   async (req: AuthenticatedRequest, res) => {
     // 5. Business logic
     res.json({ success: true });

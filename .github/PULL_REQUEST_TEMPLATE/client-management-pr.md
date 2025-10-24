@@ -320,6 +320,7 @@ If issues are discovered after merge:
 ## Merge Strategy
 
 **Squash and merge** with commit message:
+
 ```
 feat: implement client management API
 

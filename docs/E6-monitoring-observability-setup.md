@@ -48,6 +48,7 @@ This document describes the monitoring and observability infrastructure for Bert
 **API Performance Dashboard** (`BerthCare-API-Performance-staging`)
 
 Widgets:
+
 1. **API Response Time** - Average and P99 latency
 2. **Request Count & Status Codes** - 2XX, 4XX, 5XX counts
 3. **Connection Errors** - Failed connections
@@ -64,20 +65,21 @@ Access: https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashb
 
 ### Metric Alarms
 
-| Alarm Name | Metric | Threshold | Evaluation | Severity |
-|------------|--------|-----------|------------|----------|
-| `berthcare-api-error-rate-staging` | 5XX error count | >10 in 5 min | 2 periods | High |
-| `berthcare-api-response-time-staging` | Response time | >2000ms | 2 periods | Medium |
-| `berthcare-database-cpu-staging` | Database CPU | >80% | 2 periods | High |
-| `berthcare-database-connections-staging` | DB connections | >80 (80% of max) | 2 periods | Medium |
-| `berthcare-redis-cpu-staging` | Redis CPU | >75% | 2 periods | Medium |
-| `berthcare-application-errors-staging` | Application errors | >10 in 5 min | 1 period | High |
+| Alarm Name                               | Metric             | Threshold        | Evaluation | Severity |
+| ---------------------------------------- | ------------------ | ---------------- | ---------- | -------- |
+| `berthcare-api-error-rate-staging`       | 5XX error count    | >10 in 5 min     | 2 periods  | High     |
+| `berthcare-api-response-time-staging`    | Response time      | >2000ms          | 2 periods  | Medium   |
+| `berthcare-database-cpu-staging`         | Database CPU       | >80%             | 2 periods  | High     |
+| `berthcare-database-connections-staging` | DB connections     | >80 (80% of max) | 2 periods  | Medium   |
+| `berthcare-redis-cpu-staging`            | Redis CPU          | >75%             | 2 periods  | Medium   |
+| `berthcare-application-errors-staging`   | Application errors | >10 in 5 min     | 1 period   | High     |
 
 ### Alert Notifications
 
 Alerts are sent via SNS topic `berthcare-alerts-staging` to configured email addresses.
 
 **Alert Format:**
+
 ```
 ALARM: berthcare-api-error-rate-staging in ca-central-1
 Description: API 5XX error rate exceeds 10% over 10 minutes
@@ -104,6 +106,7 @@ Timestamp: 2025-10-10T14:30:00.000Z
 ### Integration
 
 **Backend (Node.js/Express):**
+
 ```typescript
 import * as Sentry from '@sentry/node';
 
@@ -129,6 +132,7 @@ app.use(Sentry.Handlers.errorHandler());
 ```
 
 **Mobile (React Native):**
+
 ```typescript
 import * as Sentry from '@sentry/react-native';
 
@@ -145,11 +149,13 @@ Sentry.init({
 ### Alert Rules
 
 **High Severity (Immediate notification):**
+
 - Error rate >5% in 1 hour
 - New error type affecting >10 users
 - Performance degradation >50% from baseline
 
 **Medium Severity (Daily digest):**
+
 - Error rate >1% in 24 hours
 - Recurring errors affecting <10 users
 
@@ -187,6 +193,7 @@ All logs use JSON format for easy parsing:
 ### CloudWatch Insights Queries
 
 **Top 10 Errors (Last Hour):**
+
 ```
 fields @timestamp, @message
 | filter level = "error"
@@ -196,6 +203,7 @@ fields @timestamp, @message
 ```
 
 **Slow API Requests (>2s):**
+
 ```
 fields @timestamp, context.path, context.duration
 | filter context.duration > 2000
@@ -204,6 +212,7 @@ fields @timestamp, context.path, context.duration
 ```
 
 **User Activity:**
+
 ```
 fields @timestamp, context.userId, context.action
 | filter context.userId = "user_123"
@@ -224,17 +233,20 @@ terraform apply
 ### Verify Deployment
 
 1. **CloudWatch Dashboard:**
+
    ```bash
    aws cloudwatch list-dashboards --region ca-central-1
    ```
 
 2. **CloudWatch Alarms:**
+
    ```bash
    aws cloudwatch describe-alarms --region ca-central-1 \
      --alarm-name-prefix "berthcare-"
    ```
 
 3. **SNS Topic:**
+
    ```bash
    aws sns list-topics --region ca-central-1 | grep berthcare-alerts
    ```
@@ -254,6 +266,7 @@ terraform apply
    - Create organization: `berthcare`
 
 2. **Create Projects:**
+
    ```bash
    # Backend project
    sentry-cli projects create berthcare-backend-staging \
@@ -267,6 +280,7 @@ terraform apply
    ```
 
 3. **Get DSN Keys:**
+
    ```bash
    # Backend DSN
    sentry-cli projects info berthcare-backend-staging \
@@ -278,6 +292,7 @@ terraform apply
    ```
 
 4. **Store in AWS Secrets Manager:**
+
    ```bash
    aws secretsmanager create-secret \
      --name berthcare/staging/sentry-backend-dsn \
@@ -311,6 +326,7 @@ aws cloudwatch describe-alarm-history \
 ### Test Sentry Integration
 
 **Backend Test:**
+
 ```typescript
 // Add to backend test endpoint
 app.get('/test/sentry', (req, res) => {
@@ -324,6 +340,7 @@ app.get('/test/sentry', (req, res) => {
 ```
 
 **Mobile Test:**
+
 ```typescript
 // Add to mobile app test screen
 const testSentry = () => {
@@ -353,6 +370,7 @@ aws logs filter-log-events \
 ### Responding to Alerts
 
 **High Severity (API Error Rate >5%):**
+
 1. Check CloudWatch dashboard for error spike
 2. Review recent deployments (rollback if needed)
 3. Check Sentry for error details and stack traces
@@ -361,6 +379,7 @@ aws logs filter-log-events \
 6. Document incident and resolution
 
 **Medium Severity (Response Time >2s):**
+
 1. Check database query performance
 2. Review Redis cache hit rate
 3. Check for slow API endpoints in logs
@@ -368,6 +387,7 @@ aws logs filter-log-events \
 5. Consider scaling up if sustained
 
 **Database CPU >80%:**
+
 1. Check for long-running queries
 2. Review connection pool usage
 3. Consider read replica for read-heavy workloads
@@ -395,23 +415,27 @@ aws logs filter-log-events \
 ## Cost Optimization
 
 **CloudWatch Costs:**
+
 - Log ingestion: ~$0.50/GB
 - Log storage: ~$0.03/GB/month
 - Metrics: First 10 custom metrics free, then $0.30/metric/month
 - Dashboards: First 3 free, then $3/month each
 
 **Estimated Monthly Cost (Staging):**
+
 - Logs (10GB/month): $5
 - Metrics (20 custom): $3
 - Dashboards (1): Free
 - **Total: ~$8/month**
 
 **Sentry Costs:**
+
 - Free tier: 5,000 errors/month
 - Team plan: $26/month (50,000 errors/month)
 - Business plan: $80/month (250,000 errors/month)
 
 **Optimization Tips:**
+
 - Use log sampling for high-volume logs
 - Set appropriate log retention (30 days for staging)
 - Use metric filters instead of custom metrics where possible
