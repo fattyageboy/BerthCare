@@ -44,6 +44,9 @@ jobs:
           - 6379:6379
 
     env:
+      # Note: These credentials are safe to hardcode as they only apply to ephemeral
+      # GitHub Actions containers that are destroyed after each run. They cannot be
+      # used to access any production or persistent infrastructure.
       TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/berthcare_test
       TEST_REDIS_URL: redis://localhost:6379
 
