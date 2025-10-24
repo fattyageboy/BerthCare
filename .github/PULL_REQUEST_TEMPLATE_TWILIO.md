@@ -3,9 +3,11 @@
 **Closes #6**
 
 ### Overview
+
 This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS notifications, and webhook handling for real-time communication with users.
 
 ### Design Philosophy Alignment
+
 - **Simplicity**: Twilio integration works invisibly in the background
 - **User Experience**: Notifications feel natural and timely, not intrusive
 - **Quality**: Every message, alert, and interaction is crafted with care
@@ -18,6 +20,7 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 ### 🎯 Core Features
 
 #### Voice Alerts
+
 - [ ] Set up Twilio Voice API credentials
 - [ ] Create voice call service module
 - [ ] Implement emergency alert voice calls
@@ -28,6 +31,7 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 - [ ] Test voice quality and clarity
 
 #### SMS Notifications
+
 - [ ] Configure Twilio SMS API
 - [ ] Create SMS service module
 - [ ] Implement notification templates (alerts, reminders, updates)
@@ -39,6 +43,7 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 - [ ] Test message delivery across carriers
 
 #### Webhooks
+
 - [ ] Set up webhook endpoints for Twilio callbacks
 - [ ] Implement webhook signature verification
 - [ ] Handle incoming SMS webhooks
@@ -126,12 +131,14 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 ## Technical Notes
 
 ### Architecture Decisions
+
 - Service layer pattern for clean separation
 - Queue-based processing for reliability
 - Idempotent webhook handlers
 - Graceful degradation if Twilio is unavailable
 
 ### Dependencies
+
 ```json
 {
   "twilio": "^5.x.x"
@@ -139,6 +146,7 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 ```
 
 ### Environment Variables
+
 ```
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=

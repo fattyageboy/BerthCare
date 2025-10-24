@@ -52,18 +52,15 @@ router.get('/protected', authenticateJWT(redisClient), (req: AuthenticatedReques
 });
 
 // Protect a route (specific roles only)
-router.get('/admin', 
-  authenticateJWT(redisClient), 
-  requireRole(['admin']), 
-  (req, res) => {
-    res.json({ message: 'Admin only' });
-  }
-);
+router.get('/admin', authenticateJWT(redisClient), requireRole(['admin']), (req, res) => {
+  res.json({ message: 'Admin only' });
+});
 
 // Multiple roles
-router.get('/coordination', 
-  authenticateJWT(redisClient), 
-  requireRole(['coordinator', 'admin']), 
+router.get(
+  '/coordination',
+  authenticateJWT(redisClient),
+  requireRole(['coordinator', 'admin']),
   (req, res) => {
     res.json({ message: 'coordinator or admin' });
   }
@@ -75,12 +72,14 @@ router.get('/coordination',
 Logout user by blacklisting their access token.
 
 **Request:**
+
 ```http
 POST /v1/auth/logout
 Authorization: Bearer <access_token>
 ```
 
 **Response (200):**
+
 ```json
 {
   "data": {
@@ -90,6 +89,7 @@ Authorization: Bearer <access_token>
 ```
 
 **Errors:**
+
 - `401 MISSING_TOKEN` - Authorization header is missing or invalid format
 - `500 INTERNAL_SERVER_ERROR` - Server error during logout
 
@@ -130,6 +130,7 @@ All authentication errors return consistent format:
 ```
 
 **Error Codes:**
+
 - `MISSING_TOKEN` - No Authorization header provided
 - `INVALID_TOKEN_FORMAT` - Authorization header not in "Bearer <token>" format
 - `INVALID_TOKEN` - JWT signature invalid or malformed
@@ -149,10 +150,10 @@ The middleware attaches user information to the request object:
 ```typescript
 interface AuthenticatedRequest extends Request {
   user?: {
-    userId: string;      // Unique user identifier
-    role: UserRole;      // 'caregiver' | 'coordinator' | 'admin'
-    zoneId: string;      // Geographic zone for data access control
-    email?: string;      // User email (optional)
+    userId: string; // Unique user identifier
+    role: UserRole; // 'caregiver' | 'coordinator' | 'admin'
+    zoneId: string; // Geographic zone for data access control
+    email?: string; // User email (optional)
   };
 }
 ```
@@ -164,7 +165,7 @@ router.get('/profile', authenticateJWT(redisClient), (req: AuthenticatedRequest,
   const userId = req.user?.userId;
   const role = req.user?.role;
   const zoneId = req.user?.zoneId;
-  
+
   // Use user information for business logic
   res.json({ userId, role, zoneId });
 });
@@ -274,10 +275,10 @@ const router = Router();
 
 router.get('/visits', authenticateJWT(redisClient), async (req: AuthenticatedRequest, res) => {
   const userId = req.user?.userId;
-  
+
   // Fetch visits for authenticated user
   const visits = await getVisitsForUser(userId);
-  
+
   res.json({ data: visits });
 });
 ```
@@ -288,15 +289,16 @@ router.get('/visits', authenticateJWT(redisClient), async (req: AuthenticatedReq
 import { authenticateJWT, requireRole } from '../middleware/auth';
 
 // Only coordinators and admins can access
-router.get('/reports', 
+router.get(
+  '/reports',
   authenticateJWT(redisClient),
   requireRole(['coordinator', 'admin']),
   async (req: AuthenticatedRequest, res) => {
     const zoneId = req.user?.zoneId;
-    
+
     // Fetch reports for zone
     const reports = await getReportsForZone(zoneId);
-    
+
     res.json({ data: reports });
   }
 );
@@ -305,20 +307,15 @@ router.get('/reports',
 ### Example 3: Zone-Based Data Access
 
 ```typescript
-router.get('/clients', 
-  authenticateJWT(redisClient),
-  async (req: AuthenticatedRequest, res) => {
-    const zoneId = req.user?.zoneId;
-    const role = req.user?.role;
-    
-    // Admins can see all zones, others only their zone
-    const clients = role === 'admin' 
-      ? await getAllClients()
-      : await getClientsForZone(zoneId);
-    
-    res.json({ data: clients });
-  }
-);
+router.get('/clients', authenticateJWT(redisClient), async (req: AuthenticatedRequest, res) => {
+  const zoneId = req.user?.zoneId;
+  const role = req.user?.role;
+
+  // Admins can see all zones, others only their zone
+  const clients = role === 'admin' ? await getAllClients() : await getClientsForZone(zoneId);
+
+  res.json({ data: clients });
+});
 ```
 
 ### Example 4: Complete Logout Flow
@@ -327,19 +324,19 @@ router.get('/clients',
 // Client-side logout
 async function logout() {
   const token = localStorage.getItem('accessToken');
-  
+
   try {
     await fetch('/api/v1/auth/logout', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
+        Authorization: `Bearer ${token}`,
+      },
     });
-    
+
     // Clear local storage
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
-    
+
     // Redirect to login
     window.location.href = '/login';
   } catch (error) {
@@ -355,22 +352,26 @@ async function logout() {
 ### Design Philosophy: "Uncompromising Security"
 
 ✅ **Stateless Authentication**
+
 - JWT tokens enable horizontal scalability
 - No server-side session storage required
 - Each request is independently authenticated
 
 ✅ **Multiple Layers of Validation**
+
 - JWT signature verification
 - Expiration checking
 - Blacklist checking
 - Role-based authorization
 
 ✅ **Clear Error Messages**
+
 - Specific error codes for each failure type
 - No security information leakage
 - Consistent error format across all endpoints
 
 ✅ **Graceful Degradation**
+
 - If Redis fails, authentication still works (blacklist check skipped)
 - Logged errors for monitoring
 - No user-facing failures
@@ -435,12 +436,14 @@ async function logout() {
 ## Files Created/Modified
 
 ### New Files
+
 - `apps/backend/src/middleware/auth.ts` - Authentication middleware
 - `apps/backend/tests/auth.middleware.test.ts` - Middleware tests
 - `apps/backend/tests/auth.logout.test.ts` - Logout endpoint tests
 - `docs/A7-jwt-auth-middleware.md` - This documentation
 
 ### Modified Files
+
 - `apps/backend/src/routes/auth.routes.ts` - Added logout endpoint
 
 ---
@@ -448,41 +451,49 @@ async function logout() {
 ## Acceptance Criteria
 
 ✅ **Middleware blocks unauthenticated requests**
+
 - Returns 401 for missing/invalid tokens
 - Clear error messages
 - No access to protected resources
 
 ✅ **Middleware allows valid tokens**
+
 - Verifies JWT signature
 - Checks expiration
 - Attaches user to request
 
 ✅ **Extract user from token**
+
 - userId, role, zoneId, email
 - Type-safe request interface
 - Available in route handlers
 
 ✅ **Attach to req.user**
+
 - AuthenticatedRequest interface
 - Accessible in all route handlers
 - Type-safe access
 
 ✅ **Handle expired tokens (401)**
+
 - Specific error code: TOKEN_EXPIRED
 - Clear error message
 - Timestamp and request ID
 
 ✅ **Handle invalid tokens (401)**
+
 - Specific error code: INVALID_TOKEN
 - Clear error message
 - No security information leakage
 
 ✅ **Implement token blacklist using Redis**
+
 - Redis-based revocation
 - Automatic expiry (TTL)
 - Logout functionality
 
 ✅ **Unit tests**
+
 - Comprehensive test coverage
 - All success and error cases
 - Integration tests

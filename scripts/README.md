@@ -13,6 +13,7 @@ Verifies that all local development services are running and healthy.
 ```
 
 **Checks:**
+
 - Docker is running
 - PostgreSQL is healthy and databases are created
 - Redis is healthy and accepting connections
@@ -23,6 +24,7 @@ Verifies that all local development services are running and healthy.
 PostgreSQL initialization script that runs automatically when the database container starts for the first time.
 
 **Creates:**
+
 - `berthcare_dev` database (main development database)
 - `berthcare_test` database (for running tests)
 - UUID extension (for generating unique identifiers)
@@ -35,6 +37,7 @@ PostgreSQL initialization script that runs automatically when the database conta
 LocalStack initialization script that runs automatically when LocalStack is ready.
 
 **Creates:**
+
 - S3 buckets: `berthcare-photos-dev`, `berthcare-documents-dev`, `berthcare-signatures-dev`
 - Enables versioning on all buckets
 - Configures CORS for local development
@@ -62,6 +65,7 @@ Interactive script to store Twilio credentials in AWS Secrets Manager.
 ```
 
 **Features:**
+
 - Interactive prompts for Twilio credentials
 - Support for staging and production environments
 - Automatic secret creation/update in AWS Secrets Manager
@@ -69,6 +73,7 @@ Interactive script to store Twilio credentials in AWS Secrets Manager.
 - Proper tagging for organization
 
 **Prerequisites:**
+
 - AWS CLI configured with appropriate credentials
 - Twilio account with subaccounts created
 - Phone numbers purchased

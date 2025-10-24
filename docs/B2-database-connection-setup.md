@@ -16,6 +16,7 @@ Successfully configured PostgreSQL database connection with connection pooling, 
 **Location:** `apps/backend/src/main.ts`
 
 **Configuration:**
+
 ```typescript
 const pgPool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -27,6 +28,7 @@ const pgPool = new Pool({
 ```
 
 **Pool Settings:**
+
 - **Max Connections:** 10 (default), configurable up to 20 via `DB_POOL_MAX`
 - **Min Connections:** 2 (default), configurable via `DB_POOL_MIN`
 - **Idle Timeout:** 30 seconds - connections idle longer are closed
@@ -34,6 +36,7 @@ const pgPool = new Pool({
 - **Connection String:** Full PostgreSQL URL from `DATABASE_URL` env variable
 
 **Benefits:**
+
 - Efficient connection reuse reduces overhead
 - Prevents connection exhaustion under load
 - Automatic connection lifecycle management
@@ -44,6 +47,7 @@ const pgPool = new Pool({
 **Location:** `apps/backend/src/db/migrate.ts`
 
 **Features:**
+
 - Simple SQL-based migrations (no complex ORM)
 - Forward migrations (up) and rollbacks (down)
 - Transaction-wrapped execution (ACID guarantees)
@@ -52,6 +56,7 @@ const pgPool = new Pool({
 - Detailed logging and error handling
 
 **Migration Commands:**
+
 ```bash
 # Run all pending migrations
 npm run migrate:up
@@ -70,6 +75,7 @@ npm run db:verify
 ```
 
 **Migration File Structure:**
+
 ```
 apps/backend/src/db/migrations/
 ├── 001_create_users_auth.sql           # Forward migration
@@ -77,6 +83,7 @@ apps/backend/src/db/migrations/
 ```
 
 **Philosophy:**
+
 - Plain SQL as source of truth
 - No ORM magic or abstraction layers
 - Easy to read, review, and understand
@@ -88,6 +95,7 @@ apps/backend/src/db/migrations/
 **Location:** `apps/backend/src/main.ts` (health endpoint)
 
 **Implementation:**
+
 ```typescript
 // Check PostgreSQL connection
 try {
@@ -100,6 +108,7 @@ try {
 ```
 
 **Health Check Features:**
+
 - Non-blocking query execution
 - Graceful degradation on failure
 - Detailed service status reporting
@@ -107,6 +116,7 @@ try {
 - Monitoring system compatibility
 
 **Health Response:**
+
 ```json
 {
   "status": "ok",
@@ -119,6 +129,7 @@ try {
 ```
 
 **Status Codes:**
+
 - `200 OK` - Database connected and healthy
 - `503 Service Unavailable` - Database disconnected or degraded
 
@@ -127,6 +138,7 @@ try {
 **Location:** `apps/backend/src/main.ts` (startServer function)
 
 **Startup Sequence:**
+
 ```typescript
 async function startServer() {
   // 1. Test PostgreSQL connection
@@ -136,13 +148,14 @@ async function startServer() {
     databaseTime: pgResult.rows[0].time,
     version: pgResult.rows[0].version.split(',')[0],
   });
-  
+
   // 2. Continue with Redis and other services...
   // 3. Start Express server
 }
 ```
 
 **Verification Benefits:**
+
 - Fail fast if database unavailable
 - Log database version for debugging
 - Verify connection before accepting requests
@@ -151,10 +164,12 @@ async function startServer() {
 ### 5. Read Replica Support (Placeholder) ✅
 
 **Current Implementation:**
+
 - Single connection pool to primary database
 - Architecture ready for read replica addition
 
 **Future Enhancement:**
+
 ```typescript
 // Primary pool (writes)
 const primaryPool = new Pool({
@@ -176,6 +191,7 @@ async function query(sql: string, params: any[], readOnly = false) {
 ```
 
 **Read Replica Strategy:**
+
 - Route SELECT queries to read replicas
 - Route INSERT/UPDATE/DELETE to primary
 - Automatic failover to primary if replica unavailable
@@ -203,6 +219,7 @@ async function query(sql: string, params: any[], readOnly = false) {
    - Expiration tracking
 
 **Indexes Created:**
+
 - `idx_users_email` - Fast login lookup
 - `idx_users_zone_id` - Zone-based queries
 - `idx_users_role` - Role-based queries
@@ -213,10 +230,12 @@ async function query(sql: string, params: any[], readOnly = false) {
 - `idx_refresh_tokens_expires_at` - Cleanup expired tokens
 
 **Triggers Created:**
+
 - `update_users_updated_at` - Auto-update timestamp on user changes
 - `update_refresh_tokens_updated_at` - Auto-update timestamp on token changes
 
 **Rollback Migration:**
+
 - Location: `apps/backend/src/db/migrations/001_create_users_auth_rollback.sql`
 - Drops all tables, indexes, triggers, and functions
 - Safe rollback to pre-migration state
@@ -226,6 +245,7 @@ async function query(sql: string, params: any[], readOnly = false) {
 **Location:** `apps/backend/src/db/verify-schema.ts`
 
 **Verification Checks:**
+
 - ✅ Tables exist (users, refresh_tokens)
 - ✅ Columns exist with correct names
 - ✅ Indexes are created
@@ -233,11 +253,13 @@ async function query(sql: string, params: any[], readOnly = false) {
 - ✅ Triggers are active
 
 **Usage:**
+
 ```bash
 npm run db:verify
 ```
 
 **Output:**
+
 ```
 ✅ Table 'users' exists
 ✅ Table 'refresh_tokens' exists
@@ -251,6 +273,7 @@ npm run db:verify
 **Location:** `apps/backend/src/db/README.md`
 
 **Documentation Includes:**
+
 - Migration workflow and best practices
 - Quick start guide
 - Troubleshooting common issues
@@ -333,6 +356,7 @@ $ npm run migrate:down 001
 ## Environment Configuration
 
 **Required Environment Variables:**
+
 ```bash
 # Database Connection
 DATABASE_URL=postgresql://berthcare:berthcare@localhost:5432/berthcare
@@ -352,6 +376,7 @@ POSTGRES_PASSWORD=berthcare_password
 ```
 
 **Docker Compose Configuration:**
+
 ```yaml
 postgres:
   image: postgres:15-alpine
@@ -360,7 +385,7 @@ postgres:
     POSTGRES_USER: berthcare
     POSTGRES_PASSWORD: berthcare
   ports:
-    - "5432:5432"
+    - '5432:5432'
   volumes:
     - postgres_data:/var/lib/postgresql/data
     - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -372,12 +397,14 @@ postgres:
 
 **Decision:** Use pg connection pooling with configurable limits (max 20)  
 **Rationale:**
+
 - Prevents connection exhaustion under load
 - Reduces connection overhead (reuse existing connections)
 - Configurable for different environments
 - Industry standard for Node.js + PostgreSQL
 
 **Trade-offs:**
+
 - More memory usage (idle connections)
 - Requires tuning for optimal performance
 - Need to monitor pool utilization
@@ -386,6 +413,7 @@ postgres:
 
 **Decision:** Custom SQL-based migration tool (not node-pg-migrate or Knex)  
 **Rationale:**
+
 - Simplicity - plain SQL is easy to understand
 - No framework lock-in or learning curve
 - Full control over migration execution
@@ -393,6 +421,7 @@ postgres:
 - Version control friendly
 
 **Trade-offs:**
+
 - Manual migration tracking (no automatic versioning)
 - Less features than full migration frameworks
 - Need to implement rollback scripts manually
@@ -401,12 +430,14 @@ postgres:
 
 **Decision:** Active health check with SELECT 1 query  
 **Rationale:**
+
 - Verifies actual database connectivity
 - Fast query execution (<1ms)
 - Load balancer compatible
 - Monitoring system integration
 
 **Trade-offs:**
+
 - Adds minimal load to database
 - Could fail during high load (acceptable for health check)
 
@@ -414,12 +445,14 @@ postgres:
 
 **Decision:** Placeholder implementation, ready for future addition  
 **Rationale:**
+
 - Not needed for MVP (single database sufficient)
 - Architecture supports easy addition later
 - Avoids premature optimization
 - Can add when read load increases
 
 **Future Implementation:**
+
 - Add read replica pool
 - Implement query routing logic
 - Configure replication lag monitoring
@@ -430,12 +463,14 @@ postgres:
 ### Connection Pool Performance
 
 **Metrics:**
+
 - Connection acquisition: <5ms (from pool)
 - New connection creation: ~50ms (cold start)
 - Query execution: Depends on query complexity
 - Pool overhead: Negligible (<1ms)
 
 **Optimization:**
+
 - Min connections keep pool warm
 - Max connections prevent exhaustion
 - Idle timeout releases unused connections
@@ -444,11 +479,13 @@ postgres:
 ### Migration Performance
 
 **Metrics:**
+
 - Migration 001 execution: ~200ms
 - Rollback execution: ~150ms
 - Schema verification: ~50ms
 
 **Optimization:**
+
 - Transactions ensure atomicity
 - Indexes created after data insertion
 - Batch operations where possible
@@ -458,12 +495,14 @@ postgres:
 ### Connection Security
 
 ✅ **Implemented:**
+
 - Connection string from environment variables
 - No hardcoded credentials
 - SSL/TLS support ready (add `?sslmode=require` to DATABASE_URL)
 - Connection timeout prevents hanging connections
 
 🔒 **Production Requirements:**
+
 - Enable SSL/TLS for all connections
 - Use AWS RDS IAM authentication
 - Rotate database credentials regularly
@@ -472,12 +511,14 @@ postgres:
 ### Migration Security
 
 ✅ **Implemented:**
+
 - Transactions prevent partial migrations
 - Rollback scripts for safe recovery
 - Schema verification after migrations
 - No data migrations mixed with schema changes
 
 🔒 **Production Requirements:**
+
 - Backup database before migrations
 - Test migrations on staging first
 - Run during maintenance window
@@ -488,6 +529,7 @@ postgres:
 ### Connection Pool Monitoring
 
 **Metrics to Track:**
+
 - Active connections
 - Idle connections
 - Waiting clients
@@ -495,6 +537,7 @@ postgres:
 - Query duration
 
 **Implementation:**
+
 ```typescript
 // Future enhancement
 pgPool.on('connect', () => {
@@ -509,6 +552,7 @@ pgPool.on('error', (err) => {
 ### Query Performance Monitoring
 
 **Slow Query Logging:**
+
 ```typescript
 // Already implemented in logger.ts
 logQuery(query, duration, context);
@@ -535,25 +579,27 @@ apps/backend/src/db/
 
 ## Acceptance Criteria Status
 
-| Criteria | Status | Evidence |
-|----------|--------|----------|
-| PostgreSQL connection using `pg` library | ✅ | Pool configured in main.ts |
-| Connection pooling (max 20 connections) | ✅ | Configurable via DB_POOL_MAX |
-| Database migration framework | ✅ | Custom SQL-based tool at src/db/migrate.ts |
-| Connection health check | ✅ | Health endpoint checks PostgreSQL |
-| Read replica support (placeholder) | ✅ | Architecture ready, documented |
-| Backend connects to local PostgreSQL | ✅ | Verified in testing |
-| Migrations run successfully | ✅ | Migration 001 tested and verified |
+| Criteria                                 | Status | Evidence                                   |
+| ---------------------------------------- | ------ | ------------------------------------------ |
+| PostgreSQL connection using `pg` library | ✅     | Pool configured in main.ts                 |
+| Connection pooling (max 20 connections)  | ✅     | Configurable via DB_POOL_MAX               |
+| Database migration framework             | ✅     | Custom SQL-based tool at src/db/migrate.ts |
+| Connection health check                  | ✅     | Health endpoint checks PostgreSQL          |
+| Read replica support (placeholder)       | ✅     | Architecture ready, documented             |
+| Backend connects to local PostgreSQL     | ✅     | Verified in testing                        |
+| Migrations run successfully              | ✅     | Migration 001 tested and verified          |
 
 **All acceptance criteria met. B2 is complete and production-ready.**
 
 ## Next Steps
 
 ### Immediate (B3-B4)
+
 - ✅ B3: Configure Redis connection (Already complete)
 - ✅ B4: Set up S3 client (Infrastructure ready)
 
 ### Future Enhancements
+
 - Add connection pool monitoring metrics
 - Implement read replica support when needed
 - Add database query caching layer

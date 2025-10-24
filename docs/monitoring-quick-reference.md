@@ -5,11 +5,13 @@ Quick reference guide for BerthCare monitoring and observability tools.
 ## 🎯 Quick Links
 
 ### CloudWatch
+
 - **Dashboard:** https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashboards:name=BerthCare-API-Performance-staging
 - **Logs:** https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#logsV2:log-groups
 - **Alarms:** https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#alarmsV2:
 
 ### Sentry
+
 - **Dashboard:** https://sentry.io/organizations/berthcare/
 - **Backend Issues:** https://sentry.io/organizations/berthcare/issues/?project=berthcare-backend-staging
 - **Mobile Issues:** https://sentry.io/organizations/berthcare/issues/?project=berthcare-mobile-staging
@@ -17,44 +19,50 @@ Quick reference guide for BerthCare monitoring and observability tools.
 ## 📊 Key Metrics
 
 ### API Performance
-| Metric | Target | Warning | Critical |
-|--------|--------|---------|----------|
-| Response Time (avg) | <500ms | >1000ms | >2000ms |
-| Response Time (p99) | <2000ms | >3000ms | >5000ms |
-| Error Rate | <1% | >3% | >5% |
-| Throughput | - | - | - |
+
+| Metric              | Target  | Warning | Critical |
+| ------------------- | ------- | ------- | -------- |
+| Response Time (avg) | <500ms  | >1000ms | >2000ms  |
+| Response Time (p99) | <2000ms | >3000ms | >5000ms  |
+| Error Rate          | <1%     | >3%     | >5%      |
+| Throughput          | -       | -       | -        |
 
 ### Database
-| Metric | Target | Warning | Critical |
-|--------|--------|---------|----------|
-| CPU Utilization | <50% | >70% | >80% |
-| Connections | <50 | >70 | >80 |
-| Query Time (avg) | <100ms | >500ms | >1000ms |
-| Disk Space | <70% | >80% | >90% |
+
+| Metric           | Target | Warning | Critical |
+| ---------------- | ------ | ------- | -------- |
+| CPU Utilization  | <50%   | >70%    | >80%     |
+| Connections      | <50    | >70     | >80      |
+| Query Time (avg) | <100ms | >500ms  | >1000ms  |
+| Disk Space       | <70%   | >80%    | >90%     |
 
 ### Cache (Redis)
-| Metric | Target | Warning | Critical |
-|--------|--------|---------|----------|
-| CPU Utilization | <50% | >65% | >75% |
-| Memory Usage | <70% | >80% | >90% |
-| Hit Rate | >90% | <80% | <70% |
-| Connections | <100 | >150 | >200 |
+
+| Metric          | Target | Warning | Critical |
+| --------------- | ------ | ------- | -------- |
+| CPU Utilization | <50%   | >65%    | >75%     |
+| Memory Usage    | <70%   | >80%    | >90%     |
+| Hit Rate        | >90%   | <80%    | <70%     |
+| Connections     | <100   | >150    | >200     |
 
 ## 🚨 Alert Thresholds
 
 ### High Severity (Immediate Action)
+
 - API error rate >5% for 10 minutes
 - Database CPU >80% for 10 minutes
 - Application errors >10 in 5 minutes
 - New error affecting >10 users
 
 ### Medium Severity (Review Within 1 Hour)
+
 - API response time >2000ms for 10 minutes
 - Database connections >80 (80% of max)
 - Redis CPU >75% for 10 minutes
 - Error rate >1% for 1 hour
 
 ### Low Severity (Daily Review)
+
 - Slow queries >1000ms
 - Cache hit rate <80%
 - Disk space >70%
@@ -64,6 +72,7 @@ Quick reference guide for BerthCare monitoring and observability tools.
 ### CloudWatch Insights
 
 **Top 10 Errors (Last Hour)**
+
 ```
 fields @timestamp, @message
 | filter level = "error"
@@ -73,6 +82,7 @@ fields @timestamp, @message
 ```
 
 **Slow API Requests (>2s)**
+
 ```
 fields @timestamp, context.path, context.duration
 | filter context.duration > 2000
@@ -81,6 +91,7 @@ fields @timestamp, context.path, context.duration
 ```
 
 **User Activity**
+
 ```
 fields @timestamp, context.userId, context.action
 | filter context.userId = "user_123"
@@ -88,6 +99,7 @@ fields @timestamp, context.userId, context.action
 ```
 
 **Error Rate by Endpoint**
+
 ```
 fields @timestamp, context.path
 | filter level = "error"
@@ -96,6 +108,7 @@ fields @timestamp, context.path
 ```
 
 **Database Query Performance**
+
 ```
 fields @timestamp, context.query, context.duration
 | filter context.query like /SELECT/
@@ -106,11 +119,13 @@ fields @timestamp, context.query, context.duration
 ### AWS CLI Commands
 
 **Tail API Logs**
+
 ```bash
 aws logs tail /aws/ecs/staging/berthcare-api --follow --region ca-central-1
 ```
 
 **Query Recent Errors**
+
 ```bash
 aws logs filter-log-events \
   --log-group-name /berthcare/staging/application \
@@ -119,6 +134,7 @@ aws logs filter-log-events \
 ```
 
 **Check Alarm Status**
+
 ```bash
 aws cloudwatch describe-alarms \
   --alarm-name-prefix "berthcare-" \
@@ -126,6 +142,7 @@ aws cloudwatch describe-alarms \
 ```
 
 **Test Alarm**
+
 ```bash
 aws cloudwatch set-alarm-state \
   --alarm-name berthcare-api-error-rate-staging \
@@ -197,6 +214,7 @@ aws cloudwatch set-alarm-state \
 ## 🔐 Access & Permissions
 
 ### CloudWatch Access
+
 ```bash
 # View dashboards and logs
 aws cloudwatch get-dashboard --dashboard-name BerthCare-API-Performance-staging
@@ -206,11 +224,13 @@ aws cloudwatch describe-alarms --region ca-central-1
 ```
 
 ### Sentry Access
+
 - **Admin:** Full access to all projects and settings
 - **Developer:** View issues, create releases, manage alerts
 - **Viewer:** Read-only access to issues and performance
 
 ### AWS Secrets Manager
+
 ```bash
 # Get Sentry DSN
 aws secretsmanager get-secret-value \
@@ -223,24 +243,28 @@ aws secretsmanager get-secret-value \
 ### Severity Levels
 
 **P0 - Critical (Immediate)**
+
 - Complete service outage
 - Data loss or corruption
 - Security breach
 - Contact: On-call engineer + CTO
 
 **P1 - High (Within 1 hour)**
+
 - Partial service outage
 - Error rate >10%
 - Database down
 - Contact: On-call engineer
 
 **P2 - Medium (Within 4 hours)**
+
 - Performance degradation
 - Error rate >5%
 - Non-critical feature broken
 - Contact: Engineering team
 
 **P3 - Low (Next business day)**
+
 - Minor bugs
 - Slow queries
 - Low error rate

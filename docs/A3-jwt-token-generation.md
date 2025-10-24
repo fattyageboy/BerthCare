@@ -30,6 +30,7 @@ Implemented JWT token generation utilities using RS256 algorithm with support fo
 ### Token Types
 
 #### Access Token
+
 - **Expiry:** 1 hour (3600 seconds)
 - **Purpose:** API authentication and authorization
 - **Payload:**
@@ -43,6 +44,7 @@ Implemented JWT token generation utilities using RS256 algorithm with support fo
   - `aud`: Audience (berthcare-app)
 
 #### Refresh Token
+
 - **Expiry:** 30 days (2,592,000 seconds)
 - **Purpose:** Obtain new access tokens without re-authentication
 - **Payload:**
@@ -87,7 +89,7 @@ const accessToken = generateAccessToken({
   userId: 'user_123',
   role: 'caregiver',
   zoneId: 'zone_456',
-  email: 'caregiver@example.com'
+  email: 'caregiver@example.com',
 });
 ```
 
@@ -99,7 +101,7 @@ Generates a long-lived refresh token for obtaining new access tokens.
 const refreshToken = generateRefreshToken({
   userId: 'user_123',
   role: 'caregiver',
-  zoneId: 'zone_456'
+  zoneId: 'zone_456',
 });
 ```
 
@@ -225,7 +227,7 @@ const user = {
   userId: 'user_123',
   role: 'caregiver',
   zoneId: 'zone_456',
-  email: 'caregiver@example.com'
+  email: 'caregiver@example.com',
 };
 
 // Generate tokens
@@ -239,8 +241,8 @@ res.json({
   user: {
     id: user.userId,
     email: user.email,
-    role: user.role
-  }
+    role: user.role,
+  },
 });
 ```
 
@@ -283,7 +285,7 @@ app.post('/auth/refresh', (req, res) => {
     const newAccessToken = generateAccessToken({
       userId: payload.userId,
       role: payload.role,
-      zoneId: payload.zoneId
+      zoneId: payload.zoneId,
     });
 
     res.json({ accessToken: newAccessToken });

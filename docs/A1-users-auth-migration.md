@@ -26,6 +26,7 @@ Created database schema for user authentication system including users and refre
 Stores user accounts for caregivers, coordinators, and administrators.
 
 **Columns:**
+
 - `id` (UUID, Primary Key) - Unique user identifier
 - `email` (VARCHAR, UNIQUE) - User email for login
 - `password_hash` (VARCHAR) - Bcrypt hashed password
@@ -39,6 +40,7 @@ Stores user accounts for caregivers, coordinators, and administrators.
 - `deleted_at` (TIMESTAMP) - Soft delete timestamp
 
 **Indexes:**
+
 - `idx_users_email` - Fast email lookup for login
 - `idx_users_zone_id` - Zone-based data isolation queries
 - `idx_users_role` - Role-based authorization checks
@@ -49,6 +51,7 @@ Stores user accounts for caregivers, coordinators, and administrators.
 Manages JWT refresh tokens for multi-device session support.
 
 **Columns:**
+
 - `id` (UUID, Primary Key) - Unique token identifier
 - `user_id` (UUID, Foreign Key) - References users table
 - `token_hash` (VARCHAR, UNIQUE) - Hashed refresh token
@@ -59,6 +62,7 @@ Manages JWT refresh tokens for multi-device session support.
 - `updated_at` (TIMESTAMP) - Last update timestamp (auto-updated)
 
 **Indexes:**
+
 - `idx_refresh_tokens_user_id` - Fast user token lookup
 - `idx_refresh_tokens_token_hash` - Token validation queries
 - `idx_refresh_tokens_device_id` - Multi-device session management
@@ -67,23 +71,27 @@ Manages JWT refresh tokens for multi-device session support.
 ### Features
 
 **Security:**
+
 - Password hashing (bcrypt) - never store plaintext passwords
 - Token hashing - never store raw refresh tokens
 - Soft delete support - preserve audit trail
 - Role-based access control - caregiver, coordinator, admin
 
 **Performance:**
+
 - Optimized indexes for common query patterns
 - Composite indexes for complex queries
 - Partial indexes with WHERE clauses for efficiency
 
 **Reliability:**
+
 - Foreign key constraints with CASCADE delete
 - Automatic timestamp management via triggers
 - Transaction support (BEGIN/COMMIT/ROLLBACK)
 - Comprehensive error handling
 
 **Maintainability:**
+
 - Clear table and column comments
 - Descriptive index names
 - Rollback scripts for safe deployment
@@ -150,16 +158,19 @@ This migration implements the authentication system as specified in:
 ### Design Philosophy Applied
 
 **Simplicity is the Ultimate Sophistication:**
+
 - Plain SQL migrations (no complex ORM)
 - Clear, readable schema definitions
 - Straightforward migration runner
 
 **Obsess Over Details:**
+
 - Comprehensive indexes for performance
 - Automatic timestamp management
 - Detailed comments and documentation
 
 **Uncompromising Security:**
+
 - Password hashing (never plaintext)
 - Token hashing (never raw tokens)
 - Soft delete (preserve audit trail)

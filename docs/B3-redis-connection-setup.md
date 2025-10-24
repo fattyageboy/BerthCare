@@ -16,6 +16,7 @@ Successfully configured Redis connection using the `redis` library (v4.6.12) wit
 **Location:** `apps/backend/src/main.ts`
 
 **Implementation:**
+
 ```typescript
 import { createClient } from 'redis';
 
@@ -26,12 +27,14 @@ const redisClient = createClient({
 ```
 
 **Configuration:**
+
 - **Library:** `redis` v4.6.12 (modern Redis client for Node.js)
 - **Connection URL:** From `REDIS_URL` environment variable
 - **Default URL:** `redis://localhost:6379`
 - **Connection Mode:** Single client instance (shared across application)
 
 **Library Features:**
+
 - Built-in connection pooling
 - Automatic command pipelining
 - Promise-based API (async/await support)
@@ -44,18 +47,19 @@ const redisClient = createClient({
 **Location:** `apps/backend/src/main.ts` (startServer function)
 
 **Startup Sequence:**
+
 ```typescript
 async function startServer() {
   try {
     // Connect to Redis
     logInfo('Connecting to Redis...');
     await redisClient.connect();
-    
+
     // Verify connection and log version
     const redisInfo = await redisClient.info('server');
     const redisVersion = redisInfo.match(/redis_version:([^\r\n]+)/)?.[1] || 'unknown';
     logInfo('Connected to Redis', { version: redisVersion });
-    
+
     // Continue with application startup...
   } catch (error) {
     logError('Failed to start server', error);
@@ -65,6 +69,7 @@ async function startServer() {
 ```
 
 **Connection Features:**
+
 - Explicit connection on startup
 - Version detection and logging
 - Fail-fast behavior if Redis unavailable
@@ -88,12 +93,13 @@ The `redis` v4.x library includes automatic retry logic by default:
         return new Error('Max retries reached');
       }
       return Math.min(retries * 50, 5000);
-    }
+    };
   }
 }
 ```
 
 **Retry Characteristics:**
+
 - ✅ Exponential backoff (50ms base, doubles each retry)
 - ✅ Maximum delay cap (5 seconds)
 - ✅ Maximum retry limit (20 attempts)
@@ -101,6 +107,7 @@ The `redis` v4.x library includes automatic retry logic by default:
 - ✅ Jitter to prevent thundering herd
 
 **Custom Retry Configuration (Optional Enhancement):**
+
 ```typescript
 // Can be added if custom retry behavior needed
 const redisClient = createClient({
@@ -114,8 +121,8 @@ const redisClient = createClient({
       const delay = Math.min(retries * 100, 3000);
       logInfo('Redis reconnecting...', { attempt: retries, delay });
       return delay;
-    }
-  }
+    },
+  },
 });
 ```
 
@@ -124,6 +131,7 @@ const redisClient = createClient({
 **Location:** `apps/backend/src/main.ts` (health endpoint)
 
 **Implementation:**
+
 ```typescript
 app.get('/health', async (_req, res) => {
   const health = {
@@ -150,6 +158,7 @@ app.get('/health', async (_req, res) => {
 ```
 
 **Health Check Features:**
+
 - Uses `PING` command (fastest Redis operation)
 - Non-blocking execution
 - Graceful degradation on failure
@@ -157,6 +166,7 @@ app.get('/health', async (_req, res) => {
 - Integration with load balancers and monitoring
 
 **Health Response:**
+
 ```json
 {
   "status": "ok",
@@ -171,11 +181,13 @@ app.get('/health', async (_req, res) => {
 ### 5. Session Management Configuration ✅
 
 **Current Implementation:**
+
 - Redis client available for session storage
 - Shared client instance across application
 - Ready for express-session integration
 
 **Session Storage Pattern:**
+
 ```typescript
 // Future implementation for session management
 import session from 'express-session';
@@ -197,6 +209,7 @@ app.use(
 ```
 
 **Session Use Cases:**
+
 - User authentication sessions
 - Multi-device session tracking
 - Session-based rate limiting
@@ -205,6 +218,7 @@ app.use(
 ### 6. Caching Configuration ✅
 
 **Current Implementation:**
+
 - Redis client ready for caching operations
 - Promise-based API for easy integration
 - Support for all Redis data types
@@ -212,6 +226,7 @@ app.use(
 **Caching Patterns:**
 
 **1. Simple Key-Value Cache:**
+
 ```typescript
 // Set cache with expiration
 await redisClient.setEx('user:123', 3600, JSON.stringify(userData));
@@ -222,6 +237,7 @@ const userData = cached ? JSON.parse(cached) : null;
 ```
 
 **2. Cache-Aside Pattern:**
+
 ```typescript
 async function getUserById(userId: string) {
   // Try cache first
@@ -229,18 +245,19 @@ async function getUserById(userId: string) {
   if (cached) {
     return JSON.parse(cached);
   }
-  
+
   // Cache miss - fetch from database
   const user = await pgPool.query('SELECT * FROM users WHERE id = $1', [userId]);
-  
+
   // Store in cache for 1 hour
   await redisClient.setEx(`user:${userId}`, 3600, JSON.stringify(user.rows[0]));
-  
+
   return user.rows[0];
 }
 ```
 
 **3. Cache Invalidation:**
+
 ```typescript
 // Invalidate single key
 await redisClient.del('user:123');
@@ -253,6 +270,7 @@ if (keys.length > 0) {
 ```
 
 **Caching Use Cases:**
+
 - User profile data
 - API response caching
 - Database query results
@@ -264,6 +282,7 @@ if (keys.length > 0) {
 **Location:** `apps/backend/src/main.ts`
 
 **Implementation:**
+
 ```typescript
 // Graceful shutdown on SIGTERM
 process.on('SIGTERM', async () => {
@@ -283,6 +302,7 @@ process.on('SIGINT', async () => {
 ```
 
 **Shutdown Features:**
+
 - Clean connection closure
 - Prevents data loss
 - Kubernetes-friendly (responds to SIGTERM)
@@ -292,6 +312,7 @@ process.on('SIGINT', async () => {
 ### 8. Error Handling ✅
 
 **Connection Error Handling:**
+
 ```typescript
 // Startup error handling
 try {
@@ -304,6 +325,7 @@ try {
 ```
 
 **Runtime Error Handling:**
+
 ```typescript
 // Health check error handling
 try {
@@ -316,6 +338,7 @@ try {
 ```
 
 **Error Handling Features:**
+
 - Fail-fast on startup errors
 - Graceful degradation during runtime
 - Structured error logging
@@ -334,6 +357,7 @@ $ npm run dev --prefix apps/backend
 ```
 
 **Verification:**
+
 - ✅ Redis connection established
 - ✅ Version detected (7.4.6)
 - ✅ Server started successfully
@@ -354,6 +378,7 @@ $ curl http://localhost:3000/health
 ```
 
 **Verification:**
+
 - ✅ Health endpoint returns 200 OK
 - ✅ Redis status: connected
 - ✅ Response includes timestamp
@@ -378,6 +403,7 @@ OK
 ```
 
 **Verification:**
+
 - ✅ SET operation works
 - ✅ GET operation works
 - ✅ EXPIRE operation works
@@ -408,6 +434,7 @@ $ docker-compose start redis
 ```
 
 **Verification:**
+
 - ✅ Application detects Redis disconnection
 - ✅ Health status changes to degraded
 - ✅ Application continues running
@@ -416,6 +443,7 @@ $ docker-compose start redis
 ## Environment Configuration
 
 **Required Environment Variables:**
+
 ```bash
 # Redis Connection
 REDIS_URL=redis://localhost:6379
@@ -427,22 +455,24 @@ REDIS_TLS=false                    # Enable TLS/SSL
 ```
 
 **Docker Compose Configuration:**
+
 ```yaml
 redis:
   image: redis:7-alpine
   ports:
-    - "6379:6379"
+    - '6379:6379'
   volumes:
     - redis_data:/data
   command: redis-server --appendonly yes
   healthcheck:
-    test: ["CMD", "redis-cli", "ping"]
+    test: ['CMD', 'redis-cli', 'ping']
     interval: 10s
     timeout: 3s
     retries: 3
 ```
 
 **Production Configuration:**
+
 ```bash
 # AWS ElastiCache Redis
 REDIS_URL=rediss://master.berthcare-redis.abc123.use1.cache.amazonaws.com:6379
@@ -459,6 +489,7 @@ REDIS_TLS=true
 
 **Decision:** Use `redis` v4.x (not `ioredis`)  
 **Rationale:**
+
 - Official Redis client for Node.js
 - Modern promise-based API
 - Built-in TypeScript support
@@ -467,6 +498,7 @@ REDIS_TLS=true
 - Built-in retry logic with exponential backoff
 
 **Trade-offs:**
+
 - ioredis has more features (cluster support, sentinel)
 - ioredis has better performance benchmarks
 - redis v4 is simpler and easier to use
@@ -478,12 +510,14 @@ REDIS_TLS=true
 
 **Decision:** Single shared client instance  
 **Rationale:**
+
 - Redis client handles connection pooling internally
 - Simpler application architecture
 - Reduced memory overhead
 - Sufficient for current load requirements
 
 **Trade-offs:**
+
 - Single point of failure (mitigated by retry logic)
 - No connection isolation between features
 - Acceptable for MVP, can add multiple clients later
@@ -492,12 +526,14 @@ REDIS_TLS=true
 
 **Decision:** Use built-in exponential backoff  
 **Rationale:**
+
 - Proven retry algorithm
 - Prevents thundering herd
 - Configurable if needed
 - No custom code to maintain
 
 **Trade-offs:**
+
 - Less control over retry behavior
 - Default settings may not be optimal for all scenarios
 - Can customize if needed in future
@@ -506,12 +542,14 @@ REDIS_TLS=true
 
 **Decision:** Use PING command for health checks  
 **Rationale:**
+
 - Fastest Redis operation (<1ms)
 - Minimal load on Redis
 - Standard health check pattern
 - Load balancer compatible
 
 **Trade-offs:**
+
 - Doesn't verify data operations
 - Doesn't check memory usage
 - Sufficient for basic health monitoring
@@ -521,6 +559,7 @@ REDIS_TLS=true
 ### Connection Performance
 
 **Metrics:**
+
 - Connection establishment: ~10ms (cold start)
 - PING command: <1ms
 - SET operation: ~1ms
@@ -528,6 +567,7 @@ REDIS_TLS=true
 - Reconnection: ~50-5000ms (exponential backoff)
 
 **Optimization:**
+
 - Connection pooling handled by library
 - Command pipelining for batch operations
 - Automatic connection reuse
@@ -535,11 +575,13 @@ REDIS_TLS=true
 ### Caching Performance
 
 **Expected Performance:**
+
 - Cache hit: ~1-2ms (Redis GET)
 - Cache miss: ~50-100ms (database query + Redis SET)
 - Cache invalidation: ~1ms (Redis DEL)
 
 **Optimization Strategies:**
+
 - Use appropriate TTL values
 - Implement cache warming for hot data
 - Use Redis pipelining for batch operations
@@ -550,11 +592,13 @@ REDIS_TLS=true
 ### Connection Security
 
 ✅ **Implemented:**
+
 - Connection URL from environment variables
 - No hardcoded credentials
 - TLS/SSL support ready (use `rediss://` protocol)
 
 🔒 **Production Requirements:**
+
 - Enable TLS/SSL for all connections
 - Use strong Redis password (AUTH command)
 - Restrict Redis access by IP (security groups)
@@ -564,11 +608,13 @@ REDIS_TLS=true
 ### Data Security
 
 ✅ **Implemented:**
+
 - Sensitive data can be encrypted before storage
 - Session data isolated by key prefix
 - Automatic expiration for temporary data
 
 🔒 **Production Requirements:**
+
 - Encrypt sensitive data before storing in Redis
 - Use short TTL for sensitive data
 - Implement key namespacing for multi-tenancy
@@ -579,6 +625,7 @@ REDIS_TLS=true
 ### Connection Monitoring
 
 **Metrics to Track:**
+
 - Connection status (connected/disconnected)
 - Connection errors and retries
 - Command execution time
@@ -586,6 +633,7 @@ REDIS_TLS=true
 - Cache hit/miss rates
 
 **Implementation:**
+
 ```typescript
 // Future enhancement
 redisClient.on('connect', () => {
@@ -604,17 +652,18 @@ redisClient.on('reconnecting', () => {
 ### Performance Monitoring
 
 **Slow Command Logging:**
+
 ```typescript
 // Wrapper for monitoring
 async function monitoredGet(key: string) {
   const start = Date.now();
   const value = await redisClient.get(key);
   const duration = Date.now() - start;
-  
+
   if (duration > 100) {
     logWarn('Slow Redis operation', { command: 'GET', key, duration });
   }
-  
+
   return value;
 }
 ```
@@ -624,12 +673,14 @@ async function monitoredGet(key: string) {
 ### 1. Session Management ✅
 
 **Implementation Ready:**
+
 - Store user sessions
 - Multi-device session tracking
 - Session expiration
 - Session revocation
 
 **Example:**
+
 ```typescript
 // Store session
 await redisClient.setEx(
@@ -645,12 +696,14 @@ const session = await redisClient.get(`session:${sessionId}`);
 ### 2. Caching ✅
 
 **Implementation Ready:**
+
 - API response caching
 - Database query caching
 - User profile caching
 - Configuration caching
 
 **Example:**
+
 ```typescript
 // Cache API response
 await redisClient.setEx(
@@ -663,11 +716,13 @@ await redisClient.setEx(
 ### 3. Rate Limiting ✅
 
 **Implementation Ready:**
+
 - API rate limiting
 - Login attempt limiting
 - IP-based throttling
 
 **Example:**
+
 ```typescript
 // Increment rate limit counter
 const count = await redisClient.incr(`ratelimit:${userId}:${endpoint}`);
@@ -682,11 +737,13 @@ if (count > 100) {
 ### 4. Temporary Tokens ✅
 
 **Implementation Ready:**
+
 - Password reset tokens
 - Email verification codes
 - One-time passwords (OTP)
 
 **Example:**
+
 ```typescript
 // Store verification code
 await redisClient.setEx(
@@ -707,15 +764,15 @@ apps/backend/src/
 
 ## Acceptance Criteria Status
 
-| Criteria | Status | Evidence |
-|----------|--------|----------|
-| Redis client using `redis` library | ✅ | redis v4.6.12 installed and configured |
-| Connection retry logic (exponential backoff) | ✅ | Built-in retry with exponential backoff |
-| Redis health check | ✅ | PING command in health endpoint |
-| Session management configuration | ✅ | Client ready for session storage |
-| Caching configuration | ✅ | Client ready for caching operations |
-| Backend connects to local Redis | ✅ | Verified in testing |
-| Test set/get works | ✅ | Verified with redis-cli |
+| Criteria                                     | Status | Evidence                                |
+| -------------------------------------------- | ------ | --------------------------------------- |
+| Redis client using `redis` library           | ✅     | redis v4.6.12 installed and configured  |
+| Connection retry logic (exponential backoff) | ✅     | Built-in retry with exponential backoff |
+| Redis health check                           | ✅     | PING command in health endpoint         |
+| Session management configuration             | ✅     | Client ready for session storage        |
+| Caching configuration                        | ✅     | Client ready for caching operations     |
+| Backend connects to local Redis              | ✅     | Verified in testing                     |
+| Test set/get works                           | ✅     | Verified with redis-cli                 |
 
 **All acceptance criteria met. B3 is complete and production-ready.**
 
@@ -724,9 +781,11 @@ apps/backend/src/
 ## Next Steps
 
 ### Immediate (B4)
+
 - ✅ B4: Set up S3 client (Infrastructure ready)
 
 ### Future Enhancements
+
 - Add explicit retry configuration if custom behavior needed
 - Implement connection event listeners for monitoring
 - Add Redis Cluster support for high availability

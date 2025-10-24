@@ -18,6 +18,7 @@ Implemented the user login endpoint that authenticates users and issues JWT toke
 **URL:** `POST /v1/auth/login`
 
 **Request Body:**
+
 ```json
 {
   "email": "caregiver@example.com",
@@ -27,6 +28,7 @@ Implemented the user login endpoint that authenticates users and issues JWT toke
 ```
 
 **Success Response (200):**
+
 ```json
 {
   "data": {
@@ -45,6 +47,7 @@ Implemented the user login endpoint that authenticates users and issues JWT toke
 ```
 
 **Error Responses:**
+
 - `400` - Validation error (missing fields, invalid email format)
 - `401` - Invalid credentials or account disabled
 - `429` - Rate limit exceeded (10 attempts per hour per IP)
@@ -84,6 +87,7 @@ Implemented the user login endpoint that authenticates users and issues JWT toke
 ### 1. `apps/backend/src/routes/auth.routes.ts`
 
 Added login endpoint handler:
+
 - Email normalization (lowercase)
 - User lookup with active/deleted checks
 - Password verification using bcrypt
@@ -94,6 +98,7 @@ Added login endpoint handler:
 ### 2. `apps/backend/src/middleware/validation.ts`
 
 Added `validateLogin` middleware:
+
 - Email format validation
 - Required field validation (email, password, deviceId)
 - Consistent error response format
@@ -101,6 +106,7 @@ Added `validateLogin` middleware:
 ### 3. `apps/backend/src/middleware/rate-limiter.ts`
 
 Already implemented `createLoginRateLimiter`:
+
 - 10 attempts per hour per IP
 - 15-minute time window
 - Redis-backed counters
@@ -112,6 +118,7 @@ Already implemented `createLoginRateLimiter`:
 Comprehensive integration tests covering:
 
 **Successful Login (5 tests)**
+
 - Valid credentials
 - Case-insensitive email
 - Multiple device logins
@@ -119,33 +126,39 @@ Comprehensive integration tests covering:
 - Admin login
 
 **Invalid Credentials (5 tests)**
+
 - Non-existent email
 - Incorrect password
 - Disabled account
 - No information leakage about email existence
 
 **Email Format Validation (3 tests)**
+
 - Invalid email format
 - Email without domain
 - Email without @
 
 **Required Field Validation (3 tests)**
+
 - Missing email
 - Missing password
 - Missing deviceId
 
 **Rate Limiting (4 tests)**
+
 - Allow 10 attempts per hour
 - Block 11th attempt with 429
 - Rate limit failed attempts
 - Include rate limit headers
 
 **Security (3 tests)**
+
 - Hash refresh token before storing
 - Constant-time password comparison
 - 30-day refresh token expiry
 
 **Token Generation (2 tests)**
+
 - Different tokens for each login
 - Correct user data in access token
 
@@ -160,13 +173,15 @@ This documentation file.
 ### Queries Used
 
 1. **User Lookup:**
+
 ```sql
-SELECT id, email, password_hash, first_name, last_name, role, zone_id, is_active 
-FROM users 
+SELECT id, email, password_hash, first_name, last_name, role, zone_id, is_active
+FROM users
 WHERE email = $1 AND deleted_at IS NULL
 ```
 
 2. **Refresh Token Storage:**
+
 ```sql
 INSERT INTO refresh_tokens (user_id, token_hash, device_id, expires_at)
 VALUES ($1, $2, $3, $4)
@@ -193,12 +208,14 @@ VALUES ($1, $2, $3, $4)
 ### Why Generic Error Messages?
 
 The endpoint returns "Invalid email or password" for both:
+
 - Non-existent email addresses
 - Incorrect passwords for existing accounts
 
 This prevents attackers from enumerating valid email addresses through login attempts.
 
 **Exception:** Disabled accounts receive a specific error message because:
+
 - User already knows their account exists
 - Provides better user experience
 - Doesn't leak information to attackers (they'd need valid credentials first)
@@ -206,6 +223,7 @@ This prevents attackers from enumerating valid email addresses through login att
 ### Token Hashing
 
 Refresh tokens are hashed before storage using SHA-256:
+
 ```typescript
 const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
 ```
@@ -224,6 +242,7 @@ This ensures that even if the database is compromised, attackers cannot use stor
 ### Why 10 Attempts?
 
 Balance between security and user experience:
+
 - **Too Low (e.g., 3):** Legitimate users may get locked out due to typos
 - **Too High (e.g., 100):** Allows brute force attacks
 - **10 Attempts:** Reasonable for legitimate users, prevents automated attacks
@@ -231,6 +250,7 @@ Balance between security and user experience:
 ### Rate Limit Headers
 
 Every login request includes headers:
+
 ```
 X-RateLimit-Limit: 10
 X-RateLimit-Remaining: 7
@@ -244,6 +264,7 @@ Clients can use these to implement UI feedback (e.g., "3 attempts remaining").
 ### Test Database Setup
 
 Tests use a separate test database (`berthcare_test`) to avoid polluting development data:
+
 - Automatic table creation in `beforeAll`
 - Clean slate before each test in `beforeEach`
 - Proper connection cleanup in `afterAll`
@@ -257,7 +278,7 @@ async function createTestUser(
   role: string = 'caregiver',
   zoneId: string = '123e4567-e89b-12d3-a456-426614174000',
   isActive: boolean = true
-)
+);
 ```
 
 Creates test users via the registration endpoint, ensuring consistent test data.
@@ -311,6 +332,7 @@ The endpoint supports multiple simultaneous sessions per user:
 ### Example Scenario
 
 User logs in from:
+
 - iPhone → `device_id: "iphone-12345"`
 - iPad → `device_id: "ipad-67890"`
 - Web → `device_id: "web-session-abc"`
@@ -377,6 +399,7 @@ All three sessions are active simultaneously, each with its own refresh token.
 ### Consistency with Registration Endpoint
 
 The login endpoint follows the same patterns as registration:
+
 - Consistent error response format
 - Same rate limiting approach
 - Same token generation logic
@@ -387,6 +410,7 @@ The login endpoint follows the same patterns as registration:
 ### Immediate (Task A6)
 
 Implement `POST /v1/auth/refresh` endpoint:
+
 - Verify refresh token
 - Issue new access token
 - Implement token rotation
@@ -483,24 +507,28 @@ done
 ## Acceptance Criteria
 
 ✅ **Login succeeds with valid credentials**
+
 - Returns 200 status code
 - Returns access token and refresh token
 - Returns user profile information
 - Tokens are valid JWTs
 
 ✅ **401 for invalid credentials**
+
 - Non-existent email returns 401
 - Incorrect password returns 401
 - Disabled account returns 401
 - Generic error message (no email enumeration)
 
 ✅ **Rate limit works**
+
 - Allows 10 attempts per hour per IP
 - Blocks 11th attempt with 429
 - Includes rate limit headers
 - Applies to both success and failure
 
 ✅ **Additional Requirements**
+
 - Email validation (format check)
 - Required field validation
 - Case-insensitive email matching
@@ -512,6 +540,7 @@ done
 ## Conclusion
 
 The login endpoint is production-ready and fully tested. It implements industry-standard security practices including:
+
 - Rate limiting to prevent brute force attacks
 - Constant-time password comparison to prevent timing attacks
 - Token hashing to protect against database compromise

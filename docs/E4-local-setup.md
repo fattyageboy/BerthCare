@@ -59,11 +59,11 @@ make clean         # Stop and remove all data (⚠️ destructive)
 
 ### Core Services (Always Running)
 
-| Service | Port | Purpose | Health Check |
-|---------|------|---------|--------------|
-| PostgreSQL 15 | 5432 | Primary database | `docker-compose exec postgres pg_isready` |
-| Redis 7 | 6379 | Cache & sessions | `docker-compose exec redis redis-cli ping` |
-| LocalStack | 4566 | S3 emulation | `curl http://localhost:4566/_localstack/health` |
+| Service       | Port | Purpose          | Health Check                                    |
+| ------------- | ---- | ---------------- | ----------------------------------------------- |
+| PostgreSQL 15 | 5432 | Primary database | `docker-compose exec postgres pg_isready`       |
+| Redis 7       | 6379 | Cache & sessions | `docker-compose exec redis redis-cli ping`      |
+| LocalStack    | 4566 | S3 emulation     | `curl http://localhost:4566/_localstack/health` |
 
 ### Optional Development Tools
 
@@ -74,16 +74,17 @@ These services are in the `tools` profile and start only when explicitly request
 docker-compose --profile tools up -d
 ```
 
-| Service | Port | Purpose | Access |
-|---------|------|---------|--------|
-| PgAdmin | 5050 | PostgreSQL web UI | http://localhost:5050 |
-| Redis Commander | 8081 | Redis web UI | http://localhost:8081 |
+| Service         | Port | Purpose           | Access                |
+| --------------- | ---- | ----------------- | --------------------- |
+| PgAdmin         | 5050 | PostgreSQL web UI | http://localhost:5050 |
+| Redis Commander | 8081 | Redis web UI      | http://localhost:8081 |
 
 ## Service Details
 
 ### PostgreSQL 15
 
 **Connection Details:**
+
 - Host: `localhost`
 - Port: `5432`
 - Database: `berthcare_dev`
@@ -92,6 +93,7 @@ docker-compose --profile tools up -d
 - Connection String: `postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_dev`
 
 **Features:**
+
 - Automatic database initialization via `scripts/init-db.sql`
 - Test database (`berthcare_test`) created automatically
 - UUID extension enabled
@@ -99,6 +101,7 @@ docker-compose --profile tools up -d
 - Data persisted in Docker volume `postgres_data`
 
 **Connecting from Backend:**
+
 ```typescript
 import { Pool } from 'pg';
 
@@ -111,6 +114,7 @@ const pool = new Pool({
 ```
 
 **Manual Database Access:**
+
 ```bash
 # Connect to database
 docker-compose exec postgres psql -U berthcare -d berthcare_dev
@@ -125,6 +129,7 @@ docker-compose exec postgres pg_dump -U berthcare berthcare_dev > backup.sql
 ### Redis 7
 
 **Connection Details:**
+
 - Host: `localhost`
 - Port: `6379`
 - Password: `berthcare_redis_password`
@@ -132,12 +137,14 @@ docker-compose exec postgres pg_dump -U berthcare berthcare_dev > backup.sql
 - Connection String: `redis://:berthcare_redis_password@localhost:6379/0`
 
 **Features:**
+
 - Password authentication enabled
 - AOF (Append Only File) persistence enabled
 - Health checks configured
 - Data persisted in Docker volume `redis_data`
 
 **Connecting from Backend:**
+
 ```typescript
 import { createClient } from 'redis';
 
@@ -149,6 +156,7 @@ await redis.connect();
 ```
 
 **Manual Redis Access:**
+
 ```bash
 # Connect to Redis CLI
 docker-compose exec redis redis-cli -a berthcare_redis_password
@@ -164,23 +172,27 @@ docker-compose exec redis redis-cli -a berthcare_redis_password
 ### LocalStack (S3 Emulation)
 
 **Connection Details:**
+
 - Endpoint: `http://localhost:4566`
 - Region: `ca-central-1`
 - Access Key: `test`
 - Secret Key: `test`
 
 **S3 Buckets (Auto-Created):**
+
 - `berthcare-photos-dev` - Visit photos
 - `berthcare-documents-dev` - Care plans, reports
 - `berthcare-signatures-dev` - Client signatures
 
 **Features:**
+
 - Full S3 API compatibility
 - CORS configured for local development
 - Bucket versioning enabled
 - Data persisted in Docker volume `localstack_data`
 
 **Connecting from Backend:**
+
 ```typescript
 import { S3Client } from '@aws-sdk/client-s3';
 
@@ -196,6 +208,7 @@ const s3Client = new S3Client({
 ```
 
 **Manual S3 Access:**
+
 ```bash
 # Install AWS CLI (if not already installed)
 brew install awscli
@@ -331,11 +344,13 @@ docker-compose up -d
 ### Backend Development
 
 1. **Start services:**
+
    ```bash
    docker-compose up -d
    ```
 
 2. **Run backend in development mode:**
+
    ```bash
    cd apps/backend
    npm run dev
@@ -349,17 +364,20 @@ docker-compose up -d
 ### Mobile Development
 
 1. **Start services:**
+
    ```bash
    docker-compose up -d
    ```
 
 2. **Ensure backend is running:**
+
    ```bash
    cd apps/backend
    npm run dev
    ```
 
 3. **Start mobile app:**
+
    ```bash
    cd apps/mobile
    npm start
@@ -374,11 +392,13 @@ docker-compose up -d
 ### Services Won't Start
 
 **Problem:** Port already in use
+
 ```bash
 Error: bind: address already in use
 ```
 
 **Solution:** Check what's using the port and stop it
+
 ```bash
 # Check what's using port 5432 (PostgreSQL)
 lsof -i :5432
@@ -393,11 +413,13 @@ POSTGRES_PORT=5433
 ### PostgreSQL Connection Refused
 
 **Problem:** Backend can't connect to PostgreSQL
+
 ```bash
 Error: connect ECONNREFUSED 127.0.0.1:5432
 ```
 
 **Solution:** Verify PostgreSQL is running and healthy
+
 ```bash
 # Check service status
 docker-compose ps postgres
@@ -412,11 +434,13 @@ docker-compose restart postgres
 ### Redis Authentication Failed
 
 **Problem:** Redis connection fails with auth error
+
 ```bash
 Error: NOAUTH Authentication required
 ```
 
 **Solution:** Verify Redis password in `.env` matches `docker-compose.yml`
+
 ```bash
 # Check Redis is running
 docker-compose ps redis
@@ -428,11 +452,13 @@ docker-compose exec redis redis-cli -a berthcare_redis_password ping
 ### LocalStack S3 Buckets Not Created
 
 **Problem:** S3 operations fail with "NoSuchBucket"
+
 ```bash
 Error: The specified bucket does not exist
 ```
 
 **Solution:** Manually run initialization script
+
 ```bash
 # Check LocalStack is running
 docker-compose ps localstack
@@ -449,6 +475,7 @@ docker-compose exec localstack sh /etc/localstack/init/ready.d/init-localstack.s
 **Problem:** Data disappears after restart
 
 **Solution:** Verify volumes are created and mounted
+
 ```bash
 # List volumes
 docker volume ls | grep berthcare
@@ -466,6 +493,7 @@ docker-compose up -d
 **Problem:** Services are slow or unresponsive
 
 **Solution:** Check Docker resource allocation
+
 ```bash
 # Check Docker stats
 docker stats
@@ -484,6 +512,7 @@ docker stats
 **Access:** http://localhost:5050
 
 **First-time Setup:**
+
 1. Start with tools profile: `docker-compose --profile tools up -d`
 2. Open http://localhost:5050
 3. Login with credentials from `.env`:
@@ -501,12 +530,14 @@ docker stats
 **Access:** http://localhost:8081
 
 **Features:**
+
 - Browse all keys
 - View key values
 - Execute Redis commands
 - Monitor real-time stats
 
 **Usage:**
+
 1. Start with tools profile: `docker-compose --profile tools up -d`
 2. Open http://localhost:8081
 3. Automatically connected to local Redis
