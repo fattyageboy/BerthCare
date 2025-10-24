@@ -18,6 +18,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: berthcare_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/berthcare_test
+      TEST_REDIS_URL: redis://localhost:6379
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -41,6 +70,13 @@ jobs:
       - name: Run TypeScript type check
         run: npm run type-check
         continue-on-error: false
+
+      - name: Setup test database
+        run: |
+          cd apps/backend
+          npm run migrate:up
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
       - name: Run tests with coverage
         run: npm run test:ci -- --maxWorkers=2
