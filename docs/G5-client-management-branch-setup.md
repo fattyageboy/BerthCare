@@ -116,7 +116,7 @@ Following the task plan, the implementation will proceed in this order:
 
 9. **G6:** CI checks, code review, merge
 
-**Total Estimated Effort:** 8.5 days
+**Total Estimated Effort:** 9.75 days
 
 ---
 

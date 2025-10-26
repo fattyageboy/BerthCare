@@ -284,13 +284,13 @@ Tests use a separate test database:
 
 ```bash
 # Run all tests
-npm test
+pnpm run test
 
 # Run only clients tests
-npm test clients.list
+pnpm run test -- clients.list
 
 # Run with coverage
-npm test -- --coverage
+pnpm run test -- --coverage
 ```
 
 ## Design Philosophy Applied
@@ -418,19 +418,21 @@ LIMIT 50;
 
 ### Cache Not Working
 
+Replace `$REDIS_PASSWORD` with your actual Redis password from the `.env` file.
+
 **Issue:** Every request hits database
 
 **Solution:**
 
 ```bash
 # Check Redis connection
-docker-compose exec redis redis-cli -a berthcare_redis_password PING
+docker-compose exec redis redis-cli -a "$REDIS_PASSWORD" PING
 
 # Check cache keys
-docker-compose exec redis redis-cli -a berthcare_redis_password KEYS "clients:*"
+docker-compose exec redis redis-cli -a "$REDIS_PASSWORD" KEYS "clients:*"
 
 # Check TTL
-docker-compose exec redis redis-cli -a berthcare_redis_password TTL "clients:list:zone=..."
+docker-compose exec redis redis-cli -a "$REDIS_PASSWORD" TTL "clients:list:zone=..."
 ```
 
 ## References

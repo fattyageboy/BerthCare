@@ -44,7 +44,7 @@ Successfully completed all pre-merge requirements for the backend scaffold PR. A
 **S3 Tests:**
 
 ```bash
-$ npm run test:s3 --prefix apps/backend
+$ pnpm --dir apps/backend run test:s3
 
 ✅ S3 connection verified
 ✅ Photo upload URL generation working
@@ -57,7 +57,7 @@ All tests passed successfully!
 **Database Tests:**
 
 ```bash
-$ npm run db:verify --prefix apps/backend
+$ pnpm --dir apps/backend run db:verify
 
 ✅ Table 'users' exists
 ✅ Table 'refresh_tokens' exists
@@ -70,7 +70,7 @@ Schema verification passed!
 **Connection Tests:**
 
 ```bash
-$ npm run test:connection --prefix apps/backend
+$ pnpm --dir apps/backend run test:connection
 
 ✅ Connected to PostgreSQL (version 15.14)
 ✅ Connected to Redis (version 7.4.6)
@@ -380,7 +380,7 @@ Health Checks: All endpoints returning 200 OK
 ### Post-Merge
 
 1. Verify `main` branch CI passes
-2. Tag release: `v2.0.0-backend-scaffold`
+2. Tag release: `v1.0.0-backend-scaffold`
 3. Update CHANGELOG.md
 4. Create issue #2 for authentication system (G3)
 5. Branch `feat/auth-system` from updated `main`

@@ -64,11 +64,46 @@ function toBoolean(value: Optional<string>, fallback: boolean): boolean {
   return fallback;
 }
 
+const SENSITIVE_PLACEHOLDER = '<redacted>';
+
+interface MaskOptions {
+  showStart?: number;
+  showEnd?: number;
+  minLength?: number;
+  placeholder?: string;
+  maskCharCount?: number;
+}
+
+function maskSensitive(value: Optional<string>, options: MaskOptions = {}): string {
+  const {
+    showStart = 0,
+    showEnd = 4,
+    minLength = 6,
+    placeholder = SENSITIVE_PLACEHOLDER,
+    maskCharCount,
+  } = options;
+
+  if (!value) {
+    return placeholder;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length < minLength || trimmed.length <= showStart + showEnd) {
+    return placeholder;
+  }
+
+  const prefix = showStart > 0 ? trimmed.slice(0, showStart) : '';
+  const suffix = showEnd > 0 ? trimmed.slice(-showEnd) : '';
+  const maskedLength = Math.max(3, maskCharCount ?? 3);
+
+  return `${prefix}${'*'.repeat(maskedLength)}${suffix}`;
+}
+
 export const env = {
   app: {
     nodeEnv: process.env.NODE_ENV || 'development',
     port: toNumber(process.env.PORT, 3000),
-    version: process.env.APP_VERSION || '2.0.0',
+    version: process.env.APP_VERSION || '1.0.0',
     logLevel: process.env.LOG_LEVEL || 'info',
   },
   logging: {
@@ -116,6 +151,7 @@ export const env = {
     phoneNumber: process.env.TWILIO_PHONE_NUMBER || '',
     // Default to http://localhost for local development, but production must use https
     webhookBaseUrl: process.env.TWILIO_WEBHOOK_BASE_URL || 'http://localhost:3000',
+    secretId: process.env.TWILIO_SECRET_ID || '',
     // SMS rate limiter fail-open behavior
     // When true: Allow SMS when Redis is unavailable (prioritizes availability)
     // When false: Block SMS when Redis is unavailable (prioritizes security/rate limiting)
@@ -130,7 +166,7 @@ export const env = {
  * Ensures required credentials are present and webhook URLs use HTTPS in production
  */
 function validateTwilioConfig(): void {
-  const { accountSid, authToken, phoneNumber, webhookBaseUrl } = env.twilio;
+  const { accountSid, authToken, phoneNumber, webhookBaseUrl, secretId } = env.twilio;
 
   // Skip validation in test environment
   if (env.app.nodeEnv === 'test') {
@@ -143,21 +179,40 @@ function validateTwilioConfig(): void {
     webhookBaseUrl.includes('localhost') ||
     webhookBaseUrl.includes('127.0.0.1');
 
+  const hasSecret = Boolean(secretId);
   const isTwilioConfigured = accountSid || authToken || phoneNumber || !isDefaultWebhook;
+  const shouldValidate = hasSecret || isTwilioConfigured;
 
-  if (isTwilioConfigured) {
-    // If any Twilio config is provided, all required fields must be present
-    const missingFields: string[] = [];
+  if (shouldValidate) {
+    if (!hasSecret) {
+      // If any Twilio config is provided, all required fields must be present
+      const missingFields: string[] = [];
 
-    if (!accountSid) missingFields.push('TWILIO_ACCOUNT_SID');
-    if (!authToken) missingFields.push('TWILIO_AUTH_TOKEN');
-    if (!phoneNumber) missingFields.push('TWILIO_PHONE_NUMBER');
+      if (!accountSid) missingFields.push('TWILIO_ACCOUNT_SID');
+      if (!authToken) missingFields.push('TWILIO_AUTH_TOKEN');
+      if (!phoneNumber) missingFields.push('TWILIO_PHONE_NUMBER');
 
-    if (missingFields.length > 0) {
-      throw new Error(
-        `Twilio integration is partially configured but missing required environment variables: ${missingFields.join(', ')}. ` +
-          `Either provide all Twilio credentials or remove them to disable Twilio integration.`
-      );
+      if (missingFields.length > 0) {
+        throw new Error(
+          `Twilio integration is partially configured but missing required environment variables: ${missingFields.join(', ')}. ` +
+            `Either provide all Twilio credentials or remove them to disable Twilio integration.`
+        );
+      }
+
+      if (env.app.nodeEnv === 'development') {
+        // eslint-disable-next-line no-console
+        console.log('✅ Twilio integration configured:', {
+          accountSid: maskSensitive(accountSid, { showStart: 4, showEnd: 2, minLength: 10 }),
+          phoneNumber: maskSensitive(phoneNumber, { showEnd: 4, minLength: 8 }),
+          webhookBaseUrlConfigured: Boolean(webhookBaseUrl),
+        });
+      }
+    } else if (env.app.nodeEnv === 'development') {
+      // eslint-disable-next-line no-console
+      console.log('✅ Twilio integration configured via AWS Secrets Manager:', {
+        secretId,
+        webhookBaseUrlConfigured: Boolean(webhookBaseUrl),
+      });
     }
 
     // Validate webhook URL uses HTTPS in non-local environments
@@ -170,15 +225,6 @@ function validateTwilioConfig(): void {
           `Current value: ${webhookBaseUrl}. ` +
           `Use HTTPS or set to localhost for development.`
       );
-    }
-
-    if (env.app.nodeEnv === 'development') {
-      // eslint-disable-next-line no-console
-      console.log('✅ Twilio integration configured:', {
-        accountSid: accountSid.substring(0, 8) + '...',
-        phoneNumber: phoneNumber.substring(0, 5) + '...',
-        webhookBaseUrl,
-      });
     }
   } else if (env.app.nodeEnv === 'development') {
     // Twilio not configured - this is OK for development

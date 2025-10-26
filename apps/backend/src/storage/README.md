@@ -268,7 +268,7 @@ S3_SIGNATURE_VERSION=v4
 docker-compose up -d localstack
 
 # Test connection
-npm run test:connection --prefix apps/backend
+pnpm --dir apps/backend run test:connection
 ```
 
 ### Upload Test File

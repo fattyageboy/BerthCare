@@ -364,10 +364,10 @@ clients.zone_id → zones.id (when zones table created)
 
 ```bash
 # Option 1: Run all migrations
-npm run migrate:up
+pnpm run migrate:up
 
 # Option 2: Run only migration 003
-npm run migrate:up 003
+pnpm run migrate:up 003
 
 # Option 3: Use Makefile
 make db-migrate
@@ -390,10 +390,10 @@ docker-compose exec postgres psql -U berthcare -d berthcare_dev -c "\df *care_pl
 
 ```bash
 # Rollback migration 003
-npm run migrate:down 003
+pnpm run migrate:down 003
 
 # Verify rollback
-npm run db:verify
+pnpm run db:verify
 ```
 
 ## Testing Results
@@ -562,10 +562,10 @@ With the care_plans table in place, the next implementation tasks are:
 docker-compose exec postgres psql -U berthcare -d berthcare_dev -c "\d care_plans"
 
 # Rollback if needed
-npm run migrate:down 003
+pnpm run migrate:down 003
 
 # Re-run migration
-npm run migrate:up 003
+pnpm run migrate:up 003
 ```
 
 ### Foreign Key Violation
@@ -577,8 +577,8 @@ npm run migrate:up 003
 ```bash
 # Ensure client exists first
 # Migration 002 must be applied before 003
-npm run migrate:up 002
-npm run migrate:up 003
+pnpm run migrate:up 002
+pnpm run migrate:up 003
 ```
 
 ### Unique Constraint Violation

@@ -95,12 +95,12 @@ berthcare/
 ✅ **libs/shared/package.json** - Library package metadata
 
 - Name: @berthcare/shared
-- Version: 2.0.0
+- Version: 1.0.0
 - Output paths configured
 
 ### 5. Package.json Scripts
 
-✅ **Updated npm scripts for Nx**
+✅ **Updated pnpm scripts for Nx**
 
 ```json
 {
@@ -165,7 +165,7 @@ berthcare/
 
 ```bash
 # Install dependencies first
-npm install
+pnpm install
 
 # View dependency graph
 nx graph
@@ -268,7 +268,7 @@ nx type-check shared
 1. **Install Dependencies**
 
    ```bash
-   npm install
+   pnpm install
    ```
 
 2. **Verify Nx Setup**
@@ -280,7 +280,7 @@ nx type-check shared
    ```
 
 3. **Update CI Workflow**
-   - CI already uses npm scripts that now leverage Nx
+   - CI already uses pnpm scripts that now leverage Nx
    - No changes needed to `.github/workflows/ci.yml`
    - Nx will automatically optimize task execution
 
@@ -298,7 +298,7 @@ According to the task plan:
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Use npx if needed
 npx nx --version
@@ -318,8 +318,8 @@ rm -rf .nx/cache
 
 ```bash
 # Clean and rebuild
-npm run clean
-npm install
+pnpm run clean
+pnpm install
 nx run-many -t build
 ```
 
@@ -345,7 +345,7 @@ nx affected:graph
 ## Notes
 
 - Nx chosen over Turborepo for better caching and task orchestration
-- Configuration supports both npm workspaces and Nx features
+- Configuration supports both pnpm workspaces and Nx features
 - Shared configurations ensure consistency across projects
 - Path mapping enables clean imports: `@berthcare/shared`
 - Project tags enable architectural boundary enforcement
@@ -360,4 +360,4 @@ nx affected:graph
 **Estimated Time**: 1 day  
 **Actual Time**: 1 day
 
-**Next Action**: Install dependencies and verify Nx setup with `npm install && nx graph`
+**Next Action**: Install dependencies and verify Nx setup with `pnpm install && nx graph`

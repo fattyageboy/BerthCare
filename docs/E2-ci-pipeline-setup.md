@@ -50,7 +50,7 @@ Successfully configured a comprehensive CI/CD pipeline using GitHub Actions that
 
 ✅ **Job 5: Dependency Audit**
 
-- npm audit for known vulnerabilities
+- pnpm audit for known vulnerabilities
 - Audit level: High and above
 - Outdated dependency check
 - Timeout: 10 minutes
@@ -290,14 +290,14 @@ According to the task plan:
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Run all checks locally
-npm run lint
-npm run format:check
-npm run type-check
-npm run test
-npm run build
+pnpm run lint
+pnpm run format:check
+pnpm run type-check
+pnpm run test
+pnpm run build
 ```
 
 ### CI Testing (After PR)
@@ -327,11 +327,11 @@ npm run build
 
 ### Common Issues
 
-- **Lint errors**: Run `npm run lint:fix` to auto-fix
-- **Format errors**: Run `npm run format` to auto-format
+- **Lint errors**: Run `pnpm run lint:fix` to auto-fix
+- **Format errors**: Run `pnpm run format` to auto-format
 - **Type errors**: Check TypeScript compiler output
-- **Test failures**: Run `npm run test:watch` to debug
-- **Build failures**: Run `npm run build` locally
+- **Test failures**: Run `pnpm run test:watch` to debug
+- **Build failures**: Run `pnpm run build` locally
 
 ## Reference Documentation
 

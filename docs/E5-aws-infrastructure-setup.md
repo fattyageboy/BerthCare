@@ -578,8 +578,8 @@ In case of complete ca-central-1 region failure:
    # Update region in terraform.tfvars
    aws_region = "us-east-1"
 
-   # Apply in new region
-   terraform apply
+   # Apply in new region without interactive approval
+   terraform apply -auto-approve
    ```
 
 ---

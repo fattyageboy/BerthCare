@@ -1,6 +1,6 @@
 # BerthCare - Home Care Management Platform
 
-**Version:** 2.0.0  
+**Version:** 1.0.0  
 **Philosophy:** Simplicity is the ultimate sophistication
 
 ## Overview
@@ -86,14 +86,14 @@ git clone https://github.com/[organization]/berthcare.git
 cd berthcare
 
 # Install dependencies
-npm install
+pnpm install
 
 # Start local development environment
 docker-compose up --build
 
 # Run mobile app (in separate terminal)
 cd apps/mobile
-npm run ios    # or npm run android
+pnpm run ios    # or pnpm run android
 ```
 
 ### Environment Setup

@@ -153,10 +153,10 @@ Run tests:
 
 ```bash
 # Run all middleware tests
-npm test -- middleware
+pnpm run test -- middleware
 
 # Run specific middleware tests
-npm test -- auth.middleware.test.ts
+pnpm run test -- auth.middleware.test.ts
 ```
 
 ---

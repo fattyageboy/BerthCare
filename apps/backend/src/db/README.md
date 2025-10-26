@@ -32,15 +32,15 @@ db/
 Apply all pending migrations:
 
 ```bash
-npm run migrate:up
+pnpm run migrate:up
 ```
 
 Apply specific migration:
 
 ```bash
-npm run migrate:up 001  # Users and auth
-npm run migrate:up 002  # Clients
-npm run migrate:up 003  # Care plans
+pnpm run migrate:up 001  # Users and auth
+pnpm run migrate:up 002  # Clients
+pnpm run migrate:up 003  # Care plans
 ```
 
 ### 2. Verify Schema
@@ -48,7 +48,7 @@ npm run migrate:up 003  # Care plans
 Check that the database schema matches specifications:
 
 ```bash
-npm run db:verify
+pnpm run db:verify
 ```
 
 ### 3. Rollback Migration
@@ -56,9 +56,9 @@ npm run db:verify
 Rollback a specific migration:
 
 ```bash
-npm run migrate:down 001  # Rollback users and auth
-npm run migrate:down 002  # Rollback clients
-npm run migrate:down 003  # Rollback care plans
+pnpm run migrate:down 001  # Rollback users and auth
+pnpm run migrate:down 002  # Rollback clients
+pnpm run migrate:down 003  # Rollback care plans
 ```
 
 ### 4. Reset Database
@@ -66,7 +66,7 @@ npm run migrate:down 003  # Rollback care plans
 Drop and recreate all tables (useful for development):
 
 ```bash
-npm run db:reset
+pnpm run db:reset
 ```
 
 ## Migration Files
@@ -168,9 +168,9 @@ These are configured in your `.env` file and match the `docker-compose.yml` setu
 1. Create forward migration file: `00X_description.sql`
 2. Create rollback file: `00X_description_rollback.sql`
 3. Update `migrate.ts` to include new migration
-4. Test migration: `npm run migrate:up 00X`
-5. Verify schema: `npm run db:verify`
-6. Test rollback: `npm run migrate:down 00X`
+4. Test migration: `pnpm run migrate:up 00X`
+5. Verify schema: `pnpm run db:verify`
+6. Test rollback: `pnpm run migrate:down 00X`
 7. Commit both files to version control
 
 ### Migration Best Practices
@@ -205,7 +205,7 @@ The `verify-schema.ts` script checks:
 Run after every migration to ensure schema integrity:
 
 ```bash
-npm run db:verify
+pnpm run db:verify
 ```
 
 ## Troubleshooting
@@ -215,7 +215,7 @@ npm run db:verify
 The migration has already been run. Check your database state:
 
 ```bash
-npm run test:connection
+pnpm run test:connection
 ```
 
 ### Connection refused

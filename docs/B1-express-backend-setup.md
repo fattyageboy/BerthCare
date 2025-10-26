@@ -195,7 +195,7 @@ Client Settings:
 ```json
 {
   "name": "BerthCare API",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "environment": "development",
   "endpoints": {
     "health": "/health",
@@ -212,7 +212,7 @@ Client Settings:
 **1. Server Startup:**
 
 ```bash
-$ npm run dev --prefix apps/backend
+$ pnpm --dir apps/backend run dev
 
 ✅ Connecting to PostgreSQL...
 ✅ Connected to PostgreSQL (version: PostgreSQL 15.14)
@@ -252,7 +252,7 @@ Status: 200 OK
 Response:
 {
   "name": "BerthCare API",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "environment": "development",
   "endpoints": {
     "health": "/health",
@@ -318,15 +318,15 @@ $ kill -SIGTERM <pid>
 ```
 apps/backend/
 ├── src/
-│   ├── main.ts                      # Main application entry point
+│   ├── main.ts# Main application entry point
 │   ├── main-with-monitoring.ts      # Alternative with full monitoring
-│   ├── test-connection.ts           # Connection testing utility
+│   ├── test-connection.ts# Connection testing utility
 │   └── config/
-│       ├── logger.ts                # Winston logger configuration
-│       └── sentry.ts                # Sentry error tracking setup
-├── package.json                     # Dependencies and scripts
-├── tsconfig.json                    # TypeScript configuration
-└── project.json                     # Nx project configuration
+│       ├── logger.ts     # Winston logger configuration
+│       └── sentry.ts     # Sentry error tracking setup
+├── package.json  # Dependencies and scripts
+├── tsconfig.json # TypeScript configuration
+└── project.json  # Nx project configuration
 ```
 
 ## Environment Configuration

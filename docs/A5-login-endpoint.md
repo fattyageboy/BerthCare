@@ -449,13 +449,13 @@ Implement `POST /v1/auth/refresh` endpoint:
 
 ```bash
 # Run all auth tests
-npm test -- auth.login.test.ts
+pnpm run test -- auth.login.test.ts
 
 # Run with coverage
-npm test -- --coverage auth.login.test.ts
+pnpm run test -- --coverage auth.login.test.ts
 
 # Run specific test suite
-npm test -- auth.login.test.ts -t "Successful Login"
+pnpm run test -- auth.login.test.ts -t "Successful Login"
 ```
 
 ### Manual Testing

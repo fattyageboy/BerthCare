@@ -67,7 +67,7 @@ You should see:
 ```bash
 # In a new terminal
 cd apps/backend
-npm run dev
+pnpm run dev
 ```
 
 You should see:
@@ -83,7 +83,7 @@ You should see:
 ```bash
 # In another new terminal
 cd apps/mobile
-npm start
+pnpm start
 ```
 
 Choose your platform:

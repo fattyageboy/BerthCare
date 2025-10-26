@@ -6,7 +6,7 @@
  *
  * Prerequisites:
  * - Set JWT_PRIVATE_KEY and JWT_PUBLIC_KEY environment variables
- * - Or generate test keys with: npm run generate:keys
+ * - Or generate test keys with: pnpm run generate:keys
  */
 
 import {

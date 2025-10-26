@@ -147,7 +147,7 @@ docker-compose up -d
 ✅ LocalStack running
 
 # Backend started successfully
-cd apps/backend && npm start
+cd apps/backend && pnpm start
 ✅ Connected to PostgreSQL
 ✅ Connected to Redis
 ✅ Server listening on port 3000

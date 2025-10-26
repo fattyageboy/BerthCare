@@ -4,11 +4,39 @@
 -- Date: 2025-10-20
 -- Reference: Architecture Blueprint - Voice Alert Service section
 
--- ============================================================================
--- CARE_ALERTS TABLE
--- ============================================================================
 -- Stores voice alerts from caregivers to coordinators for urgent care issues
 -- Supports voice-first communication, escalation, and outcome tracking
+
+-- Enumerated types keep business states explicit and prevent invalid values
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'care_alert_type') THEN
+        CREATE TYPE care_alert_type AS ENUM (
+            'medical_concern',
+            'medication_issue',
+            'behavioral_change',
+            'safety_concern',
+            'family_request',
+            'equipment_issue',
+            'other'
+        );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'care_alert_status') THEN
+        CREATE TYPE care_alert_status AS ENUM (
+            'initiated',
+            'ringing',
+            'answered',
+            'no_answer',
+            'escalated',
+            'resolved',
+            'cancelled'
+        );
+    END IF;
+END$$;
 
 CREATE TABLE IF NOT EXISTS care_alerts (
     -- Primary identifier
@@ -20,33 +48,13 @@ CREATE TABLE IF NOT EXISTS care_alerts (
     coordinator_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     
     -- Alert details
-    alert_type VARCHAR(50) NOT NULL CHECK (
-        alert_type IN (
-            'medical_concern',
-            'medication_issue',
-            'behavioral_change',
-            'safety_concern',
-            'family_request',
-            'equipment_issue',
-            'other'
-        )
-    ),
+    alert_type care_alert_type NOT NULL,
     
     -- Voice message storage
     voice_message_url TEXT,
     
     -- Alert status tracking
-    status VARCHAR(50) NOT NULL DEFAULT 'initiated' CHECK (
-        status IN (
-            'initiated',
-            'ringing',
-            'answered',
-            'no_answer',
-            'escalated',
-            'resolved',
-            'cancelled'
-        )
-    ),
+    status care_alert_status NOT NULL DEFAULT 'initiated',
     
     -- Timestamp tracking for SLA monitoring
     initiated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,

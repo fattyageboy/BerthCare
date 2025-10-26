@@ -1,6 +1,6 @@
 # BerthCare Technical Architecture Blueprint
 
-**Version:** 2.0.0  
+**Version:** 1.0.0  
 **Last Updated:** October 7, 2025  
 **Philosophy:** Simplicity is the ultimate sophistication
 
@@ -3969,25 +3969,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: 'pnpm'
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run linter
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Run type check
-        run: npm run type-check
+        run: pnpm run type-check
 
       - name: Run unit tests
-        run: npm run test:unit
+        run: pnpm run test:unit
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
           REDIS_URL: redis://localhost:6379
 
       - name: Run integration tests
-        run: npm run test:integration
+        run: pnpm run test:integration
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
           REDIS_URL: redis://localhost:6379
@@ -4071,6 +4074,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Setup Expo
         uses: expo/expo-github-action@v8
         with:
@@ -4078,7 +4084,7 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
         working-directory: ./mobile
 
       - name: Build iOS
@@ -4112,19 +4118,20 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package manager files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY tsconfig.json ./
 
 # Install dependencies
-RUN npm ci --only=production && \
-    npm cache clean --force
+RUN corepack enable && \
+    pnpm install --frozen-lockfile && \
+    pnpm store prune
 
 # Copy source code
 COPY src ./src
 
 # Build TypeScript
-RUN npm run build
+RUN pnpm run build
 
 # Production stage
 FROM node:20-alpine
@@ -4141,7 +4148,7 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy built application
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --chown=nodejs:nodejs package*.json ./
+COPY --chown=nodejs:nodejs package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Switch to non-root user
 USER nodejs
@@ -4213,7 +4220,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./node_modules:/app/node_modules
-    command: npm run dev
+    command: pnpm run dev
 
   localstack:
     image: localstack/localstack:latest
@@ -5153,7 +5160,7 @@ caregiver → Mobile App → API → Alert Service → WebSocket Server
 
 ## Document History
 
-**Version 2.0.0** (October 7, 2025)
+**Version 1.0.0** (October 7, 2025)
 
 - Complete redesign integrating design philosophy throughout
 - Added "Philosophy in Practice" comprehensive conclusion
@@ -5171,7 +5178,7 @@ caregiver → Mobile App → API → Alert Service → WebSocket Server
 
 ---
 
-**Document Version:** 2.0.0  
+**Document Version:** 1.0.0  
 **Last Updated:** October 7, 2025  
 **Next Review:** November 7, 2025  
 **Owner:** System Architect  

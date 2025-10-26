@@ -357,6 +357,22 @@ Ensure your ECS task role has permission to read Twilio secrets:
 
 ---
 
+### 5.5 Configure Backend to Use Secrets
+
+Set the `TWILIO_SECRET_ID` environment variable for each environment so the backend loads credentials directly from AWS Secrets Manager:
+
+```bash
+# Staging
+TWILIO_SECRET_ID=berthcare/staging/twilio
+
+# Production
+TWILIO_SECRET_ID=berthcare/production/twilio
+```
+
+When `TWILIO_SECRET_ID` is set, the backend reads the account SID, auth token, and phone number from the secret at runtime. This keeps credentials out of environment files and aligns with our "no manuals" simplicity—deployment teams only manage a single secret reference per environment.
+
+---
+
 ## Step 6: Configure Local Development
 
 ### 6.1 Update .env File
@@ -377,6 +393,8 @@ TWILIO_AUTH_TOKEN=your_auth_token           # Your staging auth token
 TWILIO_PHONE_NUMBER=+1234567890             # Your staging phone number
 TWILIO_VOICE_URL=http://localhost:3000/v1/twilio/voice
 TWILIO_SMS_URL=http://localhost:3000/v1/twilio/sms
+# For staging/production deployments, point to Secrets Manager instead of storing credentials directly
+# TWILIO_SECRET_ID=berthcare/staging/twilio
 
 # Twilio Configuration
 TWILIO_VOICE_TIMEOUT=30                     # Seconds before escalation

@@ -167,10 +167,10 @@ Created comprehensive test suite:
 
 ```bash
 # Run all auth tests
-npm test -- auth.refresh.test.ts
+pnpm run test -- auth.refresh.test.ts
 
 # Run with coverage
-npm test -- --coverage auth.refresh.test.ts
+pnpm run test -- --coverage auth.refresh.test.ts
 ```
 
 ### Test Coverage

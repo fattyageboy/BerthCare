@@ -353,7 +353,7 @@ docker-compose up -d
 
    ```bash
    cd apps/backend
-   npm run dev
+   pnpm run dev
    ```
 
 3. **Backend connects to:**
@@ -373,14 +373,14 @@ docker-compose up -d
 
    ```bash
    cd apps/backend
-   npm run dev
+   pnpm run dev
    ```
 
 3. **Start mobile app:**
 
    ```bash
    cd apps/mobile
-   npm start
+   pnpm start
    ```
 
 4. **Mobile app connects to:**
@@ -549,7 +549,7 @@ docker stats
 ```bash
 # Run tests against test database
 cd apps/backend
-npm test
+pnpm run test
 
 # Test database is automatically created: berthcare_test
 # Connection string: postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test
@@ -562,7 +562,7 @@ npm test
 docker-compose up -d
 
 # Run integration tests
-npm run test:integration
+pnpm run test:integration
 ```
 
 ## Cleanup

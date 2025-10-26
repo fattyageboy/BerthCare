@@ -349,7 +349,7 @@ try {
 ### 1. Connection Testing ✅
 
 ```bash
-$ npm run dev --prefix apps/backend
+$ pnpm --dir apps/backend run dev
 
 08:10:19 [info] Connecting to Redis...
 08:10:19 [info] Connected to Redis {"version":"7.4.6"}
@@ -800,7 +800,7 @@ apps/backend/src/
 - Task Plan: `project-documentation/task-plan.md` (B3)
 - Architecture Blueprint: `project-documentation/architecture-output.md` (Redis section)
 - Redis Documentation: https://redis.io/docs/
-- redis npm package: https://www.npmjs.com/package/redis
+- redis package (install via `pnpm add redis`): https://www.npmjs.com/package/redis
 - Local Setup Guide: `docs/E4-local-setup.md`
 
 ## Notes

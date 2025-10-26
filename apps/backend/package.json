@@ -1,6 +1,6 @@
 {
   "name": "@berthcare/backend",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
@@ -19,6 +19,7 @@
     "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.907.0",
     "@aws-sdk/client-s3": "^3.907.0",
     "@aws-sdk/s3-request-presigner": "^3.907.0",
     "@googlemaps/google-maps-services-js": "^3.4.2",

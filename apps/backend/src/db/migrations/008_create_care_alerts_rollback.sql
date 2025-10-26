@@ -25,4 +25,19 @@ DROP INDEX IF EXISTS idx_care_alerts_coordinator_initiated;
 -- Drop table (CASCADE will remove foreign key constraints)
 DROP TABLE IF EXISTS care_alerts CASCADE;
 
+-- Drop enumerated types created by 008_create_care_alerts.sql
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'care_alert_status') THEN
+        DROP TYPE care_alert_status;
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'care_alert_type') THEN
+        DROP TYPE care_alert_type;
+    END IF;
+END$$;
+
 COMMIT;

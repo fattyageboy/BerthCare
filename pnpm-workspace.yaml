@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - libs/*
+
+onlyBuiltDependencies:
+  - '@sentry/profiling-node'
+  - esbuild

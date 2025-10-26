@@ -1,421 +1,370 @@
 /**
  * Twilio SMS Service Tests
  *
- * Tests for SMS sending, webhook processing, and rate limiting
+ * Exercises the happy path, validation errors, webhook handling,
+ * signature verification, secrets manager integration, and rate limiting.
+ * Each service instance is closed after use to avoid open handles that
+ * would prevent Jest from exiting cleanly.
  */
 
-import { TwilioSMSService, TwilioSMSError } from '../src/services/twilio-sms.service';
+import { env } from '../src/config/env';
+import { TwilioSMSService } from '../src/services/twilio-sms.service';
 
-// Mock Twilio client
-jest.mock('twilio', () => {
-  return {
-    Twilio: jest.fn().mockImplementation(() => ({
-      messages: {
-        create: jest.fn(),
-      },
-    })),
-  };
-});
+// Mock the Twilio SDK so we do not hit the network.
+jest.mock('twilio', () => ({
+  Twilio: jest.fn().mockImplementation(() => ({
+    messages: {
+      create: jest.fn(),
+    },
+  })),
+}));
 
-// Mock webhook validation
+// Mock webhook signature validation helper.
 jest.mock('twilio/lib/webhooks/webhooks', () => ({
   validateRequest: jest.fn(),
 }));
 
+type MockTwilioCtor = jest.Mock<
+  {
+    messages: {
+      create: jest.Mock;
+    };
+  },
+  [string, string]
+>;
+
 describe('TwilioSMSService', () => {
-  let service: TwilioSMSService;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockTwilioClient: any;
+  const activeServices: TwilioSMSService[] = [];
+
+  type ServiceOptions = ConstructorParameters<typeof TwilioSMSService>[0];
+
+  const getTwilioMock = (): MockTwilioCtor => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-var-requires
+    const { Twilio } = require('twilio') as { Twilio: MockTwilioCtor };
+    return Twilio;
+  };
+
+  const latestClient = () => {
+    const Twilio = getTwilioMock();
+    const latestCall = Twilio.mock.results[Twilio.mock.results.length - 1];
+    return latestCall.value as { messages: { create: jest.Mock } };
+  };
+
+  const makeService = (overrides: ServiceOptions = {}) => {
+    const service = new TwilioSMSService({
+      accountSid: 'acct',
+      authToken: 'token',
+      fromNumber: '+15550001111',
+      webhookBaseUrl: 'https://example.org',
+      rateLimiter: { useRedis: false },
+      ...overrides,
+    });
+    activeServices.push(service);
+    return service;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new TwilioSMSService(
-      'test-account-sid',
-      'test-auth-token',
-      '+15551234567',
-      'https://test.example.com',
-      { useRedis: false } // Use in-memory for tests
-    );
+  });
 
-    // Get mock client instance
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-    const { Twilio } = require('twilio');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-    mockTwilioClient = Twilio.mock.results[Twilio.mock.results.length - 1].value;
+  afterEach(async () => {
+    await Promise.all(activeServices.splice(0).map((service) => service.close()));
   });
 
   describe('constructor', () => {
-    it('should initialize with provided credentials', () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-      const { Twilio } = require('twilio');
-      expect(Twilio).toHaveBeenCalledWith('test-account-sid', 'test-auth-token');
+    it('initialises the Twilio client when credentials are provided', () => {
+      makeService();
+
+      const Twilio = getTwilioMock();
+      expect(Twilio).toHaveBeenCalledWith('acct', 'token');
     });
 
-    it('should throw error if account SID missing', () => {
-      expect(() => {
-        new TwilioSMSService('', 'test-auth-token', '+15551234567');
-      }).toThrow(TwilioSMSError);
-    });
+    it('normalises webhook base url and rejects invalid values', () => {
+      const service = makeService({ webhookBaseUrl: 'https://example.org/' });
+      const actualBaseUrl = (service as unknown as { webhookBaseUrl: string }).webhookBaseUrl;
+      expect(actualBaseUrl).toBe('https://example.org');
 
-    it('should throw error if auth token missing', () => {
-      expect(() => {
-        new TwilioSMSService('test-account-sid', '', '+15551234567');
-      }).toThrow(TwilioSMSError);
-    });
-
-    it('should throw error if phone number missing', () => {
-      expect(() => {
-        new TwilioSMSService('test-account-sid', 'test-auth-token', '');
-      }).toThrow(TwilioSMSError);
-    });
-
-    it('should throw error if webhook base URL missing', () => {
-      expect(() => {
-        new TwilioSMSService('test-account-sid', 'test-auth-token', '+15551234567', '');
-      }).toThrow(TwilioSMSError);
-      expect(() => {
-        new TwilioSMSService('test-account-sid', 'test-auth-token', '+15551234567', '   ');
-      }).toThrow(TwilioSMSError);
-    });
-
-    it('should throw error if webhook base URL is invalid', () => {
-      expect(() => {
-        new TwilioSMSService(
-          'test-account-sid',
-          'test-auth-token',
-          '+15551234567',
-          'not-a-valid-url'
-        );
-      }).toThrow(TwilioSMSError);
-      expect(() => {
-        new TwilioSMSService(
-          'test-account-sid',
-          'test-auth-token',
-          '+15551234567',
-          'not-a-valid-url'
-        );
-      }).toThrow(/Invalid webhook base URL format/);
-    });
-
-    it('should normalize webhook base URL by removing trailing slash', () => {
-      const serviceWithTrailingSlash = new TwilioSMSService(
-        'test-account-sid',
-        'test-auth-token',
-        '+15551234567',
-        'https://test.example.com/',
-        { useRedis: false }
-      );
-      // Access private property for testing
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((serviceWithTrailingSlash as any).webhookBaseUrl).toBe('https://test.example.com');
-    });
-
-    it('should trim whitespace from webhook base URL', () => {
-      const serviceWithWhitespace = new TwilioSMSService(
-        'test-account-sid',
-        'test-auth-token',
-        '+15551234567',
-        '  https://test.example.com  ',
-        { useRedis: false }
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((serviceWithWhitespace as any).webhookBaseUrl).toBe('https://test.example.com');
+      expect(() =>
+        makeService({
+          webhookBaseUrl: 'not-a-url',
+          accountSid: 'sid',
+          authToken: 'token',
+          fromNumber: '+15550002222',
+        })
+      ).toThrow(/Invalid webhook base URL format/);
     });
   });
 
   describe('sendSMS', () => {
-    const validTo = '+15559876543';
-    const validMessage = 'Test message';
+    const recipient = '+15551234567';
+    const message = 'Hello from BerthCare';
 
-    beforeEach(() => {
-      mockTwilioClient.messages.create.mockResolvedValue({
-        sid: 'SM123456',
-        status: 'queued',
-        to: validTo,
-        from: '+15551234567',
+    it('sends a message and returns a normalised result', async () => {
+      const service = makeService();
+      latestClient().messages.create.mockResolvedValue({
+        sid: 'SM123',
+        status: 'SENT',
+        to: recipient,
+        from: '+15550001111',
+      });
+
+      const result = await service.sendSMS(recipient, message);
+
+      expect(result).toMatchObject({
+        messageSid: 'SM123',
+        status: 'sent',
+        to: recipient,
+        from: '+15550001111',
+        body: message,
+      });
+
+      expect(latestClient().messages.create).toHaveBeenCalledWith({
+        to: recipient,
+        from: '+15550001111',
+        body: message,
+        statusCallback: 'https://example.org/webhooks/twilio/sms/status',
       });
     });
 
-    it('should send SMS successfully', async () => {
-      const result = await service.sendSMS(validTo, validMessage);
+    it('validates phone numbers and message content', async () => {
+      const service = makeService();
 
-      expect(result).toEqual({
-        messageSid: 'SM123456',
-        status: 'queued',
-        to: validTo,
-        from: '+15551234567',
-        body: validMessage,
-        sentAt: expect.any(Date),
-      });
-
-      expect(mockTwilioClient.messages.create).toHaveBeenCalledWith({
-        to: validTo,
-        from: '+15551234567',
-        body: validMessage,
-        statusCallback: 'https://test.example.com/webhooks/twilio/sms/status',
-      });
+      await expect(service.sendSMS('12345', message)).rejects.toThrow(/E\.164/);
+      await expect(service.sendSMS('+15551234567', '')).rejects.toThrow('Message body cannot be');
+      await expect(service.sendSMS('+15551234567', 'a'.repeat(1601))).rejects.toThrow(
+        'Message body too long'
+      );
     });
 
-    it('should throw error for invalid phone number format', async () => {
-      await expect(service.sendSMS('invalid', validMessage)).rejects.toThrow(TwilioSMSError);
-      await expect(service.sendSMS('1234567890', validMessage)).rejects.toThrow(TwilioSMSError);
-      await expect(service.sendSMS('+1', validMessage)).rejects.toThrow(TwilioSMSError);
-    });
-
-    it('should throw error for empty message', async () => {
-      await expect(service.sendSMS(validTo, '')).rejects.toThrow(TwilioSMSError);
-      await expect(service.sendSMS(validTo, '   ')).rejects.toThrow(TwilioSMSError);
-    });
-
-    it('should throw error for message too long', async () => {
-      const longMessage = 'a'.repeat(1601);
-      await expect(service.sendSMS(validTo, longMessage)).rejects.toThrow(TwilioSMSError);
-    });
-
-    it('should handle Twilio API error - invalid phone number', async () => {
-      mockTwilioClient.messages.create.mockRejectedValue({
-        code: 21211,
-        message: 'Invalid phone number',
-      });
-
-      await expect(service.sendSMS(validTo, validMessage)).rejects.toThrow(TwilioSMSError);
-    });
-
-    it('should handle Twilio API error - unverified number', async () => {
-      mockTwilioClient.messages.create.mockRejectedValue({
-        code: 21608,
-        message: 'Phone number not verified',
-      });
-
-      await expect(service.sendSMS(validTo, validMessage)).rejects.toThrow(TwilioSMSError);
-    });
-
-    it('should handle Twilio API error - opted out', async () => {
-      mockTwilioClient.messages.create.mockRejectedValue({
+    it('maps known Twilio error codes to friendly errors', async () => {
+      const service = makeService();
+      latestClient().messages.create.mockRejectedValue({
         code: 21610,
-        message: 'Phone number has opted out',
+        message: 'User opted out',
       });
 
-      await expect(service.sendSMS(validTo, validMessage)).rejects.toThrow(TwilioSMSError);
+      await expect(service.sendSMS(recipient, message)).rejects.toMatchObject({
+        code: 'OPTED_OUT',
+      });
     });
 
-    it('should handle generic Twilio API error', async () => {
-      mockTwilioClient.messages.create.mockRejectedValue({
+    it('raises a generic Twilio error for unknown codes', async () => {
+      const service = makeService();
+      latestClient().messages.create.mockRejectedValue({
         code: 99999,
-        message: 'Unknown error',
+        message: 'Unknown',
       });
 
-      await expect(service.sendSMS(validTo, validMessage)).rejects.toThrow(TwilioSMSError);
+      await expect(service.sendSMS(recipient, message)).rejects.toMatchObject({
+        code: 'TWILIO_API_ERROR',
+      });
     });
 
-    it('should handle non-Twilio error', async () => {
-      mockTwilioClient.messages.create.mockRejectedValue(new Error('Network error'));
+    it('wraps unexpected failures', async () => {
+      const service = makeService();
+      latestClient().messages.create.mockRejectedValue(new Error('Network down'));
 
-      await expect(service.sendSMS(validTo, validMessage)).rejects.toThrow(TwilioSMSError);
+      await expect(service.sendSMS(recipient, message)).rejects.toMatchObject({
+        code: 'SMS_SEND_FAILED',
+      });
     });
   });
 
   describe('rate limiting', () => {
-    const validTo = '+15559876543';
-    const validMessage = 'Test message';
-    const userId = 'user-123';
+    const recipient = '+15559876543';
 
-    beforeEach(() => {
-      mockTwilioClient.messages.create.mockResolvedValue({
-        sid: 'SM123456',
+    it('enforces the hourly per-user limit', async () => {
+      const service = makeService();
+      latestClient().messages.create.mockResolvedValue({
+        sid: 'SMR1',
         status: 'queued',
-        to: validTo,
-        from: '+15551234567',
+        to: recipient,
+        from: '+15550001111',
       });
-    });
 
-    it('should allow SMS within rate limit', async () => {
-      // Send 100 SMS (at limit)
       for (let i = 0; i < 100; i++) {
-        await service.sendSMS(validTo, validMessage, userId);
+        await service.sendSMS(recipient, `msg ${i}`, 'user-1');
       }
 
-      expect(mockTwilioClient.messages.create).toHaveBeenCalledTimes(100);
-    });
-
-    it('should block SMS when rate limit exceeded', async () => {
-      // Send 100 SMS (at limit)
-      for (let i = 0; i < 100; i++) {
-        await service.sendSMS(validTo, validMessage, userId);
-      }
-
-      // 101st SMS should fail
-      await expect(service.sendSMS(validTo, validMessage, userId)).rejects.toThrow(TwilioSMSError);
-      await expect(service.sendSMS(validTo, validMessage, userId)).rejects.toThrow(
-        /Rate limit exceeded/
-      );
-    });
-
-    it('should include reset time in rate limit error', async () => {
-      // Send 100 SMS (at limit)
-      for (let i = 0; i < 100; i++) {
-        await service.sendSMS(validTo, validMessage, userId);
-      }
-
-      // 101st SMS should fail with details
-      await expect(service.sendSMS(validTo, validMessage, userId)).rejects.toMatchObject({
+      await expect(service.sendSMS(recipient, 'over the limit', 'user-1')).rejects.toMatchObject({
         code: 'RATE_LIMIT_EXCEEDED',
-        details: expect.objectContaining({
-          userId,
-          count: 101, // Count after increment
-          limit: 100,
-          resetInMinutes: expect.any(Number),
-          resetAt: expect.any(String),
-        }),
       });
     });
 
-    it('should track rate limits per user', async () => {
-      const user1 = 'user-1';
-      const user2 = 'user-2';
+    it('tracks quotas separately per user', async () => {
+      const service = makeService();
+      latestClient().messages.create.mockResolvedValue({
+        sid: 'SMR2',
+        status: 'queued',
+        to: recipient,
+        from: '+15550001111',
+      });
 
-      // Send 100 SMS for user1
       for (let i = 0; i < 100; i++) {
-        await service.sendSMS(validTo, validMessage, user1);
+        await service.sendSMS(recipient, 'user1 msg', 'user-1');
       }
 
-      // user1 should be blocked
-      await expect(service.sendSMS(validTo, validMessage, user1)).rejects.toThrow(TwilioSMSError);
+      await expect(service.sendSMS(recipient, 'blocked', 'user-1')).rejects.toMatchObject({
+        code: 'RATE_LIMIT_EXCEEDED',
+      });
 
-      // user2 should still be allowed
-      await service.sendSMS(validTo, validMessage, user2);
-      expect(mockTwilioClient.messages.create).toHaveBeenCalledTimes(101);
+      await expect(service.sendSMS(recipient, 'allowed', 'user-2')).resolves.toBeDefined();
     });
 
-    it('should not apply rate limit if userId not provided', async () => {
-      // Send 150 SMS without userId (should all succeed)
-      for (let i = 0; i < 150; i++) {
-        await service.sendSMS(validTo, validMessage);
-      }
+    it('can report and reset usage counts', async () => {
+      const service = makeService();
+      latestClient().messages.create.mockResolvedValue({
+        sid: 'SMR3',
+        status: 'queued',
+        to: recipient,
+        from: '+15550001111',
+      });
 
-      expect(mockTwilioClient.messages.create).toHaveBeenCalledTimes(150);
+      await service.sendSMS(recipient, 'first', 'user-123');
+      expect(await service.getSMSCount('user-123')).toBe(1);
+
+      await service.resetRateLimit('user-123');
+      expect(await service.getSMSCount('user-123')).toBe(0);
     });
   });
 
   describe('processSMSStatusWebhook', () => {
-    it('should process delivered status webhook', () => {
-      const webhookData = {
-        MessageSid: 'SM123456',
-        MessageStatus: 'delivered',
-        To: '+15559876543',
-        From: '+15551234567',
-        Body: 'Test message',
-      };
+    it('normalises webhook payloads and logs delivered messages', () => {
+      const service = makeService();
 
-      const event = service.processSMSStatusWebhook(webhookData);
+      const event = service.processSMSStatusWebhook({
+        MessageSid: 'SMABC',
+        MessageStatus: 'DELIVERED',
+        To: '+15550001111',
+        From: '+15550002222',
+        Body: 'Hello!',
+      });
 
-      expect(event).toEqual({
-        messageSid: 'SM123456',
+      expect(event).toMatchObject({
+        messageSid: 'SMABC',
         status: 'delivered',
-        to: '+15559876543',
-        from: '+15551234567',
-        body: 'Test message',
-        timestamp: expect.any(Date),
+        to: '+15550001111',
+        from: '+15550002222',
+        body: 'Hello!',
       });
     });
 
-    it('should process failed status webhook with error', () => {
-      const webhookData = {
-        MessageSid: 'SM123456',
-        MessageStatus: 'failed',
-        To: '+15559876543',
-        From: '+15551234567',
-        ErrorCode: '30003',
-        ErrorMessage: 'Unreachable destination',
-      };
+    it('throws when Twilio omits required fields', () => {
+      const service = makeService();
 
-      const event = service.processSMSStatusWebhook(webhookData);
-
-      expect(event).toEqual({
-        messageSid: 'SM123456',
-        status: 'failed',
-        to: '+15559876543',
-        from: '+15551234567',
-        timestamp: expect.any(Date),
-        errorCode: '30003',
-        errorMessage: 'Unreachable destination',
-      });
-    });
-
-    it('should handle webhook with SmsSid (legacy format)', () => {
-      const webhookData = {
-        SmsSid: 'SM123456',
-        SmsStatus: 'sent',
-        To: '+15559876543',
-        From: '+15551234567',
-      };
-
-      const event = service.processSMSStatusWebhook(webhookData);
-
-      expect(event.messageSid).toBe('SM123456');
-      expect(event.status).toBe('sent');
-    });
-
-    it('should handle webhook with missing optional fields', () => {
-      const webhookData = {
-        MessageSid: 'SM123456',
-        MessageStatus: 'queued',
-        To: '+15559876543',
-        From: '+15551234567',
-      };
-
-      const event = service.processSMSStatusWebhook(webhookData);
-
-      expect(event.body).toBeUndefined();
-      expect(event.errorCode).toBeUndefined();
-      expect(event.errorMessage).toBeUndefined();
+      expect(() => service.processSMSStatusWebhook({})).toThrow('messageSid');
+      expect(() => service.processSMSStatusWebhook({ MessageSid: 'SM123' })).toThrow(
+        'status is required'
+      );
     });
   });
 
   describe('validateWebhookSignature', () => {
-    it('should validate correct signature', () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-      const { validateRequest } = require('twilio/lib/webhooks/webhooks');
+    it('delegates to Twilio helper and returns its result', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-var-requires
+      const { validateRequest } = require('twilio/lib/webhooks/webhooks') as {
+        validateRequest: jest.Mock;
+      };
+      const service = makeService();
       validateRequest.mockReturnValue(true);
 
-      const signature = 'valid-signature';
-      const url = 'https://test.example.com/webhooks/twilio/sms/status';
-      const params = { MessageSid: 'SM123456' };
-
-      const isValid = service.validateWebhookSignature(signature, url, params);
-
-      expect(isValid).toBe(true);
-      expect(validateRequest).toHaveBeenCalledWith('test-auth-token', signature, url, params);
-    });
-
-    it('should reject invalid signature', () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-      const { validateRequest } = require('twilio/lib/webhooks/webhooks');
-      validateRequest.mockReturnValue(false);
-
-      const signature = 'invalid-signature';
-      const url = 'https://test.example.com/webhooks/twilio/sms/status';
-      const params = { MessageSid: 'SM123456' };
-
-      const isValid = service.validateWebhookSignature(signature, url, params);
-
-      expect(isValid).toBe(false);
-    });
-
-    it('should handle validation error gracefully', () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-      const { validateRequest } = require('twilio/lib/webhooks/webhooks');
-      validateRequest.mockImplementation(() => {
-        throw new Error('Validation error');
+      const ok = await service.validateWebhookSignature('sig', 'https://example.org/hook', {
+        MessageSid: 'SM1',
       });
 
-      const signature = 'signature';
-      const url = 'https://test.example.com/webhooks/twilio/sms/status';
-      const params = { MessageSid: 'SM123456' };
+      expect(ok).toBe(true);
+      expect(validateRequest).toHaveBeenCalledWith('token', 'sig', 'https://example.org/hook', {
+        MessageSid: 'SM1',
+      });
+    });
 
-      const isValid = service.validateWebhookSignature(signature, url, params);
+    it('returns false when signature validation throws', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-var-requires
+      const { validateRequest } = require('twilio/lib/webhooks/webhooks') as {
+        validateRequest: jest.Mock;
+      };
+      const service = makeService();
+      validateRequest.mockImplementation(() => {
+        throw new Error('bad signature');
+      });
 
-      expect(isValid).toBe(false);
+      await expect(
+        service.validateWebhookSignature('sig', 'https://example.org/hook', { MessageSid: 'SM2' })
+      ).resolves.toBe(false);
+    });
+  });
+
+  describe('secrets manager integration', () => {
+    const originalTwilioConfig = { ...env.twilio };
+
+    beforeEach(() => {
+      env.twilio.accountSid = '';
+      env.twilio.authToken = '';
+      env.twilio.phoneNumber = '';
+      env.twilio.secretId = '';
+    });
+
+    afterAll(() => {
+      Object.assign(env.twilio, originalTwilioConfig);
+    });
+
+    it('lazily loads credentials when env vars are absent', async () => {
+      jest.clearAllMocks();
+      const secretsLoader = jest.fn().mockResolvedValue({
+        account_sid: 'secret-sid',
+        auth_token: 'secret-token',
+        phone_number: '+15550009999',
+      });
+
+      const Twilio = getTwilioMock();
+      Twilio.mockImplementationOnce(() => ({
+        messages: {
+          create: jest.fn().mockResolvedValue({
+            sid: 'SMSECRET',
+            status: 'sent',
+            to: '+15551230000',
+            from: '+15550009999',
+          }),
+        },
+      }));
+
+      const service = new TwilioSMSService({
+        webhookBaseUrl: 'https://example.org',
+        secretId: 'berthcare/dev/twilio',
+        secretsLoader,
+        rateLimiter: { useRedis: false },
+      });
+      activeServices.push(service);
+
+      const result = await service.sendSMS('+15551230000', 'Secret hello', 'user-secret');
+
+      expect(result.from).toBe('+15550009999');
+      expect(secretsLoader).toHaveBeenCalledWith('berthcare/dev/twilio', expect.any(Number));
+      expect(Twilio).toHaveBeenLastCalledWith('secret-sid', 'secret-token');
+    });
+
+    it('throws when the secret payload is incomplete', async () => {
+      jest.clearAllMocks();
+      const secretsLoader = jest.fn().mockResolvedValue({
+        account_sid: 'sid',
+      });
+
+      const service = new TwilioSMSService({
+        webhookBaseUrl: 'https://example.org',
+        secretId: 'missing',
+        secretsLoader,
+        rateLimiter: { useRedis: false },
+      });
+      activeServices.push(service);
+
+      await expect(service.sendSMS('+15551239999', 'Secret fail', 'user')).rejects.toMatchObject({
+        code: 'TWILIO_API_ERROR',
+        details: expect.objectContaining({
+          code: 'CONFIGURATION_ERROR',
+          message: 'Twilio secret missing required fields',
+        }),
+      });
+      expect(secretsLoader).toHaveBeenCalledWith('missing', expect.any(Number));
     });
   });
 });

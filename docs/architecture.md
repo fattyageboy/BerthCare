@@ -1,6 +1,6 @@
 # BerthCare System Architecture
 
-**Version:** 2.0.0  
+**Version:** 1.0.0  
 **Last Updated:** October 10, 2025  
 **Status:** Staging Environment Deployed  
 **Philosophy:** Simplicity is the ultimate sophistication
@@ -228,8 +228,8 @@ make verify
 ### Development Workflow
 
 1. Start services: `docker-compose up -d`
-2. Run backend: `cd apps/backend && npm run dev`
-3. Run mobile app: `cd apps/mobile && npm start`
+2. Run backend: `cd apps/backend && pnpm run dev`
+3. Run mobile app: `cd apps/mobile && pnpm start`
 4. Backend connects to local PostgreSQL, Redis, and LocalStack
 5. Mobile app connects to backend at `http://localhost:3000`
 
@@ -718,7 +718,7 @@ Sentry.init({
    - Run unit tests
    - Run integration tests
    - Build validation
-   - Security scanning (npm audit)
+   - Security scanning (pnpm audit)
 
 2. **Staging Deployment (on merge to main):**
    - Build Docker image
@@ -741,8 +741,8 @@ Sentry.init({
 ```dockerfile
 FROM node:20-alpine
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile --prod
 COPY . .
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
@@ -917,7 +917,7 @@ CMD ["node", "dist/main.js"]
 
 ---
 
-**Document Version:** 2.0.0  
+**Document Version:** 1.0.0  
 **Last Updated:** October 10, 2025  
 **Maintained By:** DevOps Team  
 **Status:** ✅ Staging Environment Deployed

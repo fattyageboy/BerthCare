@@ -21,6 +21,27 @@ const WEBHOOK_RATE_LIMIT_STATUS = 429;
 const WEBHOOK_RATE_LIMIT_CODE = 'RATE_LIMIT_EXCEEDED';
 const WEBHOOK_RATE_LIMIT_MESSAGE = 'Too many webhook requests, please try again later';
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 100;
+
+const REDACTED_VALUE = '<redacted>';
+
+const maskRedisUrl = (value: string): string => {
+  if (!value) {
+    return REDACTED_VALUE;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.password) {
+      parsed.password = '***';
+    }
+    return parsed.toString();
+  } catch (error) {
+    return REDACTED_VALUE;
+  }
+};
+
 /**
  * Shared Redis client for rate limiting
  * Initialized once and reused across all rate limiters
@@ -51,7 +72,7 @@ async function initializeRedisStore(): Promise<ReturnType<typeof createClient> |
     redisStoreInitialized = true;
 
     logInfo('Redis rate limit store initialized', {
-      url: env.redis.url.replace(/:[^:@]+@/, ':***@'), // Mask password in logs
+      url: maskRedisUrl(env.redis.url),
     });
 
     return client;
@@ -124,8 +145,8 @@ export async function getWebhookRateLimiter(): Promise<ReturnType<typeof rateLim
   const store = await createWebhookRateLimiterStore();
 
   webhookRateLimiterInstance = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 100, // Max 100 requests per window per IP
+    windowMs: RATE_LIMIT_WINDOW_MS, // 1 minute
+    max: RATE_LIMIT_MAX_REQUESTS, // Max 100 requests per window per IP
     standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
     legacyHeaders: false, // Disable `X-RateLimit-*` headers
     store, // Redis store (production) or undefined (in-memory fallback)

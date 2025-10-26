@@ -53,9 +53,9 @@ Safely removes all objects created by the forward migration with CASCADE support
 **Commands:**
 
 ```bash
-npm run migrate:up        # Run all migrations (001 + 002)
-npm run migrate:up 002    # Run only migration 002
-npm run migrate:down 002  # Rollback migration 002
+pnpm run migrate:up        # Run all migrations (001 + 002)
+pnpm run migrate:up 002    # Run only migration 002
+pnpm run migrate:down 002  # Rollback migration 002
 ```
 
 ## Database Schema
@@ -290,10 +290,10 @@ CREATE TABLE visits (
 
 ```bash
 # Option 1: Run all migrations
-npm run migrate:up
+pnpm run migrate:up
 
 # Option 2: Run only migration 002
-npm run migrate:up 002
+pnpm run migrate:up 002
 
 # Option 3: Use Makefile
 make db-migrate
@@ -303,7 +303,7 @@ make db-migrate
 
 ```bash
 # Run verification script
-npm run db:verify
+pnpm run db:verify
 
 # Or use Makefile
 make db-verify
@@ -317,10 +317,10 @@ docker-compose exec postgres psql -U berthcare -d berthcare_dev \
 
 ```bash
 # Rollback migration 002
-npm run migrate:down 002
+pnpm run migrate:down 002
 
 # Verify rollback
-npm run db:verify
+pnpm run db:verify
 ```
 
 ## Verification Checklist
@@ -392,13 +392,13 @@ With the clients table in place, the next implementation tasks are:
 
 ```bash
 # Check current state
-npm run db:verify
+pnpm run db:verify
 
 # Rollback if needed
-npm run migrate:down 002
+pnpm run migrate:down 002
 
 # Re-run migration
-npm run migrate:up 002
+pnpm run migrate:up 002
 ```
 
 ### Docker Not Running
@@ -442,10 +442,10 @@ docker-compose ps postgres
 
 ```bash
 # Run migration 001 first
-npm run migrate:up 001
+pnpm run migrate:up 001
 
 # Then run migration 002
-npm run migrate:up 002
+pnpm run migrate:up 002
 ```
 
 ## References

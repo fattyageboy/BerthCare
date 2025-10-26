@@ -3,31 +3,14 @@
  *
  * Handles voice call initiation and webhook processing for care coordination alerts.
  * Designed for simplicity and reliability - voice calls work, no messaging complexity.
- *
- * Features:
- * - Voice call initiation to coordinators
- * - Voice message playback from S3
- * - Call status webhook handling
- * - Comprehensive event logging
- * - Automatic retry logic
- *
- * Credentials Management:
- * - Development: Loaded from environment variables via env.ts
- * - Production: Retrieved from AWS Secrets Manager via environment variables
- * - Secrets stored at: berthcare/{environment}/twilio
- * - See: scripts/setup-twilio-secrets.sh for secret management
- *
- * Philosophy alignment:
- * - Simplicity: Voice calls, not messaging platform
- * - Reliability: Comprehensive logging and error handling
- * - Performance: <15 second alert delivery
  */
 
 import { Twilio } from 'twilio';
 import { validateRequest } from 'twilio/lib/webhooks/webhooks';
 
 import { env } from '../config/env';
-import { logError, logInfo, logDebug } from '../config/logger';
+import { logDebug, logError, logInfo } from '../config/logger';
+import { fetchJsonSecret } from '../utils/aws-secrets-manager';
 
 /**
  * Call status from Twilio webhooks
@@ -35,6 +18,7 @@ import { logError, logInfo, logDebug } from '../config/logger';
 export type CallStatus =
   | 'queued'
   | 'ringing'
+  | 'answered'
   | 'in-progress'
   | 'completed'
   | 'busy'
@@ -68,6 +52,13 @@ export interface CallEvent {
 }
 
 /**
+ * Options for call initiation
+ */
+export interface InitiateCallOptions {
+  alertId?: string;
+}
+
+/**
  * Twilio Voice Service error
  */
 export class TwilioVoiceError extends Error {
@@ -81,53 +72,89 @@ export class TwilioVoiceError extends Error {
   }
 }
 
+interface TwilioVoiceCredentials {
+  accountSid: string;
+  authToken: string;
+  phoneNumber: string;
+}
+
+interface TwilioVoiceSecretPayload {
+  account_sid?: string;
+  auth_token?: string;
+  phone_number?: string;
+  accountSid?: string;
+  authToken?: string;
+  phoneNumber?: string;
+}
+
+type TwilioSecretLoader = (
+  secretId: string,
+  cacheTtlMs?: number
+) => Promise<TwilioVoiceSecretPayload>;
+
+export interface TwilioVoiceServiceOptions {
+  accountSid?: string;
+  authToken?: string;
+  fromNumber?: string;
+  webhookBaseUrl?: string;
+  secretId?: string;
+  secretsLoader?: TwilioSecretLoader;
+  secretCacheTtlMs?: number;
+}
+
+const DEFAULT_SECRET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const defaultSecretsLoader: TwilioSecretLoader = (secretId, cacheTtlMs) =>
+  fetchJsonSecret<TwilioVoiceSecretPayload>(secretId, cacheTtlMs);
+
 /**
  * Twilio Voice Service
  *
  * Manages voice call operations for care coordination alerts.
  */
 export class TwilioVoiceService {
-  private client: Twilio;
-  private authToken: string;
-  private fromNumber: string;
+  private client: Twilio | null = null;
+  private authToken?: string;
+  private accountSid?: string;
+  private fromNumber?: string;
   private webhookBaseUrl: string;
+  private readonly secretId?: string;
+  private readonly secretsLoader: TwilioSecretLoader;
+  private readonly secretCacheTtlMs: number;
+  private credentials?: TwilioVoiceCredentials;
+  private credentialsPromise?: Promise<TwilioVoiceCredentials>;
 
-  constructor(
-    accountSid?: string,
-    authToken?: string,
-    fromNumber?: string,
-    webhookBaseUrl?: string
-  ) {
-    // Use provided values or fall back to environment config
-    const sid = accountSid ?? env.twilio.accountSid;
-    this.authToken = authToken ?? env.twilio.authToken;
-    this.fromNumber = fromNumber ?? env.twilio.phoneNumber;
-    this.webhookBaseUrl = webhookBaseUrl ?? env.twilio.webhookBaseUrl;
+  constructor(options: TwilioVoiceServiceOptions = {}) {
+    const defaults = env.twilio;
 
-    if (!sid || !this.authToken) {
-      throw new TwilioVoiceError('Twilio credentials not configured', 'CONFIGURATION_ERROR', {
-        accountSid: !!sid,
-        authToken: !!this.authToken,
-      });
+    this.accountSid = options.accountSid ?? (defaults.accountSid || undefined);
+    this.authToken = options.authToken ?? (defaults.authToken || undefined);
+    this.fromNumber = options.fromNumber ?? (defaults.phoneNumber || undefined);
+    this.webhookBaseUrl = this.normalizeWebhookBaseUrl(
+      options.webhookBaseUrl ?? defaults.webhookBaseUrl
+    );
+    this.secretId = options.secretId ?? (defaults.secretId || undefined);
+    this.secretsLoader = options.secretsLoader ?? defaultSecretsLoader;
+    this.secretCacheTtlMs = options.secretCacheTtlMs ?? DEFAULT_SECRET_CACHE_TTL_MS;
+
+    if (this.accountSid && this.authToken && this.fromNumber) {
+      this.credentials = {
+        accountSid: this.accountSid,
+        authToken: this.authToken,
+        phoneNumber: this.fromNumber,
+      };
+      this.client = new Twilio(this.accountSid, this.authToken);
     }
-
-    if (!this.fromNumber) {
-      throw new TwilioVoiceError('Twilio phone number not configured', 'CONFIGURATION_ERROR');
-    }
-
-    this.client = new Twilio(sid, this.authToken);
   }
 
   /**
-   * Initiate a voice call to a coordinator
-   *
-   * @param to - Coordinator phone number (E.164 format)
-   * @param voiceMessageUrl - S3 URL to voice message recording
-   * @param alertId - Alert ID for tracking (passed to webhook via statusCallback URL)
-   * @returns Call result with SID and status
-   * @throws TwilioVoiceError if call initiation fails
+   * Initiate a voice call to a coordinator.
    */
-  async initiateCall(to: string, voiceMessageUrl: string, alertId: string): Promise<CallResult> {
+  async initiateCall(
+    to: string,
+    voiceMessageUrl: string,
+    options: InitiateCallOptions = {}
+  ): Promise<CallResult> {
     // Validate phone number format (basic E.164 check)
     if (!to || !to.match(/^\+[1-9]\d{1,14}$/)) {
       throw new TwilioVoiceError(
@@ -144,46 +171,80 @@ export class TwilioVoiceService {
       });
     }
 
-    try {
-      // Generate TwiML for playing voice message
-      const twiml = this.generateVoiceMessageTwiML(voiceMessageUrl);
+    if (!this.secretId && (!this.accountSid || !this.authToken || !this.fromNumber)) {
+      throw new TwilioVoiceError('Twilio credentials not configured', 'CONFIGURATION_ERROR', {
+        accountSid: !!this.accountSid,
+        authToken: !!this.authToken,
+        phoneNumber: !!this.fromNumber,
+        secretId: false,
+      });
+    }
 
-      // Initiate call with alertId in statusCallback URL for correlation
-      const call = await this.client.calls.create({
+    let client: Twilio;
+    try {
+      client = await this.ensureClient();
+    } catch (error) {
+      if (
+        error instanceof TwilioVoiceError ||
+        (error instanceof Error &&
+          (error.name === 'TwilioVoiceError' ||
+            error.message?.includes('Twilio credentials not configured')))
+      ) {
+        throw error;
+      }
+
+      throw new TwilioVoiceError('Failed to initiate call', 'CALL_INITIATION_FAILED', {
         to,
-        from: this.fromNumber,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const fromNumber = this.fromNumber;
+
+    if (!fromNumber) {
+      throw new TwilioVoiceError('Twilio phone number not configured', 'CONFIGURATION_ERROR');
+    }
+
+    try {
+      const twiml = this.generateVoiceMessageTwiML(voiceMessageUrl);
+      const call = await client.calls.create({
+        to,
+        from: fromNumber,
         twiml,
-        statusCallback: `${this.webhookBaseUrl}/webhooks/twilio/voice/status?alertId=${encodeURIComponent(alertId)}`,
+        statusCallback: this.buildStatusCallbackUrl(options.alertId),
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         statusCallbackMethod: 'POST',
-        timeout: 30, // Ring for 30 seconds before giving up
-        record: false, // Don't record the call
+        timeout: 30,
+        record: false,
       });
 
       const result: CallResult = {
         callSid: call.sid,
-        status: call.status as CallStatus,
-        to: call.to,
-        from: call.from,
+        status: (call.status as CallStatus) ?? 'queued',
+        to: call.to ?? to,
+        from: call.from ?? fromNumber,
         initiatedAt: new Date(),
       };
 
-      // Log call initiation
       this.logCallEvent({
-        callSid: call.sid,
-        status: call.status as CallStatus,
-        to: call.to,
-        from: call.from,
-        timestamp: new Date(),
+        callSid: result.callSid,
+        status: result.status,
+        to: result.to,
+        from: result.from,
+        timestamp: result.initiatedAt,
       });
 
       return result;
     } catch (error) {
-      // Handle Twilio API errors
+      if (
+        error instanceof TwilioVoiceError ||
+        (error instanceof Error && error.name === 'TwilioVoiceError')
+      ) {
+        throw error;
+      }
       if (error && typeof error === 'object' && 'code' in error) {
         const twilioError = error as { code: number; message: string };
 
-        // Map common Twilio error codes
         if (twilioError.code === 21211) {
           throw new TwilioVoiceError('Invalid phone number', 'INVALID_PHONE_NUMBER', {
             to,
@@ -209,7 +270,6 @@ export class TwilioVoiceService {
         });
       }
 
-      // Generic error
       throw new TwilioVoiceError('Failed to initiate call', 'CALL_INITIATION_FAILED', {
         to,
         error: error instanceof Error ? error.message : String(error),
@@ -218,51 +278,46 @@ export class TwilioVoiceService {
   }
 
   /**
-   * Process call status webhook from Twilio
-   *
-   * @param webhookData - Webhook payload from Twilio
-   * @returns Parsed call event
+   * Process call status webhook from Twilio.
    */
   processCallStatusWebhook(webhookData: Record<string, unknown>): CallEvent {
-    const callSid = String(webhookData.CallSid || '');
-    const status = String(webhookData.CallStatus || '') as CallStatus;
-    const to = String(webhookData.To || '');
-    const from = String(webhookData.From || '');
-    const duration = webhookData.CallDuration ? Number(webhookData.CallDuration) : undefined;
-    const errorCode = webhookData.ErrorCode ? String(webhookData.ErrorCode) : undefined;
-    const errorMessage = webhookData.ErrorMessage ? String(webhookData.ErrorMessage) : undefined;
+    const statusRaw = String(webhookData.CallStatus || '');
+    const status = this.normalizeStatus(statusRaw);
 
     const event: CallEvent = {
-      callSid,
+      callSid: String(webhookData.CallSid || ''),
       status,
-      to,
-      from,
-      duration,
+      to: String(webhookData.To || ''),
+      from: String(webhookData.From || ''),
+      duration: webhookData.CallDuration ? Number(webhookData.CallDuration) : undefined,
       timestamp: new Date(),
-      errorCode,
-      errorMessage,
+      errorCode: webhookData.ErrorCode ? String(webhookData.ErrorCode) : undefined,
+      errorMessage: webhookData.ErrorMessage ? String(webhookData.ErrorMessage) : undefined,
     };
 
-    // Log the event
     this.logCallEvent(event);
 
     return event;
   }
 
   /**
-   * Validate Twilio webhook signature
-   *
-   * @param signature - X-Twilio-Signature header value
-   * @param url - Full webhook URL
-   * @param params - Webhook parameters
-   * @returns true if signature is valid
+   * Validate Twilio webhook signature.
    */
-  validateWebhookSignature(
+  async validateWebhookSignature(
     signature: string,
     url: string,
     params: Record<string, string>
-  ): boolean {
+  ): Promise<boolean> {
     try {
+      await this.ensureCredentials();
+
+      if (!this.authToken) {
+        throw new TwilioVoiceError(
+          'Twilio auth token not available for signature validation',
+          'CONFIGURATION_ERROR'
+        );
+      }
+
       return validateRequest(this.authToken, signature, url, params);
     } catch (error) {
       logError('Webhook signature validation error', error instanceof Error ? error : undefined, {
@@ -273,8 +328,132 @@ export class TwilioVoiceService {
     }
   }
 
+  private normalizeStatus(status: string): CallStatus {
+    if (status === 'answered') {
+      return 'answered';
+    }
+
+    const allowedStatuses: CallStatus[] = [
+      'queued',
+      'ringing',
+      'answered',
+      'in-progress',
+      'completed',
+      'busy',
+      'failed',
+      'no-answer',
+      'canceled',
+    ];
+
+    return (allowedStatuses.find((value) => value === status) ?? 'queued') as CallStatus;
+  }
+
+  private async ensureClient(): Promise<Twilio> {
+    if (this.client) {
+      return this.client;
+    }
+
+    const credentials = await this.ensureCredentials();
+    this.client = new Twilio(credentials.accountSid, credentials.authToken);
+    return this.client;
+  }
+
+  private async ensureCredentials(): Promise<TwilioVoiceCredentials> {
+    if (this.credentials) {
+      return this.credentials;
+    }
+
+    if (this.credentialsPromise) {
+      return this.credentialsPromise;
+    }
+
+    this.credentialsPromise = this.resolveCredentials().finally(() => {
+      this.credentialsPromise = undefined;
+    });
+
+    const credentials = await this.credentialsPromise;
+    this.credentials = credentials;
+    this.authToken = credentials.authToken;
+    this.accountSid = credentials.accountSid;
+    this.fromNumber = credentials.phoneNumber;
+    return credentials;
+  }
+
+  private async resolveCredentials(): Promise<TwilioVoiceCredentials> {
+    if (this.accountSid && this.authToken && this.fromNumber) {
+      return {
+        accountSid: this.accountSid,
+        authToken: this.authToken,
+        phoneNumber: this.fromNumber,
+      };
+    }
+
+    if (!this.secretId) {
+      throw new TwilioVoiceError('Twilio credentials not configured', 'CONFIGURATION_ERROR', {
+        accountSid: !!this.accountSid,
+        authToken: !!this.authToken,
+        phoneNumber: !!this.fromNumber,
+        secretId: false,
+      });
+    }
+
+    const secret = await this.secretsLoader(this.secretId, this.secretCacheTtlMs);
+    const accountSid =
+      secret.account_sid ?? secret.accountSid ?? (env.twilio.accountSid || undefined);
+    const authToken = secret.auth_token ?? secret.authToken ?? (env.twilio.authToken || undefined);
+    const phoneNumber =
+      secret.phone_number ?? secret.phoneNumber ?? (env.twilio.phoneNumber || undefined);
+
+    if (!accountSid || !authToken || !phoneNumber) {
+      throw new TwilioVoiceError('Twilio secret missing required fields', 'CONFIGURATION_ERROR', {
+        secretId: this.secretId,
+        hasAccountSid: !!accountSid,
+        hasAuthToken: !!authToken,
+        hasPhoneNumber: !!phoneNumber,
+      });
+    }
+
+    return {
+      accountSid,
+      authToken,
+      phoneNumber,
+    };
+  }
+
+  private normalizeWebhookBaseUrl(raw?: string): string {
+    const value = raw?.trim();
+    if (!value) {
+      throw new TwilioVoiceError('Twilio webhook base URL not configured', 'CONFIGURATION_ERROR');
+    }
+
+    try {
+      const parsed = new URL(value);
+      return parsed.toString().replace(/\/$/, '');
+    } catch (error) {
+      throw new TwilioVoiceError('Invalid webhook base URL format', 'CONFIGURATION_ERROR', {
+        webhookBaseUrl: raw,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private buildStatusCallbackUrl(alertId?: string): string {
+    const base = this.ensureTrailingSlash(this.webhookBaseUrl);
+    const callback = new URL('./webhooks/twilio/voice/status', base);
+
+    if (alertId) {
+      callback.searchParams.set('alertId', alertId);
+    }
+
+    return callback.toString();
+  }
+
+  private ensureTrailingSlash(value: string): string {
+    return value.endsWith('/') ? value : `${value}/`;
+  }
+
   /**
-   * Generate TwiML for playing voice message
+   * Generate TwiML for playing voice message.
    */
   private generateVoiceMessageTwiML(voiceMessageUrl: string): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -289,29 +468,51 @@ export class TwilioVoiceService {
 </Response>`;
   }
 
+  private maskPhoneNumber(value?: string): string | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    return `***${trimmed.slice(-4)}`;
+  }
+
   /**
-   * Log call event
+   * Log call event with contextual messages for answered, no-answer, and completed.
    */
   private logCallEvent(event: CallEvent): void {
     const logData = {
       service: 'twilio-voice',
       callSid: event.callSid,
       status: event.status,
-      to: event.to,
-      from: event.from,
+      to: this.maskPhoneNumber(event.to),
+      from: this.maskPhoneNumber(event.from),
       duration: event.duration,
       errorCode: event.errorCode,
       errorMessage: event.errorMessage,
       timestamp: event.timestamp.toISOString(),
     };
 
-    // Log based on status
-    if (event.status === 'failed' || event.errorCode) {
-      logError('Twilio call error', undefined, logData);
-    } else if (event.status === 'completed') {
-      logInfo('Twilio call completed', logData);
-    } else {
-      logDebug('Twilio call status', logData);
+    switch (event.status) {
+      case 'failed':
+      case 'busy':
+      case 'no-answer':
+      case 'canceled':
+        logError('Twilio call did not reach coordinator', undefined, logData);
+        break;
+      case 'in-progress':
+      case 'answered':
+        logInfo('Coordinator answered voice alert call', logData);
+        break;
+      case 'completed':
+        logInfo('Voice alert call completed', logData);
+        break;
+      default:
+        logDebug('Twilio call status update', logData);
     }
   }
 }

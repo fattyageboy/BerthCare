@@ -199,7 +199,7 @@ GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400  # 24 hours
 **NPM Package Installed:**
 
 ```bash
-npm install @googlemaps/google-maps-services-js
+pnpm add @googlemaps/google-maps-services-js
 ```
 
 **Package Details:**

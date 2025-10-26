@@ -127,22 +127,22 @@ libs/shared/
 
 ```bash
 # Run all projects in development mode
-npm run dev
+pnpm run dev
 
 # Run specific project
 nx dev mobile
 nx dev backend
 
 # Run mobile app on device
-cd apps/mobile && npm run ios
-cd apps/mobile && npm run android
+cd apps/mobile && pnpm run ios
+cd apps/mobile && pnpm run android
 ```
 
 ### Building
 
 ```bash
 # Build all projects
-npm run build
+pnpm run build
 
 # Build specific project
 nx build backend
@@ -153,13 +153,13 @@ nx build shared
 
 ```bash
 # Run all tests
-npm run test
+pnpm run test
 
 # Run all linters
-npm run lint
+pnpm run lint
 
 # Format all code
-npm run format
+pnpm run format
 ```
 
 ### Nx Task Orchestration
@@ -295,14 +295,14 @@ nx build backend
 
 - Clean, readable imports
 - Prevents relative path hell (`../../../libs/shared`)
-- Consistent with npm scoped packages
+- Consistent with scoped packages on npm (installed via pnpm)
 - Easy to refactor and move files
 
 ## Next Steps
 
 ### Immediate (Task E4)
 
-- [ ] Install dependencies: `npm install`
+- [ ] Install dependencies: `pnpm install`
 - [ ] Verify all projects build successfully
 - [ ] Set up development environment variables
 - [ ] Create initial source files for mobile and backend
@@ -345,7 +345,7 @@ nx build backend
 ```bash
 # Rebuild TypeScript paths
 nx reset
-npm install
+pnpm install
 ```
 
 ### Issue: Nx cache not working
@@ -389,7 +389,7 @@ Check `project.json` files have correct `dependsOn` configuration:
 - Shared ESLint config enforces import ordering
 - Nx caching significantly speeds up CI/CD pipelines
 - Path aliases require IDE restart to take effect
-- Workspace uses npm workspaces (not yarn/pnpm)
+- Workspace uses pnpm workspaces (not yarn/npm)
 
 ---
 

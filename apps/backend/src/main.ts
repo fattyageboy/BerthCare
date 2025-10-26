@@ -13,6 +13,7 @@ import { createAuthRoutes } from './routes/auth.routes';
 import { createCarePlanRoutes } from './routes/care-plans.routes';
 import { createClientRoutes } from './routes/clients.routes';
 import { createWebhookRoutes } from './routes/webhooks.routes';
+import { AlertEscalationService } from './services/alert-escalation.service';
 
 const app = express();
 const PORT = env.app.port;
@@ -88,6 +89,7 @@ let clientRoutes: Router | null = null;
 let carePlanRoutes: Router | null = null;
 let alertRoutes: Router | null = null;
 let webhookRoutes: Router | null = null;
+let alertEscalationService: AlertEscalationService | null = null;
 
 // Initialize connections and start server
 async function startServer() {
@@ -123,6 +125,13 @@ async function startServer() {
     webhookRoutes = await createWebhookRoutes(pgPool);
     app.use('/webhooks', webhookRoutes);
 
+    if (env.app.nodeEnv !== 'test') {
+      alertEscalationService = new AlertEscalationService(pgPool);
+      alertEscalationService.start();
+    } else {
+      logInfo('Alert escalation service disabled in test environment');
+    }
+
     // Start Express server
     app.listen(PORT, () => {
       logInfo('BerthCare Backend Server started', {
@@ -143,6 +152,7 @@ async function startServer() {
 process.on('SIGTERM', async () => {
   logInfo('SIGTERM received, shutting down gracefully...');
   await closeWebhookRateLimiter();
+  await alertEscalationService?.stop();
   await pgPool.end();
   await redisClient.quit();
   process.exit(0);
@@ -151,6 +161,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   logInfo('SIGINT received, shutting down gracefully...');
   await closeWebhookRateLimiter();
+  await alertEscalationService?.stop();
   await pgPool.end();
   await redisClient.quit();
   process.exit(0);

@@ -79,7 +79,7 @@ async function testConnections() {
     console.log('✅ All connections successful!');
     console.log('');
     console.log('Next steps:');
-    console.log(`  1. Start backend: npm run dev (PORT=${env.app.port})`);
+    console.log(`  1. Start backend: pnpm run dev (PORT=${env.app.port})`);
     console.log(`  2. Test health endpoint: curl http://localhost:${env.app.port}/health`);
   } else {
     console.log('❌ Some connections failed. Check the errors above.');

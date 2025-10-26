@@ -176,9 +176,17 @@ Authenticate user and issue tokens.
   "data": {
     "accessToken": "jwt-token",
     "refreshToken": "jwt-token",
-    "user": {
-      /* user profile */
-    }
+     "data": {
+       "accessToken": "jwt-token",
+       "refreshToken": "jwt-token",
+       "user": {
+         "id": "uuid",
+         "email": "user@example.com",
+         "firstName": "John",
+         "lastName": "Doe",
+         "role": "caregiver",
+         "zoneId": "uuid"
+       }
   }
 }
 ```
@@ -390,29 +398,29 @@ REDIS_URL=redis://localhost:6379
 
 ```bash
 cd apps/backend
-npm test
+pnpm run test
 ```
 
 ### Run with Coverage
 
 ```bash
-npm test -- --coverage
+pnpm run test -- --coverage
 ```
 
 ### Run Specific Test Suite
 
 ```bash
-npm test -- auth.register.test.ts
-npm test -- auth.login.test.ts
-npm test -- auth.refresh.test.ts
-npm test -- auth.logout.test.ts
-npm test -- auth.middleware.test.ts
+pnpm run test -- auth.register.test.ts
+pnpm run test -- auth.login.test.ts
+pnpm run test -- auth.refresh.test.ts
+pnpm run test -- auth.logout.test.ts
+pnpm run test -- auth.middleware.test.ts
 ```
 
 ### Run Tests Sequentially (avoid race conditions)
 
 ```bash
-npm test -- --runInBand
+pnpm run test -- --runInBand
 ```
 
 ## Checklist for Reviewers

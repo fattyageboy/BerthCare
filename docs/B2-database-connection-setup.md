@@ -59,19 +59,19 @@ const pgPool = new Pool({
 
 ```bash
 # Run all pending migrations
-npm run migrate:up
+pnpm run migrate:up
 
 # Run specific migration
-npm run migrate:up 001
+pnpm run migrate:up 001
 
 # Rollback specific migration
-npm run migrate:down 001
+pnpm run migrate:down 001
 
 # Reset database (drop and recreate)
-npm run db:reset
+pnpm run db:reset
 
 # Verify schema integrity
-npm run db:verify
+pnpm run db:verify
 ```
 
 **Migration File Structure:**
@@ -255,7 +255,7 @@ async function query(sql: string, params: any[], readOnly = false) {
 **Usage:**
 
 ```bash
-npm run db:verify
+pnpm run db:verify
 ```
 
 **Output:**
@@ -286,7 +286,7 @@ npm run db:verify
 ### 1. Connection Pool Testing ✅
 
 ```bash
-$ npm run test:connection
+$ pnpm run test:connection
 
 ✅ Database connection successful
 📊 PostgreSQL version: PostgreSQL 15.14
@@ -298,7 +298,7 @@ $ npm run test:connection
 ### 2. Migration Testing ✅
 
 ```bash
-$ npm run migrate:up
+$ pnpm run migrate:up
 
 🚀 Running migrations...
 
@@ -312,7 +312,7 @@ $ npm run migrate:up
 ### 3. Schema Verification ✅
 
 ```bash
-$ npm run db:verify
+$ pnpm run db:verify
 
 🔍 Verifying database schema...
 
@@ -342,7 +342,7 @@ $ curl http://localhost:3000/health
 ### 5. Rollback Testing ✅
 
 ```bash
-$ npm run migrate:down 001
+$ pnpm run migrate:down 001
 
 ⏪ Rolling back migration...
 
@@ -362,8 +362,8 @@ $ npm run migrate:down 001
 DATABASE_URL=postgresql://berthcare:berthcare@localhost:5432/berthcare
 
 # Connection Pool Settings
-DB_POOL_MAX=10              # Maximum connections (default: 10, max: 20)
-DB_POOL_MIN=2               # Minimum connections (default: 2)
+DB_POOL_MAX=10 # Maximum connections (default: 10, max: 20)
+DB_POOL_MIN=2  # Minimum connections (default: 2)
 DB_IDLE_TIMEOUT_MS=30000    # Idle timeout in milliseconds
 DB_CONNECTION_TIMEOUT_MS=2000  # Connection timeout in milliseconds
 
@@ -570,11 +570,11 @@ apps/backend/src/db/
 ├── migrations/
 │   ├── 001_create_users_auth.sql           # Forward migration
 │   └── 001_create_users_auth_rollback.sql  # Rollback migration
-├── migrate.ts                               # Migration runner
-├── verify-schema.ts                         # Schema verification
-├── seed.ts                                  # Database seeding (dev)
-├── README.md                                # Database documentation
-└── MIGRATION_SUMMARY.md                     # Migration history
+├── migrate.ts # Migration runner
+├── verify-schema.ts          # Schema verification
+├── seed.ts    # Database seeding (dev)
+├── README.md  # Database documentation
+└── MIGRATION_SUMMARY.md      # Migration history
 ```
 
 ## Acceptance Criteria Status

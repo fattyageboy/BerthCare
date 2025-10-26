@@ -44,7 +44,7 @@ export function isValidE164PhoneNumber(phoneNumber: string | null | undefined): 
     return false;
   }
 
-  return E164_REGEX.test(phoneNumber);
+  return E164_REGEX.test(phoneNumber.trim());
 }
 
 /**

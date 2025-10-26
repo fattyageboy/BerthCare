@@ -6,9 +6,9 @@
  * Supports both forward migrations and rollbacks.
  *
  * Usage:
- *   npm run migrate:up              # Run all pending migrations
- *   npm run migrate:up 001          # Run specific migration
- *   npm run migrate:down 001        # Rollback specific migration
+ *   pnpm run migrate:up              # Run all pending migrations
+ *   pnpm run migrate:up 001          # Run specific migration
+ *   pnpm run migrate:down 001        # Rollback specific migration
  *
  * Philosophy: Keep it simple. SQL files are the source of truth.
  */
@@ -265,16 +265,16 @@ async function main() {
     } else if (command === 'down') {
       if (!migrationNumber) {
         console.error('❌ Migration number required for rollback');
-        console.log('Usage: npm run migrate:down <migration_number>');
+        console.log('Usage: pnpm run migrate:down <migration_number>');
         process.exit(1);
       }
       await migrateDown(migrationNumber);
     } else {
       console.error('❌ Invalid command. Use "up" or "down"');
       console.log('Usage:');
-      console.log('  npm run migrate:up              # Run all migrations');
-      console.log('  npm run migrate:up 001          # Run specific migration');
-      console.log('  npm run migrate:down 001        # Rollback migration');
+      console.log('  pnpm run migrate:up              # Run all migrations');
+      console.log('  pnpm run migrate:up 001          # Run specific migration');
+      console.log('  pnpm run migrate:down 001        # Rollback migration');
       process.exit(1);
     }
   } catch (error) {

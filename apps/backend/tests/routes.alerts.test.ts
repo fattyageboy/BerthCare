@@ -229,8 +229,10 @@ describe('Alert Routes', () => {
   });
 
   afterAll(async () => {
-    await cleanAllTestData(pgPool, redisClient);
-    await teardownTestConnections(pgPool, redisClient);
+    if (pgPool && redisClient) {
+      await cleanAllTestData(pgPool, redisClient);
+      await teardownTestConnections(pgPool, redisClient);
+    }
   });
 
   describe('Success Cases', () => {

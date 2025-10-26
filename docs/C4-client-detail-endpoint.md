@@ -330,13 +330,13 @@ Tests use a separate test database:
 
 ```bash
 # Run all tests
-npm test
+pnpm run test
 
 # Run only client detail tests
-npm test clients.detail
+pnpm run test -- clients.detail
 
 # Run with coverage
-npm test -- --coverage
+pnpm run test -- --coverage
 ```
 
 ## Design Philosophy Applied

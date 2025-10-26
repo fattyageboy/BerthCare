@@ -3,7 +3,7 @@ import { greet, version } from '../src/index';
 describe('Shared Library', () => {
   describe('version', () => {
     it('should export the correct version', () => {
-      expect(version).toBe('2.0.0');
+      expect(version).toBe('1.0.0');
     });
   });
 

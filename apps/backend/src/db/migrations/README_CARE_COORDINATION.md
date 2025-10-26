@@ -25,9 +25,9 @@ care_alerts (
   client_id UUID → clients(id),
   staff_id UUID → users(id),
   coordinator_id UUID → users(id),
-  alert_type ENUM,
+  alert_type care_alert_type,
   voice_message_url TEXT,
-  status ENUM,
+  status care_alert_status,
   initiated_at TIMESTAMP,
   answered_at TIMESTAMP,
   escalated_at TIMESTAMP,
@@ -52,7 +52,19 @@ care_alerts (
 initiated → ringing → answered → resolved
                    ↓
               no_answer → escalated → resolved
+                         ↓
+                   cancelled (manual stop)
 ```
+
+**Statuses:**
+
+- `initiated` → alert created, call kicked off
+- `ringing` → outbound call in progress
+- `answered` → coordinator picked up
+- `no_answer` → primary coordinator missed the call
+- `escalated` → routed to backup coordinator
+- `resolved` → issue addressed
+- `cancelled` → caregiver or coordinator ended alert manually
 
 **Indexes:**
 

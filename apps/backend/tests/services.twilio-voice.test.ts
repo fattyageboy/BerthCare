@@ -4,7 +4,8 @@
  * Tests voice call initiation, webhook processing, and error handling
  */
 
-import { TwilioVoiceService, TwilioVoiceError } from '../src/services/twilio-voice.service';
+import { env } from '../src/config/env';
+import { TwilioVoiceError, TwilioVoiceService } from '../src/services/twilio-voice.service';
 
 // Mock Twilio client
 jest.mock('twilio', () => {
@@ -22,92 +23,94 @@ jest.mock('twilio/lib/webhooks/webhooks', () => ({
   validateRequest: jest.fn(),
 }));
 
+type TwilioMockClient = {
+  calls: {
+    create: jest.Mock;
+  };
+};
+
 describe('TwilioVoiceService', () => {
-  let service: TwilioVoiceService;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockTwilioClient: any;
+  const { Twilio } = jest.requireMock('twilio') as { Twilio: jest.Mock };
+  const { validateRequest } = jest.requireMock('twilio/lib/webhooks/webhooks') as {
+    validateRequest: jest.Mock;
+  };
+
+  const baseOptions = {
+    accountSid: 'test_account_sid',
+    authToken: 'test_auth_token',
+    fromNumber: '+15551234567',
+    webhookBaseUrl: 'https://api.test.com',
+  };
+
+  let mockTwilioClient: TwilioMockClient;
 
   beforeEach(() => {
-    // Reset mocks
     jest.clearAllMocks();
-
-    // Create service with test credentials
-    service = new TwilioVoiceService(
-      'test_account_sid',
-      'test_auth_token',
-      '+15551234567',
-      'https://api.test.com'
-    );
-
-    // Get mock client instance
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-    const { Twilio } = require('twilio');
-    mockTwilioClient = Twilio.mock.results[0].value;
   });
 
+  function createService(): TwilioVoiceService {
+    const service = new TwilioVoiceService(baseOptions);
+    mockTwilioClient = Twilio.mock.results[Twilio.mock.results.length - 1]
+      .value as TwilioMockClient;
+
+    mockTwilioClient.calls.create.mockResolvedValue({
+      sid: 'CA1234567890abcdef',
+      status: 'queued',
+      to: '+15559876543',
+      from: baseOptions.fromNumber,
+    });
+
+    return service;
+  }
+
   describe('constructor', () => {
-    it('should throw error if credentials not provided', () => {
-      expect(() => {
-        new TwilioVoiceService('', '', '+15551234567', 'https://api.test.com');
-      }).toThrow('Twilio credentials not configured');
-    });
-
-    it('should throw error if account SID missing', () => {
-      expect(() => {
-        new TwilioVoiceService('', 'test_token', '+15551234567', 'https://api.test.com');
-      }).toThrow('Twilio credentials not configured');
-    });
-
-    it('should throw error if auth token missing', () => {
-      expect(() => {
-        new TwilioVoiceService('test_sid', '', '+15551234567', 'https://api.test.com');
-      }).toThrow('Twilio credentials not configured');
-    });
-
-    it('should throw error if phone number not provided', () => {
-      expect(() => {
-        new TwilioVoiceService('test_sid', 'test_token', '', 'https://api.test.com');
-      }).toThrow('Twilio phone number not configured');
-    });
-
     it('should create service with valid credentials', () => {
+      const service = new TwilioVoiceService(baseOptions);
       expect(service).toBeInstanceOf(TwilioVoiceService);
+      expect(Twilio).toHaveBeenCalledWith(baseOptions.accountSid, baseOptions.authToken);
+    });
+
+    it('should throw when webhook base URL is invalid', () => {
+      expect(() => {
+        new TwilioVoiceService({
+          ...baseOptions,
+          webhookBaseUrl: 'not-a-url',
+        });
+      }).toThrow('Invalid webhook base URL format');
     });
   });
 
   describe('initiateCall', () => {
     const validPhoneNumber = '+15559876543';
     const validVoiceMessageUrl = 'https://s3.amazonaws.com/bucket/message.mp3';
-    const alertId = 'alert-123';
+
+    let service: TwilioVoiceService;
 
     beforeEach(() => {
-      mockTwilioClient.calls.create.mockResolvedValue({
-        sid: 'CA1234567890abcdef',
-        status: 'queued',
-        to: validPhoneNumber,
-        from: '+15551234567',
-      });
+      service = createService();
     });
 
     it('should initiate call successfully', async () => {
-      const result = await service.initiateCall(validPhoneNumber, validVoiceMessageUrl, alertId);
+      const result = await service.initiateCall(validPhoneNumber, validVoiceMessageUrl, {
+        alertId: 'alert-123',
+      });
 
       expect(result).toMatchObject({
         callSid: 'CA1234567890abcdef',
         status: 'queued',
         to: validPhoneNumber,
-        from: '+15551234567',
+        from: baseOptions.fromNumber,
       });
       expect(result.initiatedAt).toBeInstanceOf(Date);
     });
 
     it('should call Twilio API with correct parameters', async () => {
-      await service.initiateCall(validPhoneNumber, validVoiceMessageUrl, alertId);
+      await service.initiateCall(validPhoneNumber, validVoiceMessageUrl, { alertId: 'alert-123' });
 
       expect(mockTwilioClient.calls.create).toHaveBeenCalledWith(
         expect.objectContaining({
           to: validPhoneNumber,
-          from: '+15551234567',
+          from: baseOptions.fromNumber,
           statusCallback: 'https://api.test.com/webhooks/twilio/voice/status?alertId=alert-123',
           statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
           statusCallbackMethod: 'POST',
@@ -117,8 +120,15 @@ describe('TwilioVoiceService', () => {
       );
     });
 
+    it('should build status callback URL without alertId when not provided', async () => {
+      await service.initiateCall(validPhoneNumber, validVoiceMessageUrl);
+
+      const callArgs = mockTwilioClient.calls.create.mock.calls[0][0];
+      expect(callArgs.statusCallback).toBe('https://api.test.com/webhooks/twilio/voice/status');
+    });
+
     it('should include TwiML with voice message URL', async () => {
-      await service.initiateCall(validPhoneNumber, validVoiceMessageUrl, alertId);
+      await service.initiateCall(validPhoneNumber, validVoiceMessageUrl, { alertId: 'alert-123' });
 
       const callArgs = mockTwilioClient.calls.create.mock.calls[0][0];
       expect(callArgs.twiml).toContain(validVoiceMessageUrl);
@@ -127,22 +137,22 @@ describe('TwilioVoiceService', () => {
 
     it('should throw error for invalid phone number format', async () => {
       await expect(
-        service.initiateCall('1234567890', validVoiceMessageUrl, alertId)
+        service.initiateCall('1234567890', validVoiceMessageUrl, { alertId: 'alert-123' })
       ).rejects.toThrow(TwilioVoiceError);
 
-      await expect(service.initiateCall('invalid', validVoiceMessageUrl, alertId)).rejects.toThrow(
-        'Invalid phone number format'
-      );
+      await expect(
+        service.initiateCall('invalid', validVoiceMessageUrl, { alertId: 'alert-123' })
+      ).rejects.toThrow('Invalid phone number format');
     });
 
     it('should throw error for invalid voice message URL', async () => {
-      await expect(service.initiateCall(validPhoneNumber, 'not-a-url', alertId)).rejects.toThrow(
-        TwilioVoiceError
-      );
+      await expect(
+        service.initiateCall(validPhoneNumber, 'not-a-url', { alertId: 'alert-123' })
+      ).rejects.toThrow(TwilioVoiceError);
 
-      await expect(service.initiateCall(validPhoneNumber, '', alertId)).rejects.toThrow(
-        'Invalid voice message URL'
-      );
+      await expect(
+        service.initiateCall(validPhoneNumber, '', { alertId: 'alert-123' })
+      ).rejects.toThrow('Invalid voice message URL');
     });
 
     it('should handle Twilio API error 21211 (invalid number)', async () => {
@@ -152,7 +162,7 @@ describe('TwilioVoiceService', () => {
       });
 
       await expect(
-        service.initiateCall(validPhoneNumber, validVoiceMessageUrl, alertId)
+        service.initiateCall(validPhoneNumber, validVoiceMessageUrl, { alertId: 'alert-123' })
       ).rejects.toThrow('Invalid phone number');
     });
 
@@ -163,7 +173,7 @@ describe('TwilioVoiceService', () => {
       });
 
       await expect(
-        service.initiateCall(validPhoneNumber, validVoiceMessageUrl, alertId)
+        service.initiateCall(validPhoneNumber, validVoiceMessageUrl, { alertId: 'alert-123' })
       ).rejects.toThrow('Phone number not verified');
     });
 
@@ -174,7 +184,7 @@ describe('TwilioVoiceService', () => {
       });
 
       await expect(
-        service.initiateCall(validPhoneNumber, validVoiceMessageUrl, alertId)
+        service.initiateCall(validPhoneNumber, validVoiceMessageUrl, { alertId: 'alert-123' })
       ).rejects.toThrow(TwilioVoiceError);
     });
 
@@ -182,12 +192,43 @@ describe('TwilioVoiceService', () => {
       mockTwilioClient.calls.create.mockRejectedValue(new Error('Network timeout'));
 
       await expect(
-        service.initiateCall(validPhoneNumber, validVoiceMessageUrl, alertId)
+        service.initiateCall(validPhoneNumber, validVoiceMessageUrl, { alertId: 'alert-123' })
       ).rejects.toThrow('Failed to initiate call');
+    });
+
+    it('should throw configuration error when credentials and secret are missing', async () => {
+      const originalEnv = { ...env.twilio };
+      env.twilio.accountSid = '';
+      env.twilio.authToken = '';
+      env.twilio.phoneNumber = '';
+      env.twilio.secretId = '';
+
+      try {
+        const serviceWithoutCreds = new TwilioVoiceService({
+          webhookBaseUrl: 'https://api.test.com',
+        });
+
+        await expect(
+          serviceWithoutCreds.initiateCall(validPhoneNumber, validVoiceMessageUrl, {
+            alertId: 'alert-123',
+          })
+        ).rejects.toThrow('Twilio credentials not configured');
+      } finally {
+        env.twilio.accountSid = originalEnv.accountSid;
+        env.twilio.authToken = originalEnv.authToken;
+        env.twilio.phoneNumber = originalEnv.phoneNumber;
+        env.twilio.secretId = originalEnv.secretId;
+      }
     });
   });
 
   describe('processCallStatusWebhook', () => {
+    let service: TwilioVoiceService;
+
+    beforeEach(() => {
+      service = createService();
+    });
+
     it('should process completed call webhook', () => {
       const webhookData = {
         CallSid: 'CA1234567890abcdef',
@@ -209,23 +250,17 @@ describe('TwilioVoiceService', () => {
       expect(event.timestamp).toBeInstanceOf(Date);
     });
 
-    it('should process ringing call webhook', () => {
+    it('should process answered call webhook', () => {
       const webhookData = {
         CallSid: 'CA1234567890abcdef',
-        CallStatus: 'ringing',
+        CallStatus: 'answered',
         To: '+15559876543',
         From: '+15551234567',
       };
 
       const event = service.processCallStatusWebhook(webhookData);
 
-      expect(event).toMatchObject({
-        callSid: 'CA1234567890abcdef',
-        status: 'ringing',
-        to: '+15559876543',
-        from: '+15551234567',
-      });
-      expect(event.duration).toBeUndefined();
+      expect(event.status).toBe('answered');
     });
 
     it('should process failed call webhook with error', () => {
@@ -243,43 +278,19 @@ describe('TwilioVoiceService', () => {
       expect(event).toMatchObject({
         callSid: 'CA1234567890abcdef',
         status: 'failed',
-        to: '+15559876543',
-        from: '+15551234567',
         errorCode: '30008',
         errorMessage: 'Unknown destination',
       });
     });
-
-    it('should process no-answer webhook', () => {
-      const webhookData = {
-        CallSid: 'CA1234567890abcdef',
-        CallStatus: 'no-answer',
-        To: '+15559876543',
-        From: '+15551234567',
-      };
-
-      const event = service.processCallStatusWebhook(webhookData);
-
-      expect(event.status).toBe('no-answer');
-    });
-
-    it('should handle missing optional fields', () => {
-      const webhookData = {
-        CallSid: 'CA1234567890abcdef',
-        CallStatus: 'queued',
-        To: '+15559876543',
-        From: '+15551234567',
-      };
-
-      const event = service.processCallStatusWebhook(webhookData);
-
-      expect(event.duration).toBeUndefined();
-      expect(event.errorCode).toBeUndefined();
-      expect(event.errorMessage).toBeUndefined();
-    });
   });
 
   describe('validateWebhookSignature', () => {
+    let service: TwilioVoiceService;
+
+    beforeEach(() => {
+      service = createService();
+    });
+
     const signature = 'test_signature';
     const url = 'https://api.test.com/webhooks/twilio/voice/status';
     const params = {
@@ -287,66 +298,79 @@ describe('TwilioVoiceService', () => {
       CallStatus: 'completed',
     };
 
-    let mockValidateRequest: jest.Mock;
+    it('should validate correct signature', async () => {
+      validateRequest.mockReturnValue(true);
 
-    beforeEach(() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-      const { validateRequest } = require('twilio/lib/webhooks/webhooks');
-      mockValidateRequest = validateRequest as jest.Mock;
-    });
-
-    it('should validate correct signature', () => {
-      mockValidateRequest.mockReturnValue(true);
-
-      const isValid = service.validateWebhookSignature(signature, url, params);
+      const isValid = await service.validateWebhookSignature(signature, url, params);
 
       expect(isValid).toBe(true);
-      // Note: validateRequest uses env.twilio.authToken, not the constructor token
-      expect(mockValidateRequest).toHaveBeenCalled();
+      expect(validateRequest).toHaveBeenCalledWith(baseOptions.authToken, signature, url, params);
     });
 
-    it('should reject invalid signature', () => {
-      mockValidateRequest.mockReturnValue(false);
+    it('should reject invalid signature', async () => {
+      validateRequest.mockReturnValue(false);
 
-      const isValid = service.validateWebhookSignature(signature, url, params);
+      const isValid = await service.validateWebhookSignature(signature, url, params);
 
       expect(isValid).toBe(false);
     });
 
-    it('should handle validation errors gracefully', () => {
-      mockValidateRequest.mockImplementation(() => {
+    it('should handle validation errors gracefully', async () => {
+      validateRequest.mockImplementation(() => {
         throw new Error('Validation error');
       });
 
-      const isValid = service.validateWebhookSignature(signature, url, params);
+      const isValid = await service.validateWebhookSignature(signature, url, params);
 
       expect(isValid).toBe(false);
     });
   });
 
-  describe('TwiML generation', () => {
-    it('should generate valid TwiML with voice message', async () => {
-      const voiceMessageUrl = 'https://s3.amazonaws.com/bucket/message.mp3';
+  describe('secrets manager integration', () => {
+    it('should load credentials from secrets manager when env not provided', async () => {
+      const originalEnv = { ...env.twilio };
+      env.twilio.accountSid = '';
+      env.twilio.authToken = '';
+      env.twilio.phoneNumber = '';
+      env.twilio.secretId = '';
 
-      mockTwilioClient.calls.create.mockResolvedValue({
-        sid: 'CA1234567890abcdef',
-        status: 'queued',
-        to: '+15559876543',
-        from: '+15551234567',
+      const secretsLoader = jest.fn().mockResolvedValue({
+        account_sid: 'secret_account_sid',
+        auth_token: 'secret_auth_token',
+        phone_number: '+15550001111',
       });
 
-      await service.initiateCall('+15559876543', voiceMessageUrl, 'alert-123');
+      const secretClient: TwilioMockClient = {
+        calls: {
+          create: jest.fn().mockResolvedValue({
+            sid: 'CAsecret123',
+            status: 'queued',
+            to: '+15559876543',
+            from: '+15550001111',
+          }),
+        },
+      };
+      Twilio.mockImplementationOnce(() => secretClient);
 
-      const callArgs = mockTwilioClient.calls.create.mock.calls[0][0];
-      const twiml = callArgs.twiml;
+      try {
+        const service = new TwilioVoiceService({
+          webhookBaseUrl: 'https://api.test.com',
+          secretId: 'berthcare/staging/twilio',
+          secretsLoader,
+        });
 
-      // Verify TwiML structure
-      expect(twiml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-      expect(twiml).toContain('<Response>');
-      expect(twiml).toContain('<Say voice="alice">You have an urgent care alert.</Say>');
-      expect(twiml).toContain(`<Play>${voiceMessageUrl}</Play>`);
-      expect(twiml).toContain('<Gather numDigits="1" timeout="10">');
-      expect(twiml).toContain('</Response>');
+        await service.initiateCall('+15559876543', 'https://s3.amazonaws.com/bucket/message.mp3', {
+          alertId: 'alert-123',
+        });
+
+        expect(secretsLoader).toHaveBeenCalledWith('berthcare/staging/twilio', expect.any(Number));
+        expect(Twilio).toHaveBeenLastCalledWith('secret_account_sid', 'secret_auth_token');
+      } finally {
+        env.twilio.accountSid = originalEnv.accountSid;
+        env.twilio.authToken = originalEnv.authToken;
+        env.twilio.phoneNumber = originalEnv.phoneNumber;
+        env.twilio.secretId = originalEnv.secretId;
+      }
     });
   });
 

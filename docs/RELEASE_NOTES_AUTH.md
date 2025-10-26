@@ -203,7 +203,7 @@ None
 - Email verification
 - Account lockout after failed attempts
 
-### Planned for v2.0.0
+### Planned for v1.0.0
 
 - Two-factor authentication (2FA)
 - Social login (OAuth)

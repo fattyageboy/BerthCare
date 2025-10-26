@@ -54,7 +54,7 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
         return res.status(401).json({ error: 'Missing signature' });
       }
 
-      const isValid = twilioVoiceService.validateWebhookSignature(signature, url, params);
+      const isValid = await twilioVoiceService.validateWebhookSignature(signature, url, params);
 
       if (!isValid) {
         logError('Invalid Twilio webhook signature', undefined, {
@@ -80,6 +80,7 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
         case 'ringing':
           alertStatus = 'ringing';
           break;
+        case 'answered':
         case 'in-progress':
           alertStatus = 'answered';
           timestampField = 'answered_at';
@@ -95,6 +96,16 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
         case 'failed':
         case 'canceled':
           alertStatus = 'cancelled';
+          break;
+        default:
+          logError('Received unexpected Twilio call status', undefined, {
+            callSid,
+            alertId,
+            status,
+            message: 'Unhandled Twilio status received; defaulting to unknown',
+          });
+          alertStatus = 'unknown';
+          timestampField = null;
           break;
       }
 
@@ -164,7 +175,7 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
         return res.status(401).json({ error: 'Missing signature' });
       }
 
-      const isValid = twilioSMSService.validateWebhookSignature(signature, url, params);
+      const isValid = await twilioSMSService.validateWebhookSignature(signature, url, params);
 
       if (!isValid) {
         logError('Invalid Twilio webhook signature', undefined, {

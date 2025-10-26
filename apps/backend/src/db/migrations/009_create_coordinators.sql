@@ -1,5 +1,6 @@
 -- Migration: 009_create_coordinators
 -- Description: Create coordinators table for care coordination and alert routing
+--              Zone deletions are restricted while linked coordinators exist
 -- Author: Backend Engineer
 -- Date: 2025-10-20
 -- Reference: Architecture Blueprint - Voice Alert Service section
@@ -16,7 +17,7 @@ CREATE TABLE IF NOT EXISTS coordinators (
     
     -- Relationships
     user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    zone_id UUID NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
+    zone_id UUID NOT NULL REFERENCES zones(id) ON DELETE RESTRICT,
     
     -- Contact information for voice alerts
     phone_number VARCHAR(20) NOT NULL,
@@ -86,7 +87,7 @@ COMMENT ON TABLE coordinators IS 'Care coordinators who receive voice alerts fro
 
 COMMENT ON COLUMN coordinators.id IS 'Unique coordinator identifier (UUID)';
 COMMENT ON COLUMN coordinators.user_id IS 'Reference to user account (one-to-one relationship)';
-COMMENT ON COLUMN coordinators.zone_id IS 'Zone this coordinator is responsible for';
+COMMENT ON COLUMN coordinators.zone_id IS 'Zone this coordinator is responsible for (zone deletion restricted while coordinator exists)';
 COMMENT ON COLUMN coordinators.phone_number IS 'Phone number for receiving voice alerts via Twilio';
 COMMENT ON COLUMN coordinators.backup_coordinator_id IS 'Backup coordinator for escalation if primary does not answer';
 COMMENT ON COLUMN coordinators.is_active IS 'Whether coordinator is currently available for alerts';

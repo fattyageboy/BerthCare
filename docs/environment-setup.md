@@ -107,11 +107,11 @@ make logs-f         # Follow logs
 
 # Backend Development
 cd apps/backend
-npm run dev
+pnpm run dev
 
 # Mobile Development
 cd apps/mobile
-npm start
+pnpm start
 
 # Infrastructure
 cd terraform/environments/staging
@@ -313,8 +313,8 @@ terraform apply
 
    ```bash
    cd apps/backend
-   npm install
-   npm run dev
+   pnpm install
+   pnpm run dev
    ```
 
 4. **Read documentation:**
@@ -342,8 +342,8 @@ terraform apply
 
    ```bash
    cd apps/mobile
-   npm install
-   npm start
+   pnpm install
+   pnpm start
    ```
 
 4. **Read documentation:**

@@ -299,11 +299,9 @@ export function createAlertRoutes(
         // Initiate Twilio voice call
         let callResult;
         try {
-          callResult = await twilioService.initiateCall(
-            coordinator.phone_number,
-            voiceMessageUrl,
-            alertId
-          );
+          callResult = await twilioService.initiateCall(coordinator.phone_number, voiceMessageUrl, {
+            alertId,
+          });
         } catch (error) {
           if (error instanceof TwilioVoiceError) {
             logError('Twilio voice call failed', error, {

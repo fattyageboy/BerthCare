@@ -71,6 +71,11 @@ aws secretsmanager get-secret-value \
 ./scripts/setup-twilio-secrets.sh
 ```
 
+### Backend Configuration
+
+- Set `TWILIO_SECRET_ID=berthcare/staging/twilio` (staging) or `TWILIO_SECRET_ID=berthcare/production/twilio` (production) so the backend pulls credentials from Secrets Manager at runtime.
+- Local development can continue using direct environment variables; when `TWILIO_SECRET_ID` is present, direct credential variables become optional.
+
 ---
 
 ## Testing
@@ -234,7 +239,7 @@ open https://status.twilio.com
 brew install ngrok
 
 # Start local backend
-npm run dev
+pnpm run dev
 
 # Expose local server
 ngrok http 3000
@@ -297,22 +302,15 @@ For services that need both behaviors, override at the service level:
 
 ```typescript
 // Standard SMS service (fail-closed)
-const standardSMSService = new TwilioSMSService(
-  undefined, // use env defaults
-  undefined,
-  undefined,
-  undefined,
-  { failOpen: false } // enforce rate limits
-);
+const standardSMSService = new TwilioSMSService({
+  // Credentials + webhook base URL will fall back to env/Secrets Manager
+  rateLimiter: { failOpen: false }, // enforce rate limits
+});
 
 // Critical alert SMS service (fail-open)
-const criticalAlertSMSService = new TwilioSMSService(
-  undefined,
-  undefined,
-  undefined,
-  undefined,
-  { failOpen: true } // prioritize delivery
-);
+const criticalAlertSMSService = new TwilioSMSService({
+  rateLimiter: { failOpen: true }, // prioritize delivery
+});
 ```
 
 ### Monitoring Rate Limiter Behavior
@@ -347,8 +345,11 @@ Monitor these logs to detect Redis issues and potential rate limit bypasses.
 
 ```typescript
 // In your webhook handler
-import { validateRequest } from 'twilio/lib/webhooks/webhooks';
+import twilio from 'twilio';
 import { Request, Response } from 'express';
+
+// Ensure Express is configured with: app.use(express.urlencoded({ extended: false }));
+const { validateRequest } = twilio;
 
 app.post('/v1/twilio/voice', (req: Request, res: Response) => {
   const signature = req.headers['x-twilio-signature'] as string;

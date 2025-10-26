@@ -44,7 +44,7 @@ Before running tests, ensure you have:
 
 4. **Dependencies installed**:
    ```bash
-   npm install
+   pnpm install
    ```
 
 ## Running Tests
@@ -52,31 +52,31 @@ Before running tests, ensure you have:
 ### Run all tests
 
 ```bash
-npm test
+pnpm run test
 ```
 
 ### Run tests in watch mode
 
 ```bash
-npm run test:watch
+pnpm run test:watch
 ```
 
 ### Run tests with coverage
 
 ```bash
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 ### Run specific test file
 
 ```bash
-npm test -- auth.register.test.ts
+pnpm run test -- auth.register.test.ts
 ```
 
 ### Run specific test suite
 
 ```bash
-npm test -- --testNamePattern="Successful Registration"
+pnpm run test -- --testNamePattern="Successful Registration"
 ```
 
 ## Test Database Setup
@@ -92,7 +92,7 @@ The tests automatically create required tables if they don't exist. However, for
 2. **Run migrations on test database**:
 
    ```bash
-   DATABASE_URL=postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test npm run migrate:up
+   DATABASE_URL=postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test pnpm run migrate:up
    ```
 
 3. **Tests will clean up data** between runs (DELETE operations, not DROP)
@@ -157,13 +157,13 @@ describe('Feature Name', () => {
 ### Enable verbose output
 
 ```bash
-npm test -- --verbose
+pnpm run test -- --verbose
 ```
 
 ### Run single test
 
 ```bash
-npm test -- --testNamePattern="should register a new caregiver successfully"
+pnpm run test -- --testNamePattern="should register a new caregiver successfully"
 ```
 
 ### Debug with Node inspector

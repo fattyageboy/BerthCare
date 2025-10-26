@@ -49,11 +49,18 @@ jobs:
       # used to access any production or persistent infrastructure.
       TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/berthcare_test
       TEST_REDIS_URL: redis://localhost:6379
-      # Twilio test credentials (mocked in tests, but needed for initialization)
-      TWILIO_ACCOUNT_SID: test_account_sid
-      TWILIO_AUTH_TOKEN: test_auth_token
-      TWILIO_PHONE_NUMBER: +15550000000
-      TWILIO_WEBHOOK_BASE_URL: http://localhost:3000
+      # Twilio test credentials loaded from GitHub Secrets
+      # To set these up, add these keys to your repository secrets:
+      # Settings > Secrets and variables > Actions > New repository secret
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+      TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
+      TWILIO_WEBHOOK_BASE_URL: ${{ secrets.TWILIO_WEBHOOK_BASE_URL }}
+      # JWT test keys loaded from GitHub Secrets
+      # To set these up, add JWT_PUBLIC_KEY and JWT_PRIVATE_KEY to your repository secrets
+      # Settings > Secrets and variables > Actions > New repository secret
+      JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
+      JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
 
     steps:
       - name: Checkout code
@@ -112,7 +119,13 @@ jobs:
           fail_ci_if_error: false
 
       - name: CI Summary
-        if: always()
+        if: success()
         run: |
-          echo "✅ All CI checks completed"
+          echo "✅ All CI checks completed successfully"
           echo "Lint, format, type-check, tests, audit, and build all passed"
+
+      - name: CI Failed
+        if: failure()
+        run: |
+          echo "❌ CI checks failed"
+          exit 1

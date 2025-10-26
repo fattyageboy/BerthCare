@@ -24,7 +24,7 @@ Sentry provides:
 
 ```bash
 # Install Sentry CLI (optional, for automation)
-npm install -g @sentry/cli
+pnpm add -g @sentry/cli
 
 # Create backend project
 sentry-cli projects create berthcare-backend-staging \
@@ -100,7 +100,7 @@ SENTRY_DSN=https://[key]@[org].ingest.sentry.io/[project]
 SENTRY_ENVIRONMENT=development
 SENTRY_TRACES_SAMPLE_RATE=0.1
 SENTRY_PROFILES_SAMPLE_RATE=0.1
-APP_VERSION=2.0.0
+APP_VERSION=1.0.0
 ```
 
 ## Step 5: Install Dependencies
@@ -109,14 +109,14 @@ APP_VERSION=2.0.0
 
 ```bash
 cd apps/backend
-npm install @sentry/node @sentry/profiling-node winston
+pnpm add @sentry/node @sentry/profiling-node winston
 ```
 
 ### Mobile (Future)
 
 ```bash
 cd apps/mobile
-npm install @sentry/react-native
+pnpm add @sentry/react-native
 ```
 
 ## Step 6: Configure Backend Integration
@@ -141,7 +141,7 @@ To use the monitoring-enabled server:
 
 ```bash
 # Start the backend
-npm run dev
+pnpm run dev
 
 # Trigger a test error (development only)
 curl http://localhost:3000/test/sentry
@@ -195,7 +195,7 @@ For production deployments, upload source maps so Sentry can show original sourc
 
 ```bash
 # Install Sentry CLI
-npm install -g @sentry/cli
+pnpm add -g @sentry/cli
 
 # Configure auth token
 export SENTRY_AUTH_TOKEN=your_auth_token

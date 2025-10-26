@@ -252,13 +252,13 @@ Test suite in `apps/backend/tests/auth.logout.test.ts`:
 
 ```bash
 # Run all authentication tests
-npm test -- auth.middleware.test.ts
+pnpm run test -- auth.middleware.test.ts
 
 # Run logout tests
-npm test -- auth.logout.test.ts
+pnpm run test -- auth.logout.test.ts
 
 # Run all auth tests
-npm test -- auth
+pnpm run test -- auth
 ```
 
 ---

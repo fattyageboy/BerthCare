@@ -4,7 +4,7 @@ echo "Testing backend startup..."
 echo ""
 
 # Start the backend in the background
-npm run dev > /tmp/backend-test.log 2>&1 &
+pnpm run dev > /tmp/backend-test.log 2>&1 &
 BACKEND_PID=$!
 
 echo "Backend PID: $BACKEND_PID"

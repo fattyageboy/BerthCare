@@ -6,7 +6,7 @@
  * Creates sample users with different roles for testing authentication.
  *
  * Usage:
- *   npm run db:seed
+ *   pnpm run db:seed
  *
  * WARNING: This will delete existing data! Only use in development.
  */

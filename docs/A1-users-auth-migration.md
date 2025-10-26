@@ -103,27 +103,27 @@ Manages JWT refresh tokens for multi-device session support.
 
 ```bash
 # Apply migration
-npm run migrate:up
+pnpm run migrate:up
 
 # Verify schema
-npm run db:verify
+pnpm run db:verify
 ```
 
 ### Rollback Migration
 
 ```bash
 # Rollback if needed
-npm run migrate:down 001
+pnpm run migrate:down 001
 
 # Verify rollback
-npm run db:verify
+pnpm run db:verify
 ```
 
 ### Reset Database (Development)
 
 ```bash
 # Drop and recreate tables
-npm run db:reset
+pnpm run db:reset
 ```
 
 ## Verification Results

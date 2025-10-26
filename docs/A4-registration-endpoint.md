@@ -276,16 +276,16 @@ X-RateLimit-Reset: 2025-10-10T15:30:00.000Z
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Run all tests
-npm test
+pnpm run test
 
 # Run with coverage
-npm run test:coverage
+pnpm run test:coverage
 
 # Run in watch mode
-npm run test:watch
+pnpm run test:watch
 
 # Use test runner script
 ./tests/run-tests.sh

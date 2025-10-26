@@ -17,6 +17,24 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 // Set test-specific environment variables
 process.env.NODE_ENV = 'test';
 
+const isCi = ['true', '1'].includes((process.env.CI || '').toLowerCase());
+
+const ensureTestEnvUrl = (key: 'TEST_DATABASE_URL' | 'TEST_REDIS_URL', fallback: string) => {
+  if (process.env[key]) {
+    return;
+  }
+
+  if (isCi) {
+    throw new Error(`${key} must be provided when running tests in CI`);
+  }
+
+  process.env[key] = fallback;
+};
+
+// Provide sane defaults for test database/cache if not defined locally
+ensureTestEnvUrl('TEST_DATABASE_URL', 'postgresql://localhost:5432/berthcare_test');
+ensureTestEnvUrl('TEST_REDIS_URL', 'redis://localhost:6379/1');
+
 // Test JWT keys (RSA 2048-bit key pair for testing only)
 process.env.JWT_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDiZfJ8EAzjoGAj

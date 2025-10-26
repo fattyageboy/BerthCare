@@ -9,7 +9,7 @@
  * - Download URL generation
  *
  * Usage:
- *   npm run test:s3 --prefix apps/backend
+ *   pnpm --dir apps/backend run test:s3
  */
 
 /* eslint-disable no-console */

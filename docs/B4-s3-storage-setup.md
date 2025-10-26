@@ -274,18 +274,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "photos" {
   bucket = aws_s3_bucket.photos.id
 
   rule {
-    id     = "archive-old-photos"
+    id= "archive-old-photos"
     status = "Enabled"
 
     # Transition to Glacier after 1 year
     transition {
-      days          = 365
-      storage_class = "GLACIER"
+ days= 365
+ storage_class = "GLACIER"
     }
 
     # Delete after 7 years
     expiration {
-      days = 2555  # 7 years
+ days = 2555  # 7 years
     }
 
     # Apply to all objects
@@ -374,16 +374,16 @@ awslocal s3api put-bucket-cors \
 ### 1. S3 Connection Test ✅
 
 ```bash
-$ npm run test:s3 --prefix apps/backend
+$ pnpm --dir apps/backend run test:s3
 
 🧪 Testing S3 Connection...
 
 1️⃣  Testing S3 connection...
    ✅ S3 connection verified
    📦 Buckets configured:
-      - Photos: berthcare-photos-dev
-      - Documents: berthcare-documents-dev
-      - Signatures: berthcare-signatures-dev
+ - Photos: berthcare-photos-dev
+ - Documents: berthcare-documents-dev
+ - Signatures: berthcare-signatures-dev
 
 2️⃣  Testing photo upload URL generation...
    ✅ Photo upload URL generated
@@ -444,9 +444,9 @@ $ aws --endpoint-url=http://localhost:4566 \
 ```bash
 # AWS Configuration
 AWS_REGION=ca-central-1
-AWS_ACCESS_KEY_ID=test                    # LocalStack: 'test'
-AWS_SECRET_ACCESS_KEY=test                # LocalStack: 'test'
-AWS_ENDPOINT=http://localhost:4566        # LocalStack endpoint
+AWS_ACCESS_KEY_ID=test# LocalStack: 'test'
+AWS_SECRET_ACCESS_KEY=test # LocalStack: 'test'
+AWS_ENDPOINT=http://localhost:4566# LocalStack endpoint
 
 # S3 Buckets
 S3_BUCKET_PHOTOS=berthcare-photos-dev
@@ -454,7 +454,7 @@ S3_BUCKET_DOCUMENTS=berthcare-documents-dev
 S3_BUCKET_SIGNATURES=berthcare-signatures-dev
 
 # S3 Configuration
-S3_FORCE_PATH_STYLE=true                  # Required for LocalStack
+S3_FORCE_PATH_STYLE=true# Required for LocalStack
 S3_SIGNATURE_VERSION=v4
 ```
 
@@ -698,10 +698,10 @@ await cloudwatch.putMetricData({
 
 ```
 apps/backend/src/storage/
-├── s3-client.ts           # S3 client configuration
-├── photo-storage.ts       # Photo storage helpers
-├── test-s3.ts            # S3 connection test
-└── README.md             # Storage documentation
+├── s3-client.ts # S3 client configuration
+├── photo-storage.ts  # Photo storage helpers
+├── test-s3.ts  # S3 connection test
+└── README.md   # Storage documentation
 ```
 
 ## Acceptance Criteria Status

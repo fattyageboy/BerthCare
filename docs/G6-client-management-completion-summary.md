@@ -397,31 +397,31 @@ GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400
 
 1. **Docker Running:** Ensure Docker Desktop is running
 2. **Services Started:** Run `make start`
-3. **Database Migrated:** Run `npm run migrate:up`
+3. **Database Migrated:** Run `pnpm run migrate:up`
 4. **Google Maps API Key:** Add to `.env` file
 
 ### Run All Tests
 
 ```bash
 # Run all client management tests
-npm test -- --testPathPattern="clients|care-plans"
+pnpm run test -- --testPathPattern="clients|care-plans"
 
 # Run specific test suite
-npm test -- --testPathPattern="clients.list"
-npm test -- --testPathPattern="clients.detail"
-npm test -- --testPathPattern="clients.create"
-npm test -- --testPathPattern="clients.update"
-npm test -- --testPathPattern="care-plans"
+pnpm run test -- --testPathPattern="clients.list"
+pnpm run test -- --testPathPattern="clients.detail"
+pnpm run test -- --testPathPattern="clients.create"
+pnpm run test -- --testPathPattern="clients.update"
+pnpm run test -- --testPathPattern="care-plans"
 
 # Run with coverage
-npm test -- --coverage --testPathPattern="clients|care-plans"
+pnpm run test -- --coverage --testPathPattern="clients|care-plans"
 ```
 
 ### Manual Testing
 
 ```bash
 # Start backend server
-npm run dev
+pnpm run dev
 
 # Test endpoints with curl or Postman
 # See individual endpoint documentation for examples

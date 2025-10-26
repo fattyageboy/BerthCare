@@ -146,13 +146,13 @@ Successfully merged the complete authentication system and backend scaffold into
 docker-compose up -d
 
 # Run migrations
-npm run db:migrate
+pnpm run db:migrate
 
 # Start backend
-npm run dev:backend
+pnpm run dev:backend
 
 # Run tests
-npm test
+pnpm run test
 ```
 
 ### Production Checklist

@@ -6,7 +6,7 @@
  * Checks for tables, columns, indexes, and constraints.
  *
  * Usage:
- *   npm run db:verify
+ *   pnpm run db:verify
  */
 
 import { Pool } from 'pg';

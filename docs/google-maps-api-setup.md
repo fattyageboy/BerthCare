@@ -83,7 +83,7 @@ GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400
 
 ```bash
 # Start backend server
-npm run dev
+pnpm run dev
 
 # Test endpoint (requires admin token)
 curl -X POST http://localhost:3000/v1/clients \
