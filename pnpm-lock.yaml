@@ -240,6 +240,12 @@ importers:
         specifier: ^9.0.10
         version: 9.0.10
 
+  tools/testing:
+    devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
+
 packages:
   '@aws-crypto/crc32@5.2.0':
     resolution:
