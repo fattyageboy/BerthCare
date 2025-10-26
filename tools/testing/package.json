@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node -e \"console.log('Skipping tests for tools/testing workspace')\""
+    "test": "node -e \"console.log('Skipping tests for tools/testing workspace')\" --"
   },
   "keywords": [],
   "author": "",
