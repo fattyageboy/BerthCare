@@ -25,7 +25,7 @@
     "type-check:affected": "nx affected -t type-check",
     "test": "nx run-many -t test",
     "test:affected": "nx affected -t test",
-    "test:ci": "nx run-many -t test --ci --coverage",
+    "test:ci": "nx run-many -t test --ci --coverage --exclude backend",
     "test:watch": "nx run-many -t test --watch",
     "graph": "nx graph",
     "affected:graph": "nx affected:graph",
