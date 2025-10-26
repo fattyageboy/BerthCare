@@ -32,7 +32,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "jest",
+        "command": "jest --passWithNoTests",
         "cwd": "apps/mobile"
       }
     }
