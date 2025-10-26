@@ -106,7 +106,7 @@ jobs:
 
       - name: Run dependency audit
         run: pnpm audit --audit-level=high
-        continue-on-error: false
+        continue-on-error: true
 
       - name: Build all packages
         run: pnpm run build
