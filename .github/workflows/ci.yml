@@ -77,17 +77,6 @@ jobs:
           version: 10.19.0
           run_install: false
 
-      - name: Determine pnpm store path
-        id: pnpm-cache
-        run: echo "store-path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.store-path }}
-          key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
