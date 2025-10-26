@@ -259,13 +259,17 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 
 **Duplicate Detection:**
 
-- Scope: Zone-scoped. Candidate matches are loaded only from the coordinator’s `zone_id` (admins include the target client’s current zone) so cross-zone clients are ignored.
+- Scope: Coordinators are zone-scoped (search only within the coordinator’s `zone_id`). Admins are unrestricted and search across all zones.
 - Name matching: Normalize `firstName`/`lastName` by trimming, collapsing internal whitespace to a single space, and lowercasing. Names must match exactly after normalization; no fuzzy comparison is performed in v1 (future enhancement: evaluate Levenshtein distance ≤2).
 - DOB matching: Require an exact `YYYY-MM-DD` match against `date_of_birth`. No tolerance window is applied.
 - Indexes: Relies on `idx_clients_zone_last_name` for zone/name filtering and `idx_clients_full_name` for normalized comparisons; both include `WHERE deleted_at IS NULL`.
-- Lookup flow:
-  1. Normalize the incoming fields.
+- Lookup flow (coordinator request):
+  1. Normalize the incoming names and DOB.
   2. Execute `SELECT id FROM clients WHERE zone_id = $1 AND deleted_at IS NULL AND LOWER(first_name) = $2 AND LOWER(last_name) = $3 AND date_of_birth = $4 LIMIT 1;`.
+  3. If a row is returned with a different `id`, flag as potential duplicate.
+- Lookup flow (admin request):
+  1. Normalize the incoming names and DOB.
+  2. Execute `SELECT id FROM clients WHERE deleted_at IS NULL AND LOWER(first_name) = $1 AND LOWER(last_name) = $2 AND date_of_birth = $3 LIMIT 1;`.
   3. If a row is returned with a different `id`, flag as potential duplicate.
 
 ### Geocoding Optimization

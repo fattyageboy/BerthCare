@@ -36,6 +36,9 @@ const maskRedisUrl = (value: string): string => {
     if (parsed.password) {
       parsed.password = '***';
     }
+    if (parsed.username) {
+      parsed.username = '***';
+    }
     return parsed.toString();
   } catch (error) {
     return REDACTED_VALUE;
