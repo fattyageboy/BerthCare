@@ -23,7 +23,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { createClient } from 'redis';
 
-import { verifyToken, JWTPayload, UserRole } from '../../../../libs/shared/src';
+import { verifyToken, JWTPayload, UserRole } from '@berthcare/shared';
 
 /**
  * Extended Express Request with authenticated user

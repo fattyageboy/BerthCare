@@ -13,7 +13,7 @@
 
 import { Pool } from 'pg';
 
-import { hashPassword } from '../../../../libs/shared/src';
+import { hashPassword } from '@berthcare/shared';
 import { getPostgresPoolConfig } from '../config/env';
 
 const pool = new Pool(
