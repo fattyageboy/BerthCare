@@ -51,6 +51,9 @@
   },
   "settings": {
     "import/resolver": {
+      "typescript": {
+        "project": ["./tsconfig.base.json"]
+      },
       "node": {
         "extensions": [".js", ".jsx", ".ts", ".tsx"]
       }

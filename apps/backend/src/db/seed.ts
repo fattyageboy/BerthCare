@@ -11,9 +11,9 @@
  * WARNING: This will delete existing data! Only use in development.
  */
 
+import { hashPassword } from '@berthcare/shared';
 import { Pool } from 'pg';
 
-import { hashPassword } from '@berthcare/shared';
 import { getPostgresPoolConfig } from '../config/env';
 
 const pool = new Pool(

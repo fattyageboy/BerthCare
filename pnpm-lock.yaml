@@ -107,6 +107,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.907.0
         version: 3.917.0
+      '@berthcare/shared':
+        specifier: workspace:*
+        version: link:../../libs/shared
       '@googlemaps/google-maps-services-js':
         specifier: ^3.4.2
         version: 3.4.2

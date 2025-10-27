@@ -20,10 +20,9 @@
  * - Multiple layers of validation
  */
 
+import { verifyToken, JWTPayload, UserRole } from '@berthcare/shared';
 import { Request, Response, NextFunction } from 'express';
 import { createClient } from 'redis';
-
-import { verifyToken, JWTPayload, UserRole } from '@berthcare/shared';
 
 /**
  * Extended Express Request with authenticated user

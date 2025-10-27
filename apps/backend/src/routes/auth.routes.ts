@@ -21,10 +21,6 @@
 
 import * as crypto from 'crypto';
 
-import { Request, Response, Router } from 'express';
-import { Pool } from 'pg';
-import { createClient } from 'redis';
-
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -32,6 +28,10 @@ import {
   verifyPassword,
   verifyToken,
 } from '@berthcare/shared';
+import { Request, Response, Router } from 'express';
+import { Pool } from 'pg';
+import { createClient } from 'redis';
+
 import { logAuth, logError } from '../config/logger';
 import { createLoginRateLimiter, createRegistrationRateLimiter } from '../middleware/rate-limiter';
 import {
