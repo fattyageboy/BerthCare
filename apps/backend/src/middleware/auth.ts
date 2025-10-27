@@ -20,7 +20,8 @@
  * - Multiple layers of validation
  */
 
-import { verifyToken, JWTPayload, UserRole } from '@berthcare/shared';
+import { verifyToken } from '@berthcare/shared';
+import type { JWTPayload, UserRole } from '@berthcare/shared';
 import { Request, Response, NextFunction } from 'express';
 import { createClient } from 'redis';
 
