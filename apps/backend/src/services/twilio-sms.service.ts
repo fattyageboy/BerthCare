@@ -97,7 +97,7 @@ interface TwilioSMSSecretPayload {
   phoneNumber?: string;
 }
 
-type TwilioSecretLoader = (
+export type TwilioSecretLoader = (
   secretId: string,
   cacheTtlMs?: number
 ) => Promise<TwilioSMSSecretPayload>;
@@ -179,7 +179,7 @@ export class TwilioSMSService {
    * @param userId Optional ID used for per-user rate limiting
    */
   async sendSMS(to: string, message: string, userId?: string): Promise<SMSResult> {
-    if (!to || !to.match(/^\+[1-9]\d{1,14}$/)) {
+    if (!to || !to.match(/^\+[1-9]\d{0,14}$/)) {
       throw new TwilioSMSError(
         'Invalid phone number format (must be E.164)',
         'INVALID_PHONE_NUMBER',
@@ -197,17 +197,19 @@ export class TwilioSMSService {
       });
     }
 
+    // Validate configuration before consuming rate limit slot
+    const client = await this.ensureClient();
+    const fromNumber = this.fromNumber;
+    if (!fromNumber) {
+      throw new TwilioSMSError('Twilio phone number not configured', 'CONFIGURATION_ERROR');
+    }
+
+    // Only consume rate limit slot after configuration validation passes
     if (userId) {
       await this.checkAndIncrementRateLimit(userId);
     }
 
     try {
-      const client = await this.ensureClient();
-      const fromNumber = this.fromNumber;
-      if (!fromNumber) {
-        throw new TwilioSMSError('Twilio phone number not configured', 'CONFIGURATION_ERROR');
-      }
-
       const sms = await client.messages.create({
         to,
         from: fromNumber,
@@ -228,8 +230,8 @@ export class TwilioSMSService {
       this.logSMSEvent({
         messageSid: result.messageSid,
         status: result.status,
-        to: result.to,
-        from: result.from,
+        to: this.maskPhoneNumber(result.to),
+        from: this.maskPhoneNumber(result.from),
         body: message,
         timestamp: result.sentAt,
       });
@@ -294,12 +296,14 @@ export class TwilioSMSService {
     if (messageSid.trim() === '') {
       logError('Invalid SMS webhook: missing messageSid', undefined, {
         service: 'twilio-sms',
-        webhookData,
+        to: this.maskPhoneNumber(to),
+        from: this.maskPhoneNumber(from),
+        hasBody: !!body,
       });
       throw new TwilioSMSError(
         'Invalid SMS webhook: messageSid is required',
         'INVALID_WEBHOOK_DATA',
-        { webhookData }
+        { to: this.maskPhoneNumber(to), from: this.maskPhoneNumber(from) }
       );
     }
 
@@ -307,11 +311,14 @@ export class TwilioSMSService {
       logError('Invalid SMS webhook: missing status', undefined, {
         service: 'twilio-sms',
         messageSid,
-        webhookData,
+        to: this.maskPhoneNumber(to),
+        from: this.maskPhoneNumber(from),
+        hasBody: !!body,
       });
       throw new TwilioSMSError('Invalid SMS webhook: status is required', 'INVALID_WEBHOOK_DATA', {
         messageSid,
-        webhookData,
+        to: this.maskPhoneNumber(to),
+        from: this.maskPhoneNumber(from),
       });
     }
 
@@ -326,7 +333,13 @@ export class TwilioSMSService {
       errorMessage,
     };
 
-    this.logSMSEvent(event);
+    const maskedEvent: SMSEvent = {
+      ...event,
+      to: this.maskPhoneNumber(event.to),
+      from: this.maskPhoneNumber(event.from),
+    };
+
+    this.logSMSEvent(maskedEvent);
     return event;
   }
 
@@ -407,8 +420,8 @@ export class TwilioSMSService {
       service: 'twilio-sms',
       messageSid: event.messageSid,
       status: event.status,
-      to: event.to,
-      from: event.from,
+      to: this.maskPhoneNumber(event.to),
+      from: this.maskPhoneNumber(event.from),
       bodyLength: event.body?.length,
       errorCode: event.errorCode,
       errorMessage: event.errorMessage,
@@ -426,6 +439,30 @@ export class TwilioSMSService {
     } else {
       logDebug('Twilio SMS status', logData);
     }
+  }
+
+  private maskPhoneNumber(phone: string | null | undefined): string {
+    if (!phone) {
+      return 'unknown';
+    }
+
+    const trimmed = phone.trim();
+    if (trimmed === '') {
+      return 'unknown';
+    }
+
+    const hasPlus = trimmed.startsWith('+');
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length === 0) {
+      return 'unknown';
+    }
+
+    const visibleCount = Math.min(4, digits.length);
+    const visible = digits.slice(-visibleCount);
+    const maskedPrefix = '*'.repeat(Math.max(digits.length - visibleCount, 0));
+    const maskedDigits = `${maskedPrefix}${visible}`;
+
+    return hasPlus ? `+${maskedDigits}` : maskedDigits;
   }
 
   private normalizeWebhookBaseUrl(raw?: string): string {

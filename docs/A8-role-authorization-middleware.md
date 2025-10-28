@@ -145,7 +145,7 @@ The system supports three user roles:
 - **Access Level:** Can view and document visits for assigned clients
 - **Zone Restriction:** Limited to their assigned zone
 
-### 2. coordinator
+### 2. Coordinator
 
 - **Description:** Zone managers who handle alerts and oversight
 - **Access Level:** Can view all data in their zone, manage care plans, handle alerts

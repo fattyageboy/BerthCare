@@ -29,7 +29,8 @@ Successfully restored and initialized the BerthCare monorepo with base scaffold 
 
 ✅ **.gitignore**
 
-- Node.js dependencies (node_modules, pnpm logs)
+- Node.js dependencies (node_modules)
+- Debug logs (npm-debug.log, pnpm-debug.log)
 - Environment variables (.env files)
 - Build outputs (dist, build)
 - React Native specific (Expo, iOS, Android)

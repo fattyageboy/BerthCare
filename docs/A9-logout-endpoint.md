@@ -98,8 +98,13 @@ Authorization: Bearer <access_token>
 #### 1. Access Token Blacklisting (Redis)
 
 - Extract access token from Authorization header
+- Decode token to read the `exp` (expiration) claim
+- Calculate TTL: `ttlSeconds = Math.ceil(decoded.exp - Date.now()/1000)`
+- Validate `ttlSeconds > 0` (token not already expired)
 - Add token to Redis blacklist with key: `token:blacklist:<token>`
-- Set TTL to 3600 seconds (1 hour) to match access token expiry
+- Set TTL to calculated `ttlSeconds` to match token's actual expiry
+- If `exp` is missing or `ttlSeconds <= 0`, skip blacklisting (token already invalid)
+- Log errors if token decoding fails or TTL calculation is invalid
 - Blacklisted tokens are checked by `authenticateJWT` middleware
 
 #### 2. Refresh Token Revocation (PostgreSQL)
@@ -134,8 +139,15 @@ WHERE user_id = $1
 **Blacklist access token**:
 
 ```typescript
-const blacklistKey = `token:blacklist:${token}`;
-await redisClient.setEx(blacklistKey, 3600, '1');
+// Decode token to get expiration claim
+const decoded = verifyToken(token);
+const ttlSeconds = Math.ceil(decoded.exp - Date.now() / 1000);
+
+// Only blacklist if token hasn't expired yet
+if (ttlSeconds > 0) {
+  const blacklistKey = `token:blacklist:${token}`;
+  await redisClient.setEx(blacklistKey, ttlSeconds, '1');
+}
 ```
 
 ## Testing Requirements
@@ -146,7 +158,7 @@ await redisClient.setEx(blacklistKey, 3600, '1');
    - Logout with valid token returns 200
    - Access token is added to Redis blacklist
    - Refresh token is revoked in database
-   - Blacklist TTL is set correctly (3600 seconds)
+   - Blacklist TTL is derived from token's exp claim (matches remaining token lifetime)
 
 2. **Error Cases**:
    - Missing Authorization header returns 401

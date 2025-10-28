@@ -578,9 +578,21 @@ In case of complete ca-central-1 region failure:
    # Update region in terraform.tfvars
    aws_region = "us-east-1"
 
-   # Apply in new region without interactive approval
-   terraform apply -auto-approve
+   # Generate and save the plan for review
+   terraform plan -out=dr.plan
+
+   # Archive the plan artifact (in CI, store as build artifact)
+   # Review the plan output carefully before proceeding
+
+   # IMPORTANT: Manual approval gate required here
+   # In CI: Add manual approval step to review plan changes
+   # Locally: Review plan output above before continuing
+
+   # Apply the reviewed and approved plan
+   terraform apply dr.plan
    ```
+
+   **Note:** Never use `-auto-approve` for disaster recovery deployments. Always generate a plan, review the changes, and require explicit approval before applying infrastructure changes in a new region.
 
 ---
 

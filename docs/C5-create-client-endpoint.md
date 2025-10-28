@@ -74,7 +74,7 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 
 **Validations:**
 
-- Required fields: firstName, lastName, dateOfBirth, address, emergency contact details
+- Required fields: firstName, lastName, dateOfBirth, address, emergencyContactName, emergencyContactPhone, emergencyContactRelationship
 - String length limits (firstName: 100, lastName: 100, address: unlimited, etc.)
 - Date format: ISO 8601 (YYYY-MM-DD)
 - Date range: Not in future, not more than 120 years ago

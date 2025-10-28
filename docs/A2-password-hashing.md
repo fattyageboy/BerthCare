@@ -54,7 +54,7 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 
 ## Test Coverage
 
-### Test Suite: 31 Tests, All Passing ✅
+### Test Suite: 28 Tests, All Passing ✅
 
 **Hash Generation Tests (8 tests)**
 

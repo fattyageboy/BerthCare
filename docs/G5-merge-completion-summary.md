@@ -95,11 +95,15 @@ Successfully merged the complete authentication system and backend scaffold into
 
 ## Known Issues & Future Work
 
-### Test Isolation (Non-blocking)
+### Test Isolation (Blocking for Production)
 
-- Some tests fail when run in parallel due to shared Redis/PostgreSQL state
-- **Workaround**: CI configured to run with `--maxWorkers=1`
-- **Future Fix**: Use separate Redis databases per test suite or mock Redis
+- The following suites fail when run in parallel because they share Redis/PostgreSQL state:  
+  - `apps/backend/tests/services.alert-escalation.test.ts`  
+  - `apps/backend/tests/routes.alerts.test.ts`  
+  - `apps/backend/tests/routes.webhooks.test.ts`  
+  - `apps/backend/tests/utils.redis-rate-limiter.test.ts`
+- **Current Workaround**: CI pins Jest to `--maxWorkers=1` to avoid cross-test interference. This increases runtime and masks isolation defects.
+- **Required Remediation**: Provide isolated Redis/Postgres instances (per test or via test containers) or refactor the suites to mock external state. Production readiness requires demonstrating the full test suite passing with default parallel workers.
 
 ### Mobile App Tests
 
@@ -162,15 +166,15 @@ pnpm run test
 - ✅ Docker images configured
 - ✅ Terraform modules prepared
 - ✅ Monitoring and logging setup
-- ✅ Security hardening complete
-- ⏳ Load testing (pending)
-- ⏳ Penetration testing (pending)
+- ⚠️ Security hardening in progress (penetration testing not yet executed)
+- ⏳ Load testing (pending; requires isolated performance environment)
+- ⏳ Automated fault-injection drills (pending)
 
 ## Next Steps
 
 ### Immediate (Sprint 2)
 
-1. Fix test isolation issues
+1. Fix test isolation issues and remove the `--maxWorkers=1` CI override
 2. Add integration tests for full auth flow
 3. Implement password reset functionality
 4. Add email verification
@@ -188,6 +192,13 @@ pnpm run test
 2. Single sign-on (SSO)
 3. Advanced threat detection
 4. Compliance auditing (SOC 2, HIPAA)
+
+### Remediation Owners & Timelines
+
+- **Test isolation & CI stability** — Owner: Backend Platform Team — Target: Sprint 2 (March 2025)
+- **Load testing & capacity planning** — Owner: QA Performance Team — Target: Sprint 3 (April 2025)
+- **Penetration testing & security sign-off** — Owner: Security Team — Target: Sprint 3 (April 2025)
+- **Acceptance Criteria for Production** — All suites pass in parallel without shared-state flakes; penetration and load tests signed off; security findings triaged and resolved within SLA.
 
 ## Metrics
 
@@ -213,11 +224,11 @@ pnpm run test
 
 ## Conclusion
 
-The authentication system is production-ready with comprehensive security measures, extensive test coverage, and complete documentation. The merge to main establishes a solid foundation for the BerthCare platform.
+The authentication system is feature-complete but remains in **pre-production / QA** until blocking items are resolved. Outstanding work includes stabilizing parallel test execution, validating performance under load, and completing penetration testing. Production deployment approval requires the acceptance criteria enumerated above.
 
-**Status**: ✅ Ready for production deployment  
-**Confidence Level**: High  
-**Risk Assessment**: Low
+**Status**: 🚧 Pre-production / QA  
+**Confidence Level**: Moderate (pending remediation)  
+**Risk Assessment**: Medium until isolation, performance, and security gaps close
 
 ---
 

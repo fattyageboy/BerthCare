@@ -187,17 +187,17 @@ router.get('/profile', authenticateJWT(redisClient), (req: AuthenticatedRequest,
 token:blacklist:<jwt_token>
 ```
 
-**TTL:** 3600 seconds (1 hour) - matches access token expiry
+**TTL:** Derived from token's exp claim - matches token's actual remaining lifetime
 
 ### Blacklist Function
 
 ```typescript
 import { blacklistToken } from './middleware/auth';
 
-// Blacklist a token (default 1 hour expiry)
+// Blacklist a token (TTL derived from token's exp claim)
 await blacklistToken(redisClient, token);
 
-// Blacklist with custom expiry
+// Blacklist with custom expiry (optional override)
 await blacklistToken(redisClient, token, 7200); // 2 hours
 ```
 

@@ -185,7 +185,7 @@ describe('AlertEscalationService (integration)', () => {
     return id;
   }
 
-  it('sends reminder SMS to coordinator after 5 minutes with no answer', async () => {
+  it('sends reminder SMS to coordinator after 6 minutes with no answer', async () => {
     const caregiverId = await insertUser({
       email: generateTestEmail('caregiver'),
       role: 'caregiver',
@@ -235,7 +235,7 @@ describe('AlertEscalationService (integration)', () => {
     expect(alertResult.rows[0].escalated_at).toBeNull();
   });
 
-  it('escalates to backup coordinator after 10 minutes and notifies caregiver', async () => {
+  it('escalates to backup coordinator after 11 minutes and notifies caregiver', async () => {
     const caregiverId = await insertUser({
       email: generateTestEmail('caregiver2'),
       role: 'caregiver',
@@ -298,10 +298,11 @@ describe('AlertEscalationService (integration)', () => {
       { alertId }
     );
 
+    expect(smsMock.sendSMS).toHaveBeenCalledTimes(1);
     expect(smsMock.sendSMS).toHaveBeenCalledWith(
       '+15550004444',
       expect.stringContaining('Escalated alert'),
-      backupCoordinatorUserId
+      caregiverId
     );
 
     const alertResult = await pgPool.query(
@@ -313,5 +314,75 @@ describe('AlertEscalationService (integration)', () => {
     expect(alertResult.rows[0].escalated_at).not.toBeNull();
     expect(alertResult.rows[0].coordinator_id).toBe(backupCoordinatorUserId);
     expect(alertResult.rows[0].call_sid).toBe('CA-backup');
+  });
+
+  it('does not persist call SID when voice service omits it', async () => {
+    const caregiverId = await insertUser({
+      email: generateTestEmail('caregiver-missing-sid'),
+      role: 'caregiver',
+      phone: '+15550007777',
+      firstName: 'Jamie',
+      lastName: 'Fox',
+    });
+
+    const primaryCoordinatorUserId = await insertUser({
+      email: generateTestEmail('primary-missing-sid'),
+      role: 'coordinator',
+      phone: '+15550008888',
+      firstName: 'Taylor',
+      lastName: 'Quinn',
+    });
+
+    const backupCoordinatorUserId = await insertUser({
+      email: generateTestEmail('backup-missing-sid'),
+      role: 'coordinator',
+      phone: '+15550009999',
+      firstName: 'Morgan',
+      lastName: 'Reed',
+    });
+
+    const backupCoordinatorId = await insertCoordinator({
+      userId: backupCoordinatorUserId,
+      phone: '+15550009999',
+    });
+
+    await insertCoordinator({
+      userId: primaryCoordinatorUserId,
+      phone: '+15550008888',
+      backupCoordinatorId,
+    });
+
+    const clientId = await insertClient({ firstName: 'Phil', lastName: 'Nash' });
+
+    const alertId = await insertAlert({
+      clientId,
+      caregiverId,
+      coordinatorUserId: primaryCoordinatorUserId,
+      status: 'no_answer',
+      initiatedAt: new Date(baseNow.getTime() - 11 * 60 * 1000),
+    });
+
+    voiceMock.initiateCall.mockResolvedValueOnce({
+      callSid: '',
+      status: 'queued',
+      to: '+15550009999',
+      from: '+15550000000',
+      initiatedAt: baseNow,
+    });
+
+    await service().run();
+
+    expect(voiceMock.initiateCall).toHaveBeenCalledTimes(1);
+    expect(smsMock.sendSMS).not.toHaveBeenCalled();
+
+    const alertResult = await pgPool.query(
+      'SELECT status, escalated_at, coordinator_id, call_sid FROM care_alerts WHERE id = $1',
+      [alertId]
+    );
+
+    expect(alertResult.rows[0].status).toBe('escalated');
+    expect(alertResult.rows[0].escalated_at).not.toBeNull();
+    expect(alertResult.rows[0].coordinator_id).toBe(backupCoordinatorUserId);
+    expect(alertResult.rows[0].call_sid).toBeNull();
   });
 });

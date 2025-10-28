@@ -176,17 +176,14 @@ Authenticate user and issue tokens.
   "data": {
     "accessToken": "jwt-token",
     "refreshToken": "jwt-token",
-     "data": {
-       "accessToken": "jwt-token",
-       "refreshToken": "jwt-token",
-       "user": {
-         "id": "uuid",
-         "email": "user@example.com",
-         "firstName": "John",
-         "lastName": "Doe",
-         "role": "caregiver",
-         "zoneId": "uuid"
-       }
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "firstName": "John",
+      "lastName": "Doe",
+      "role": "caregiver",
+      "zoneId": "uuid"
+    }
   }
 }
 ```

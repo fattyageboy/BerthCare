@@ -12,7 +12,7 @@
 
 import crypto from 'crypto';
 
-import express, { Express } from 'express';
+import express, { Express, json } from 'express';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 import request from 'supertest';
@@ -39,7 +39,7 @@ describe('POST /v1/auth/logout', () => {
 
     // Create Express app
     app = express();
-    app.use(express.json());
+    app.use(json());
 
     // Mount auth routes
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -163,12 +163,14 @@ describe('POST /v1/auth/logout', () => {
           .set('Authorization', `Bearer ${token}`)
           .expect(200);
 
-        // Check TTL (should be ~3600 seconds = 1 hour)
+        // Check TTL (should match token's actual expiration, ~3600 seconds = 1 hour)
+        // TTL is derived from token's exp claim, so it should be slightly less than 3600
         const blacklistKey = `token:blacklist:${token}`;
         const ttl = await redisClient.ttl(blacklistKey);
 
-        expect(ttl).toBeGreaterThan(3500);
-        expect(ttl).toBeLessThanOrEqual(3600);
+        // Allow for a few seconds of processing time
+        expect(ttl).toBeGreaterThan(3590); // At least 59m 50s remaining
+        expect(ttl).toBeLessThanOrEqual(3600); // At most 1 hour
       } finally {
         client.release();
       }

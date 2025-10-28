@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
 
+import { env } from '../config/env';
 import { logInfo, logError } from '../config/logger';
 import { getWebhookRateLimiter } from '../middleware/webhook-rate-limit';
 import { TwilioSMSService } from '../services/twilio-sms.service';
@@ -28,6 +29,41 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
     res.status(200).json({ status: 'ok' });
   });
 
+  const buildTrustedWebhookUrl = (req: Request): string => {
+    const baseUrl = env.twilio.webhookBaseUrl?.trim();
+
+    if (!baseUrl) {
+      throw new Error('Twilio webhook base URL not configured');
+    }
+
+    try {
+      return new URL(req.originalUrl, baseUrl).toString();
+    } catch (error) {
+      throw new Error(
+        `Failed to construct trusted webhook URL: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  };
+
+  const sanitizeWebhookBody = (body: Record<string, unknown>): Record<string, unknown> => {
+    const redactedFields = ['From', 'To', 'Called', 'Caller', 'PhoneNumber'];
+    const sanitized: Record<string, unknown> = { ...body };
+
+    for (const field of redactedFields) {
+      if (sanitized[field] !== undefined) {
+        sanitized[field] = '[REDACTED]';
+      }
+    }
+
+    return sanitized;
+  };
+
+  const sanitizePhone = (phone: string | undefined): string => {
+    if (!phone) return '[EMPTY]';
+    // Redact phone number for PII protection
+    return '[REDACTED]';
+  };
+
   /**
    * POST /webhooks/twilio/voice/status
    * Handle Twilio voice call status updates
@@ -42,16 +78,16 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
 
       // Validate webhook signature
       const signature = req.headers['x-twilio-signature'] as string;
-      const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+      const url = buildTrustedWebhookUrl(req);
       const params = req.body;
 
       if (!signature) {
         logError('Missing Twilio webhook signature', undefined, {
           url,
-          body: req.body,
+          body: sanitizeWebhookBody(req.body),
           alertId,
         });
-        return res.status(401).json({ error: 'Missing signature' });
+        return res.status(200).json({ error: 'Missing signature' });
       }
 
       const isValid = await twilioVoiceService.validateWebhookSignature(signature, url, params);
@@ -59,14 +95,22 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
       if (!isValid) {
         logError('Invalid Twilio webhook signature', undefined, {
           url,
-          signature,
+          hasSignature: true,
           alertId,
         });
-        return res.status(401).json({ error: 'Invalid signature' });
+        return res.status(200).json({ error: 'Invalid signature' });
       }
 
       // Process webhook
       const event = twilioVoiceService.processCallStatusWebhook(req.body);
+
+      if (!event.callSid || !event.status) {
+        logError('Missing required fields in Twilio webhook', undefined, {
+          event,
+          alertId,
+        });
+        return res.status(200).send('OK');
+      }
 
       // Update care_alerts table based on call status
       const callSid = event.callSid;
@@ -110,20 +154,51 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
       }
 
       if (alertStatus) {
-        // Update alert by call_sid to ensure we update the correct alert
-        // This prevents race conditions when multiple alerts are active
-        const updateQuery = timestampField
-          ? `UPDATE care_alerts 
-             SET status = $1, ${timestampField} = NOW(), updated_at = NOW()
-             WHERE call_sid = $2 AND deleted_at IS NULL`
-          : `UPDATE care_alerts 
-             SET status = $1, updated_at = NOW()
-             WHERE call_sid = $2 AND deleted_at IS NULL`;
+        const allowedTransitions: Record<string, string[]> = {
+          pending: [
+            'pending',
+            'initiated',
+            'ringing',
+            'answered',
+            'no_answer',
+            'cancelled',
+            'resolved',
+            'failed',
+            'unknown',
+          ],
+          initiated: [
+            'initiated',
+            'ringing',
+            'answered',
+            'no_answer',
+            'cancelled',
+            'resolved',
+            'failed',
+            'unknown',
+          ],
+          ringing: [
+            'ringing',
+            'answered',
+            'no_answer',
+            'cancelled',
+            'resolved',
+            'failed',
+            'unknown',
+          ],
+          answered: ['answered', 'resolved', 'cancelled', 'no_answer', 'unknown'],
+          no_answer: ['no_answer', 'resolved', 'cancelled', 'unknown'],
+          cancelled: ['cancelled'],
+          resolved: ['resolved'],
+          failed: ['failed', 'cancelled', 'resolved'],
+          unknown: ['unknown', 'answered', 'no_answer', 'cancelled', 'resolved'],
+        };
 
-        const result = await pgPool.query(updateQuery, [alertStatus, callSid]);
+        const currentStatusResult = await pgPool.query(
+          `SELECT status FROM care_alerts WHERE call_sid = $1 AND deleted_at IS NULL`,
+          [callSid]
+        );
 
-        if (result.rowCount === 0) {
-          // No matching alert found - log warning but don't fail
+        if (currentStatusResult.rowCount === 0) {
           logError('No matching care alert found for Twilio webhook', undefined, {
             callSid,
             alertId,
@@ -131,11 +206,50 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
             alertStatus,
             message: 'Webhook received for unknown call_sid',
           });
+          return res.status(200).send('OK');
+        }
+
+        const currentStatus: string = currentStatusResult.rows[0].status;
+        const allowedNextStatuses = allowedTransitions[currentStatus] ?? [];
+
+        if (!allowedNextStatuses.includes(alertStatus)) {
+          logError('Invalid care alert status transition from Twilio webhook', undefined, {
+            callSid,
+            alertId,
+            currentStatus,
+            attemptedStatus: alertStatus,
+          });
+          return res.status(200).send('OK');
+        }
+
+        const updateQuery = timestampField
+          ? `UPDATE care_alerts 
+             SET status = $1, ${timestampField} = NOW(), updated_at = NOW()
+             WHERE call_sid = $2 AND status = $3 AND deleted_at IS NULL`
+          : `UPDATE care_alerts 
+             SET status = $1, updated_at = NOW()
+             WHERE call_sid = $2 AND status = $3 AND deleted_at IS NULL`;
+
+        const result = await pgPool.query(updateQuery, [alertStatus, callSid, currentStatus]);
+
+        if (result.rowCount === 0) {
+          logError(
+            'Failed to update care alert - status may have changed concurrently',
+            undefined,
+            {
+              callSid,
+              alertId,
+              expectedStatus: currentStatus,
+              attemptedStatus: alertStatus,
+              message: 'Status transition rejected due to concurrent update or status mismatch',
+            }
+          );
         } else {
           logInfo('Updated care alert from Twilio webhook', {
             callSid,
             alertId,
             status,
+            previousStatus: currentStatus,
             alertStatus,
             rowsUpdated: result.rowCount,
           });
@@ -147,7 +261,7 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
     } catch (error) {
       const alertId = req.query.alertId as string | undefined;
       logError('Error processing Twilio webhook', error instanceof Error ? error : undefined, {
-        body: req.body,
+        body: sanitizeWebhookBody(req.body),
         alertId,
       });
 
@@ -164,15 +278,15 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
     try {
       // Validate webhook signature
       const signature = req.headers['x-twilio-signature'] as string;
-      const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+      const url = buildTrustedWebhookUrl(req);
       const params = req.body;
 
       if (!signature) {
         logError('Missing Twilio webhook signature', undefined, {
           url,
-          body: req.body,
+          body: sanitizeWebhookBody(req.body),
         });
-        return res.status(401).json({ error: 'Missing signature' });
+        return res.status(200).json({ error: 'Missing signature' });
       }
 
       const isValid = await twilioSMSService.validateWebhookSignature(signature, url, params);
@@ -180,9 +294,9 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
       if (!isValid) {
         logError('Invalid Twilio webhook signature', undefined, {
           url,
-          signature,
+          hasSignature: true,
         });
-        return res.status(401).json({ error: 'Invalid signature' });
+        return res.status(200).json({ error: 'Invalid signature' });
       }
 
       // Process webhook
@@ -191,14 +305,14 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
       logInfo('Processed SMS status webhook', {
         messageSid: event.messageSid,
         status: event.status,
-        to: event.to,
+        to: sanitizePhone(event.to),
       });
 
       // Respond to Twilio (must respond with 200)
       return res.status(200).send('OK');
     } catch (error) {
       logError('Error processing Twilio SMS webhook', error instanceof Error ? error : undefined, {
-        body: req.body,
+        body: sanitizeWebhookBody(req.body),
       });
 
       // Still respond with 200 to prevent Twilio retries

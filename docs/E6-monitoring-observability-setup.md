@@ -63,6 +63,12 @@ Access: https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashb
 - `/aws/ecs/staging/berthcare-api` - API container logs (30-day retention)
 - `/berthcare/staging/application` - Application logs (30-day retention)
 
+**Webhook IP Logging Controls**
+
+- `LOG_WEBHOOK_CLIENT_IP` (default: `false`) keeps full client IPs out of logs unless explicitly required for a security incident investigation. Leave disabled for routine operations.
+- `WEBHOOK_IP_HASH_SECRET` enables deterministic SHA-256 hashing when PII logging is off, allowing correlation without storing the raw address. When unset, the logger redacts the final octet (`/24`) for IPv4 and truncates IPv6 to `/64`.
+- Update the privacy policy/retention register whenever the flag is enabled so data residency and deletion expectations remain accurate.
+
 ### Metric Alarms
 
 | Alarm Name                               | Metric             | Threshold        | Evaluation | Severity |
@@ -82,7 +88,7 @@ Alerts are sent via SNS topic `berthcare-alerts-staging` to configured email add
 
 ```
 ALARM: berthcare-api-error-rate-staging in ca-central-1
-Description: API 5XX error rate exceeds 10% over 10 minutes
+Description: API 5XX error count exceeds 10 over 5 minutes
 State Change: OK -> ALARM
 Timestamp: 2025-10-10T14:30:00.000Z
 ```

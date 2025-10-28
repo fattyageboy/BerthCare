@@ -15,18 +15,21 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": [
-          "expo export --platform ios --output-dir dist/ios",
-          "expo export --platform android --output-dir dist/android"
-        ],
-        "cwd": "apps/mobile",
-        "parallel": false
+        "command": "echo 'TODO [2025-05-01]: Implement mobile build pipeline. Failing to avoid false-positive CI.' && exit 1",
+        "cwd": "apps/mobile"
       }
     },
     "lint": {
-      "executor": "nx:run-commands",
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
       "options": {
-        "command": "echo 'Mobile app has no source files yet - skipping lint'"
+        "lintFilePatterns": [
+          "apps/mobile/**/*.ts",
+          "apps/mobile/**/*.tsx",
+          "apps/mobile/**/*.js",
+          "apps/mobile/**/*.jsx"
+        ],
+        "maxWarnings": 0
       }
     },
     "test": {
@@ -36,5 +39,8 @@
         "cwd": "apps/mobile"
       }
     }
-  }
+  },
+  "ciChecklist": [
+    "TODO[lint-mobile]: Once apps/mobile/src contains real source files, restore/verify the ESLint setup for this project and remove this reminder."
+  ]
 }

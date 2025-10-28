@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 
-import { logDebug, logError, logInfo } from '../config/logger';
+import { logDebug, logError, logInfo, logWarn } from '../config/logger';
 
 import { SMSResult, TwilioSMSService } from './twilio-sms.service';
 import { CallResult, InitiateCallOptions, TwilioVoiceService } from './twilio-voice.service';
@@ -92,6 +92,21 @@ export class AlertEscalationService {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+
+    const pollIntervalMs = 100;
+    const timeoutMs = 10_000;
+    const startTime = Date.now();
+
+    while (this.isRunning && Date.now() - startTime < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+
+    if (this.isRunning) {
+      logWarn('Alert escalation service stop timed out waiting for in-flight run to finish', {
+        timeoutMs,
+      });
+    } else {
       logInfo('Alert escalation service stopped');
     }
   }
@@ -171,6 +186,7 @@ export class AlertEscalationService {
         }
 
         try {
+          // Send SMS first before updating status
           const message = this.buildCoordinatorReminderMessage(alert);
           await this.getSmsService().sendSMS(
             alert.coordinator_phone,
@@ -178,7 +194,8 @@ export class AlertEscalationService {
             alert.coordinator_user_id
           );
 
-          const updateResult = await this.pgPool.query(
+          // Only update status after successful SMS delivery
+          const updateResult = await client.query(
             `
               UPDATE care_alerts
               SET status = 'no_answer',
@@ -191,13 +208,13 @@ export class AlertEscalationService {
           );
 
           if (updateResult.rowCount === 0) {
-            logDebug('Coordinator reminder skipped due to status change', {
+            logDebug('Coordinator reminder status update skipped due to status change', {
               alertId: alert.id,
             });
             continue;
           }
 
-          logInfo('Coordinator reminder SMS sent', {
+          logInfo('Coordinator reminder SMS sent and status updated', {
             alertId: alert.id,
             coordinatorId: alert.coordinator_user_id,
           });
@@ -210,6 +227,7 @@ export class AlertEscalationService {
               coordinatorId: alert.coordinator_user_id,
             }
           );
+          // Alert remains in 'initiated' status and will be retried
         }
       }
     } finally {
@@ -251,7 +269,7 @@ export class AlertEscalationService {
         AND ca.initiated_at <= $1
         AND (
           ca.status = 'no_answer'
-          OR (ca.status = 'initiated' AND ca.initiated_at <= $1)
+          OR ca.status = 'initiated'
         )
     `;
 
@@ -285,37 +303,81 @@ export class AlertEscalationService {
         }
 
         try {
-          const callResult = await this.getVoiceService().initiateCall(
-            alert.backup_coordinator_phone,
-            alert.voice_message_url,
-            { alertId: alert.id }
-          );
+          await client.query('BEGIN');
 
-          const updateResult = await this.pgPool.query(
-            `
-              UPDATE care_alerts
-              SET status = 'escalated',
-                  escalated_at = NOW(),
-                  updated_at = NOW(),
-                  coordinator_id = $2,
-                  call_sid = COALESCE($3, call_sid)
-              WHERE id = $1
-                AND escalated_at IS NULL
-            `,
-            [alert.id, alert.backup_coordinator_user_id, callResult.callSid]
-          );
+          try {
+            const claimResult = await client.query(
+              `
+                UPDATE care_alerts
+                SET status = 'escalated',
+                    escalated_at = NOW(),
+                    updated_at = NOW(),
+                    coordinator_id = $2
+                WHERE id = $1
+                  AND escalated_at IS NULL
+                  AND (status = 'initiated' OR status = 'no_answer')
+                RETURNING id
+              `,
+              [alert.id, alert.backup_coordinator_user_id]
+            );
 
-          if (updateResult.rowCount === 0) {
-            logDebug('Escalation skipped due to status change', {
+            if (claimResult.rowCount === 0) {
+              await client.query('ROLLBACK');
+              logDebug('Escalation skipped due to status change', {
+                alertId: alert.id,
+              });
+              continue;
+            }
+
+            // Initiate voice call before committing transaction
+            const callResult = await this.getVoiceService().initiateCall(
+              alert.backup_coordinator_phone,
+              alert.voice_message_url,
+              { alertId: alert.id }
+            );
+
+            if (!callResult?.callSid) {
+              await client.query('ROLLBACK');
+              logError('Voice service did not return a call SID for escalated alert', undefined, {
+                alertId: alert.id,
+                backupCoordinatorId: alert.backup_coordinator_user_id,
+              });
+              continue;
+            }
+
+            // Update alert with call SID
+            await client.query(
+              `
+                UPDATE care_alerts
+                SET call_sid = $2,
+                    updated_at = NOW()
+                WHERE id = $1
+              `,
+              [alert.id, callResult.callSid]
+            );
+
+            // Only commit after successful call initiation
+            await client.query('COMMIT');
+          } catch (error) {
+            await client.query('ROLLBACK').catch(() => undefined);
+            logError('Failed to escalate alert', error instanceof Error ? error : undefined, {
               alertId: alert.id,
+              backupCoordinatorId: alert.backup_coordinator_user_id,
             });
             continue;
           }
 
+          // Retrieve the call SID for logging
+          const callSidResult = await client.query(
+            'SELECT call_sid FROM care_alerts WHERE id = $1',
+            [alert.id]
+          );
+          const callSid = callSidResult.rows[0]?.call_sid;
+
           logInfo('Alert escalated to backup coordinator', {
             alertId: alert.id,
             backupCoordinatorId: alert.backup_coordinator_user_id,
-            callSid: callResult.callSid,
+            callSid,
           });
 
           if (alert.caregiver_phone) {

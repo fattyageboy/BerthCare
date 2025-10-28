@@ -190,7 +190,7 @@ async function migrateDown(migrationNumber: string): Promise<void> {
   }
 
   // Define ordered list of all migrations
-  const orderedMigrations = ['000', '001', '002', '003', '008', '009', '010'];
+  const orderedMigrations = ['000', '001', '002', '003', '008', '009', '010', '011'];
 
   // Check for dependent migrations (migrations applied after the target)
   const targetIndex = orderedMigrations.indexOf(migrationNumber);
@@ -221,6 +221,8 @@ async function migrateDown(migrationNumber: string): Promise<void> {
     '003': '003_create_care_plans_rollback.sql',
     '008': '008_create_care_alerts_rollback.sql',
     '009': '009_create_coordinators_rollback.sql',
+    '010': '010_add_call_sid_to_care_alerts_rollback.sql',
+    '011': '011_add_phone_to_users_rollback.sql',
   };
 
   const filename = rollbackFiles[migrationNumber];

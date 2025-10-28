@@ -15,8 +15,8 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@berthcare/shared": ["libs/shared/src/index.ts"],
-      "@berthcare/shared/*": ["libs/shared/src/*"]
+      "@berthcare/shared": ["dist/libs/shared/src/index.d.ts", "libs/shared/src/index.ts"],
+      "@berthcare/shared/*": ["dist/libs/shared/src/*", "libs/shared/src/*"]
     },
     "strict": true,
     "esModuleInterop": true,

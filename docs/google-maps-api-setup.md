@@ -119,21 +119,23 @@ curl -X POST http://localhost:3000/v1/clients \
 
 Google Maps provides a generous free tier:
 
-- **$200 USD credit per month**
-- **40,000 geocoding requests per month** (at $5 per 1,000 requests)
-- Credit resets monthly
+- **10,000 Geocoding API requests free each month**
+- **$5 per 1,000 requests beyond the free allocation**
+- Automatic volume discounts apply as usage grows
+
+_Updated March 1, 2025: Google adjusted free Geocoding API caps and expanded automatic volume discounts._
 
 ### Cost Calculation
 
 **Geocoding API Pricing:**
 
 - $5.00 per 1,000 requests
-- First $200 USD free each month
+- First 10,000 requests free each month, with automatic discounts above baseline usage
 
 **Example Usage:**
 
 - 100 clients created per month = 100 requests
-- Cost: $0.50 (covered by free tier)
+- Cost: $0 (well within the free monthly allocation)
 
 **With Caching:**
 

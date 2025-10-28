@@ -20,7 +20,8 @@
  * - Validate JWT token generation
  */
 
-import express from 'express';
+import express, { json } from 'express';
+import type { Application } from 'express';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 import request from 'supertest';
@@ -31,7 +32,7 @@ import { createAuthRoutes } from '../src/routes/auth.routes';
 import { setupTestConnections, teardownTestConnections } from './test-helpers';
 
 describe('POST /v1/auth/register', () => {
-  let app: express.Application;
+  let app: Application;
   let pgPool: Pool;
   let redisClient: ReturnType<typeof createClient>;
 
@@ -44,7 +45,7 @@ describe('POST /v1/auth/register', () => {
 
     // Create Express app with auth routes
     app = express();
-    app.use(express.json());
+    app.use(json());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     app.use('/v1/auth', createAuthRoutes(pgPool, redisClient as any));
   });

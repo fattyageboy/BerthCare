@@ -8,7 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import type { PoolConfig } from 'pg';
 
 type Optional<T> = T | undefined | null;
@@ -108,6 +108,8 @@ export const env = {
   },
   logging: {
     cloudwatchLogGroup: process.env.CLOUDWATCH_LOG_GROUP,
+    logWebhookClientIp: toBoolean(process.env.LOG_WEBHOOK_CLIENT_IP, false),
+    webhookIpHashSecret: process.env.WEBHOOK_IP_HASH_SECRET,
   },
   postgres: {
     url: process.env.DATABASE_URL,
@@ -133,6 +135,7 @@ export const env = {
     region: process.env.AWS_REGION || 'ca-central-1',
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+    sessionToken: process.env.AWS_SESSION_TOKEN,
     endpoint: process.env.AWS_ENDPOINT,
     buckets: {
       photos: process.env.S3_BUCKET_PHOTOS || 'berthcare-photos-dev',
@@ -160,6 +163,33 @@ export const env = {
     smsRateLimiterFailOpen: toBoolean(process.env.SMS_RATE_LIMITER_FAIL_OPEN, false),
   },
 };
+
+/**
+ * Validate webhook IP logging configuration
+ * Ensures WEBHOOK_IP_HASH_SECRET is provided when LOG_WEBHOOK_CLIENT_IP is enabled
+ */
+function validateWebhookIpConfig(): void {
+  const { logWebhookClientIp, webhookIpHashSecret } = env.logging;
+
+  // Skip validation in test environment
+  if (env.app.nodeEnv === 'test') {
+    return;
+  }
+
+  // If IP logging is enabled, hash secret must be provided
+  if (logWebhookClientIp && (!webhookIpHashSecret || webhookIpHashSecret.trim() === '')) {
+    throw new Error(
+      `WEBHOOK_IP_HASH_SECRET is required when LOG_WEBHOOK_CLIENT_IP is enabled. ` +
+        `Logging client IPs without hashing is insecure. ` +
+        `Either provide WEBHOOK_IP_HASH_SECRET or disable LOG_WEBHOOK_CLIENT_IP.`
+    );
+  }
+
+  if (logWebhookClientIp && env.app.nodeEnv === 'development') {
+    // eslint-disable-next-line no-console
+    console.log('✅ Webhook IP logging configured with hash secret');
+  }
+}
 
 /**
  * Validate Twilio configuration
@@ -234,6 +264,7 @@ function validateTwilioConfig(): void {
 }
 
 // Run validation on module load
+validateWebhookIpConfig();
 validateTwilioConfig();
 
 /**

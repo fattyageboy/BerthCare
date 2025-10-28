@@ -2,7 +2,8 @@
  * Webhook Routes Tests
  */
 
-import express, { Express } from 'express';
+import express, { Express, json, urlencoded } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
 
 import { createWebhookRoutes } from '../src/routes/webhooks.routes';
@@ -35,14 +36,14 @@ describe('Webhook Routes', () => {
 
     // Setup express app
     app = express();
-    app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
+    app.use(json());
+    app.use(urlencoded({ extended: true }));
 
     // Mock rate limiter to pass through
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { getWebhookRateLimiter } = require('../src/middleware/webhook-rate-limit');
-    getWebhookRateLimiter.mockResolvedValue(
-      (_req: express.Request, _res: express.Response, next: express.NextFunction) => next()
+    getWebhookRateLimiter.mockResolvedValue((_req: Request, _res: Response, next: NextFunction) =>
+      next()
     );
 
     // Create routes

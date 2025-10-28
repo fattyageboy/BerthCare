@@ -20,7 +20,8 @@
         "main": "apps/backend/src/main.ts",
         "tsConfig": "apps/backend/tsconfig.json",
         "assets": []
-      }
+      },
+      "dependsOn": ["shared:build"]
     },
     "lint": {
       "executor": "@nx/eslint:lint",

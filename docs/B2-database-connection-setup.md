@@ -358,8 +358,9 @@ $ pnpm run migrate:down 001
 **Required Environment Variables:**
 
 ```bash
-# Database Connection
-DATABASE_URL=postgresql://berthcare:berthcare@localhost:5432/berthcare
+# Database Connection (Primary)
+# DATABASE_URL is the primary connection mechanism used by the application
+DATABASE_URL=postgresql://berthcare:berthcare_password@localhost:5432/berthcare
 
 # Connection Pool Settings
 DB_POOL_MAX=10 # Maximum connections (default: 10, max: 20)
@@ -367,13 +368,17 @@ DB_POOL_MIN=2  # Minimum connections (default: 2)
 DB_IDLE_TIMEOUT_MS=30000    # Idle timeout in milliseconds
 DB_CONNECTION_TIMEOUT_MS=2000  # Connection timeout in milliseconds
 
-# Migration Settings (optional)
+# Migration Settings (Optional)
+# These discrete variables are only required when running the migration runner separately
+# If DATABASE_URL is set, these are not needed for the main application
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DB=berthcare
 POSTGRES_USER=berthcare
 POSTGRES_PASSWORD=berthcare_password
 ```
+
+**⚠️ Security Note:** These example credentials are for local development only and must never be used in production environments.
 
 **Docker Compose Configuration:**
 
@@ -383,7 +388,7 @@ postgres:
   environment:
     POSTGRES_DB: berthcare
     POSTGRES_USER: berthcare
-    POSTGRES_PASSWORD: berthcare
+    POSTGRES_PASSWORD: berthcare_password
   ports:
     - '5432:5432'
   volumes:
@@ -501,7 +506,7 @@ postgres:
 - SSL/TLS support ready (add `?sslmode=require` to DATABASE_URL)
 - Connection timeout prevents hanging connections
 
-🔒 **Production Requirements:**
+🚫 **Production Blockers (Not Yet Implemented):**
 
 - Enable SSL/TLS for all connections
 - Use AWS RDS IAM authentication
@@ -517,7 +522,7 @@ postgres:
 - Schema verification after migrations
 - No data migrations mixed with schema changes
 
-🔒 **Production Requirements:**
+🚫 **Production Blockers (Not Yet Implemented):**
 
 - Backup database before migrations
 - Test migrations on staging first
@@ -589,7 +594,9 @@ apps/backend/src/db/
 | Backend connects to local PostgreSQL     | ✅     | Verified in testing                        |
 | Migrations run successfully              | ✅     | Migration 001 tested and verified          |
 
-**All acceptance criteria met. B2 is complete and production-ready.**
+**All acceptance criteria met. B2 is complete and MVP-ready.**
+
+**⚠️ Production Blockers:** See Security Considerations section - SSL/TLS, RDS IAM auth, credential rotation, and IP restrictions must be implemented before production deployment.
 
 ## Next Steps
 
@@ -617,10 +624,11 @@ apps/backend/src/db/
 
 ## Notes
 
-- Connection pool is production-ready with optimal settings
+- Connection pool is MVP-ready with optimal settings
 - Migration framework is simple and maintainable
 - Health checks enable proper monitoring and load balancing
 - Read replica support can be added when needed
 - All database operations are logged for debugging
 - Schema verification ensures migration integrity
 - Rollback scripts enable safe recovery from failed migrations
+- **Production deployment requires implementing security blockers listed above**

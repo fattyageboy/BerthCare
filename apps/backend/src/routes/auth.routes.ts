@@ -33,7 +33,11 @@ import { Pool } from 'pg';
 import { createClient } from 'redis';
 
 import { logAuth, logError } from '../config/logger';
-import { createLoginRateLimiter, createRegistrationRateLimiter } from '../middleware/rate-limiter';
+import {
+  createLoginRateLimiter,
+  createRegistrationRateLimiter,
+  createRefreshRateLimiter,
+} from '../middleware/rate-limiter';
 import {
   validateLogin,
   validateRefreshToken,
@@ -212,144 +216,149 @@ export function createAuthRoutes(
    * - Clear error messages without leaking security details
    * - Audit trail for token refresh attempts
    */
-  router.post('/refresh', validateRefreshToken, async (req: Request, res: Response) => {
-    const client = await pgPool.connect();
+  router.post(
+    '/refresh',
+    createRefreshRateLimiter(redisClient),
+    validateRefreshToken,
+    async (req: Request, res: Response) => {
+      const client = await pgPool.connect();
 
-    try {
-      const { refreshToken } = req.body;
-
-      // Verify JWT signature and decode payload
       try {
-        verifyToken(refreshToken);
-      } catch (error) {
-        res.status(401).json({
-          error: {
-            code: 'INVALID_TOKEN',
-            message: 'Invalid or expired refresh token',
-            timestamp: new Date().toISOString(),
-            requestId: req.headers['x-request-id'] || 'unknown',
-          },
-        });
-        return;
-      }
+        const { refreshToken } = req.body;
 
-      // Hash the refresh token to compare with database
-      const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+        // Verify JWT signature and decode payload
+        try {
+          verifyToken(refreshToken);
+        } catch (error) {
+          res.status(401).json({
+            error: {
+              code: 'INVALID_TOKEN',
+              message: 'Invalid or expired refresh token',
+              timestamp: new Date().toISOString(),
+              requestId: req.headers['x-request-id'] || 'unknown',
+            },
+          });
+          return;
+        }
 
-      // Check if token exists in database and is not revoked
-      const tokenResult = await client.query(
-        `SELECT id, user_id, expires_at, revoked_at 
+        // Hash the refresh token to compare with database
+        const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
+        // Check if token exists in database and is not revoked
+        const tokenResult = await client.query(
+          `SELECT id, user_id, expires_at, revoked_at 
          FROM refresh_tokens 
          WHERE token_hash = $1`,
-        [tokenHash]
-      );
+          [tokenHash]
+        );
 
-      if (tokenResult.rows.length === 0) {
-        res.status(401).json({
+        if (tokenResult.rows.length === 0) {
+          res.status(401).json({
+            error: {
+              code: 'INVALID_TOKEN',
+              message: 'Invalid or expired refresh token',
+              timestamp: new Date().toISOString(),
+              requestId: req.headers['x-request-id'] || 'unknown',
+            },
+          });
+          return;
+        }
+
+        const tokenRecord = tokenResult.rows[0];
+
+        // Check if token has been revoked
+        if (tokenRecord.revoked_at) {
+          res.status(401).json({
+            error: {
+              code: 'TOKEN_REVOKED',
+              message: 'Refresh token has been revoked',
+              timestamp: new Date().toISOString(),
+              requestId: req.headers['x-request-id'] || 'unknown',
+            },
+          });
+          return;
+        }
+
+        // Check if token has expired
+        const now = new Date();
+        const expiresAt = new Date(tokenRecord.expires_at);
+        if (now > expiresAt) {
+          res.status(401).json({
+            error: {
+              code: 'TOKEN_EXPIRED',
+              message: 'Refresh token has expired',
+              timestamp: new Date().toISOString(),
+              requestId: req.headers['x-request-id'] || 'unknown',
+            },
+          });
+          return;
+        }
+
+        // Fetch user information
+        const userResult = await client.query(
+          'SELECT id, email, role, zone_id, is_active FROM users WHERE id = $1 AND deleted_at IS NULL',
+          [tokenRecord.user_id]
+        );
+
+        if (userResult.rows.length === 0) {
+          res.status(401).json({
+            error: {
+              code: 'USER_NOT_FOUND',
+              message: 'User account not found',
+              timestamp: new Date().toISOString(),
+              requestId: req.headers['x-request-id'] || 'unknown',
+            },
+          });
+          return;
+        }
+
+        const user = userResult.rows[0];
+
+        // Check if user account is active
+        if (!user.is_active) {
+          res.status(401).json({
+            error: {
+              code: 'ACCOUNT_DISABLED',
+              message: 'User account has been disabled',
+              timestamp: new Date().toISOString(),
+              requestId: req.headers['x-request-id'] || 'unknown',
+            },
+          });
+          return;
+        }
+
+        // Generate new access token
+        const accessToken = generateAccessToken({
+          userId: user.id,
+          role: user.role,
+          zoneId: user.zone_id,
+          email: user.email,
+        });
+
+        // Log successful token refresh
+        logAuth('refresh', user.id);
+
+        // Return new access token
+        res.status(200).json({
+          data: {
+            accessToken,
+          },
+        });
+      } catch (error) {
+        logError('Token refresh error', error instanceof Error ? error : new Error(String(error)));
+        res.status(500).json({
           error: {
-            code: 'INVALID_TOKEN',
-            message: 'Invalid or expired refresh token',
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'An error occurred during token refresh',
             timestamp: new Date().toISOString(),
             requestId: req.headers['x-request-id'] || 'unknown',
           },
         });
-        return;
+      } finally {
+        client.release();
       }
-
-      const tokenRecord = tokenResult.rows[0];
-
-      // Check if token has been revoked
-      if (tokenRecord.revoked_at) {
-        res.status(401).json({
-          error: {
-            code: 'TOKEN_REVOKED',
-            message: 'Refresh token has been revoked',
-            timestamp: new Date().toISOString(),
-            requestId: req.headers['x-request-id'] || 'unknown',
-          },
-        });
-        return;
-      }
-
-      // Check if token has expired
-      const now = new Date();
-      const expiresAt = new Date(tokenRecord.expires_at);
-      if (now > expiresAt) {
-        res.status(401).json({
-          error: {
-            code: 'TOKEN_EXPIRED',
-            message: 'Refresh token has expired',
-            timestamp: new Date().toISOString(),
-            requestId: req.headers['x-request-id'] || 'unknown',
-          },
-        });
-        return;
-      }
-
-      // Fetch user information
-      const userResult = await client.query(
-        'SELECT id, email, role, zone_id, is_active FROM users WHERE id = $1 AND deleted_at IS NULL',
-        [tokenRecord.user_id]
-      );
-
-      if (userResult.rows.length === 0) {
-        res.status(401).json({
-          error: {
-            code: 'USER_NOT_FOUND',
-            message: 'User account not found',
-            timestamp: new Date().toISOString(),
-            requestId: req.headers['x-request-id'] || 'unknown',
-          },
-        });
-        return;
-      }
-
-      const user = userResult.rows[0];
-
-      // Check if user account is active
-      if (!user.is_active) {
-        res.status(401).json({
-          error: {
-            code: 'ACCOUNT_DISABLED',
-            message: 'User account has been disabled',
-            timestamp: new Date().toISOString(),
-            requestId: req.headers['x-request-id'] || 'unknown',
-          },
-        });
-        return;
-      }
-
-      // Generate new access token
-      const accessToken = generateAccessToken({
-        userId: user.id,
-        role: user.role,
-        zoneId: user.zone_id,
-        email: user.email,
-      });
-
-      // Log successful token refresh
-      logAuth('refresh', user.id);
-
-      // Return new access token
-      res.status(200).json({
-        data: {
-          accessToken,
-        },
-      });
-    } catch (error) {
-      logError('Token refresh error', error instanceof Error ? error : new Error(String(error)));
-      res.status(500).json({
-        error: {
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'An error occurred during token refresh',
-          timestamp: new Date().toISOString(),
-          requestId: req.headers['x-request-id'] || 'unknown',
-        },
-      });
-    } finally {
-      client.release();
     }
-  });
+  );
 
   /**
    * POST /v1/auth/login
@@ -548,20 +557,43 @@ export function createAuthRoutes(
 
       const token = authHeader.split(' ')[1];
 
-      // Decode token to get user ID (for refresh token revocation)
+      // Decode token to get user ID (for refresh token revocation) and exp claim
       // We decode without verification to handle timing attacks
       let userId: string | null = null;
+      let ttlSeconds: number | null = null;
       try {
         const decoded = verifyToken(token);
         userId = decoded.userId;
+
+        // Calculate TTL from token expiration claim
+        if (decoded.exp) {
+          const expiresAt = decoded.exp;
+          const nowInSeconds = Math.floor(Date.now() / 1000);
+          ttlSeconds = Math.ceil(expiresAt - nowInSeconds);
+
+          // Validate TTL is positive
+          if (ttlSeconds <= 0) {
+            logError('Token already expired during logout', new Error(`TTL: ${ttlSeconds}s`));
+            ttlSeconds = null; // Don't blacklist expired tokens
+          }
+        } else {
+          logError('Token missing exp claim', new Error('No exp claim in JWT'));
+        }
       } catch (error) {
         // Token is invalid, but we still blacklist it (timing attack prevention)
         // We won't be able to revoke refresh tokens without userId
+        logError(
+          'Token decode failed during logout',
+          error instanceof Error ? error : new Error(String(error))
+        );
       }
 
-      // Blacklist the access token in Redis (1 hour expiry to match access token)
-      const blacklistKey = `token:blacklist:${token}`;
-      await redisClient.setEx(blacklistKey, 3600, '1');
+      // Blacklist the access token in Redis with TTL derived from token expiration
+      // Only blacklist if token is not already expired
+      if (ttlSeconds && ttlSeconds > 0) {
+        const blacklistKey = `token:blacklist:${token}`;
+        await redisClient.setEx(blacklistKey, ttlSeconds, '1');
+      }
 
       // Revoke all active refresh tokens for this user in database
       if (userId) {

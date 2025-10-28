@@ -42,7 +42,7 @@ export interface RateLimitResult {
   current: number | null; // null when rate limit is unavailable (fail-open mode)
   limit: number;
   resetAt: Date;
-  rateLimitUnavailable?: boolean; // true when Redis fails and fail-open is enabled
+  rateLimitUnavailable?: boolean; // true when Redis is unavailable
 }
 
 /**
@@ -78,12 +78,20 @@ interface MemoryRateLimitEntry {
  * Redis-backed rate limiter with in-memory fallback
  */
 export class RedisRateLimiter {
+  private static readonly MIN_RECONNECT_DELAY_MS = 1000;
+  private static readonly MAX_RECONNECT_DELAY_MS = 60000;
+
   private redisClient: RedisClientType | null = null;
   private redisInitialized = false;
+  private redisConnecting = false;
+  private readonly initializationPromise: Promise<void>;
   private memoryStore: Map<string, MemoryRateLimitEntry>;
   private config: Required<RateLimiterConfig>;
   private cleanupTimer: NodeJS.Timeout | null = null;
   private checkCounter = 0;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
+  private isShuttingDown = false;
 
   /**
    * Create a new rate limiter
@@ -99,14 +107,14 @@ export class RedisRateLimiter {
       failOpen: false, // Default to fail-closed for security
       ...config,
     };
+
+    this.validateConfig(this.config);
     this.memoryStore = new Map();
 
     if (this.config.useRedis) {
-      this.initializeRedis().catch((error) => {
-        logWarn('Failed to initialize Redis rate limiter, using in-memory fallback', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
+      this.initializationPromise = this.initializeRedis();
+    } else {
+      this.initializationPromise = Promise.resolve();
     }
 
     // Start periodic cleanup of expired entries (every 60 seconds)
@@ -115,36 +123,178 @@ export class RedisRateLimiter {
     }, 60000);
   }
 
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private scheduleReconnect(reason: string, error?: unknown): void {
+    if (!this.config.useRedis || this.isShuttingDown) {
+      return;
+    }
+
+    if (this.reconnectTimer) {
+      return;
+    }
+
+    const delay = Math.min(
+      RedisRateLimiter.MIN_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempts),
+      RedisRateLimiter.MAX_RECONNECT_DELAY_MS
+    );
+    const attempt = this.reconnectAttempts + 1;
+
+    logWarn('Redis rate limiter scheduling reconnect', {
+      reason,
+      attempt,
+      delayMs: delay,
+      strategy: this.config.failOpen ? 'fail-open' : 'fail-closed',
+      action: this.config.failOpen ? 'allowing requests' : 'blocking requests',
+      keyPrefix: this.config.keyPrefix,
+      error: error instanceof Error ? error.message : error ? String(error) : undefined,
+    });
+
+    this.reconnectAttempts = attempt;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      logInfo('Redis rate limiter reconnect attempt starting', {
+        attempt: this.reconnectAttempts,
+        keyPrefix: this.config.keyPrefix,
+      });
+      void this.initializeRedis();
+    }, delay);
+  }
+
+  private handleRedisDisconnection(reason: string, error?: unknown): void {
+    if (this.isShuttingDown || !this.redisClient) {
+      return;
+    }
+
+    const client = this.redisClient;
+
+    logWarn('Redis rate limiter connection lost', {
+      reason,
+      keyPrefix: this.config.keyPrefix,
+      strategy: this.config.failOpen ? 'fail-open' : 'fail-closed',
+      action: this.config.failOpen ? 'allowing requests' : 'blocking requests',
+      error: error instanceof Error ? error.message : error ? String(error) : undefined,
+    });
+
+    this.redisClient = null;
+    this.redisInitialized = false;
+    this.redisConnecting = false;
+
+    this.removeClientListeners(client);
+
+    this.scheduleReconnect(`disconnected (${reason})`, error);
+  }
+
+  private removeClientListeners(client: RedisClientType): void {
+    const maybeEmitter = client as unknown as { removeAllListeners?: () => void };
+    if (typeof maybeEmitter.removeAllListeners === 'function') {
+      maybeEmitter.removeAllListeners();
+    }
+  }
+
+  private validateConfig(config: Required<RateLimiterConfig>): void {
+    if (typeof config.limit !== 'number' || !Number.isFinite(config.limit) || config.limit <= 0) {
+      throw new Error('Invalid rate limiter config: limit must be a positive number');
+    }
+
+    if (!Number.isInteger(config.limit)) {
+      throw new Error('Invalid rate limiter config: limit must be an integer');
+    }
+
+    if (
+      typeof config.windowMs !== 'number' ||
+      !Number.isFinite(config.windowMs) ||
+      config.windowMs <= 0
+    ) {
+      throw new Error('Invalid rate limiter config: windowMs must be a positive number');
+    }
+  }
+
+  /**
+   * Wait until initialization completes (Redis connected or fallback active)
+   */
+  async waitForReady(): Promise<void> {
+    await this.initializationPromise;
+  }
+
   /**
    * Initialize Redis client
    */
   private async initializeRedis(): Promise<void> {
-    if (this.redisInitialized) {
+    if (
+      !this.config.useRedis ||
+      this.redisInitialized ||
+      this.redisConnecting ||
+      this.isShuttingDown
+    ) {
       return;
     }
 
+    this.redisConnecting = true;
+    let client: RedisClientType | null = null;
+
     try {
-      const client = createClient(getRedisClientConfig()) as RedisClientType;
+      client = createClient(getRedisClientConfig()) as RedisClientType;
 
       client.on('error', (err) => {
         logError('Redis rate limiter error', err instanceof Error ? err : undefined, {
           message: 'Rate limiting may fall back to in-memory store',
         });
+
+        if (!client || !client.isOpen) {
+          this.handleRedisDisconnection('error', err);
+        }
       });
+
+      client.on('end', () => this.handleRedisDisconnection('end'));
+      client.on('close', () => this.handleRedisDisconnection('close'));
 
       await client.connect();
       this.redisClient = client;
       this.redisInitialized = true;
+      const previousAttempts = this.reconnectAttempts;
+      this.reconnectAttempts = 0;
+      this.clearReconnectTimer();
 
-      logInfo('Redis rate limiter initialized', {
+      const logContext: Record<string, unknown> = {
         keyPrefix: this.config.keyPrefix,
-      });
+      };
+
+      if (previousAttempts > 0) {
+        logContext.retries = previousAttempts;
+        logInfo('Redis rate limiter reconnected', logContext);
+      } else {
+        logInfo('Redis rate limiter initialized', logContext);
+      }
     } catch (error) {
-      this.redisInitialized = true; // Don't retry
+      if (client) {
+        try {
+          this.removeClientListeners(client);
+          await client.disconnect();
+        } catch {
+          // ignore cleanup errors during retry
+        }
+      }
+
+      this.redisClient = null;
+      this.redisInitialized = false;
+
       logWarn('Redis rate limiter initialization failed', {
         error: error instanceof Error ? error.message : String(error),
-        fallback: 'in-memory',
+        strategy: this.config.failOpen ? 'fail-open' : 'fail-closed',
+        action: this.config.failOpen ? 'allowing requests' : 'blocking requests',
+        keyPrefix: this.config.keyPrefix,
       });
+
+      this.scheduleReconnect('initialization failed', error);
+    } finally {
+      this.redisConnecting = false;
     }
   }
 
@@ -167,21 +317,36 @@ export class RedisRateLimiter {
           failOpen: this.config.failOpen,
         });
 
-        // Fail open or closed based on config
-        if (this.config.failOpen) {
-          return {
-            allowed: true,
-            current: null, // Count is unknown when Redis fails
-            limit: this.config.limit,
-            resetAt: new Date(Date.now() + this.config.windowMs),
-            rateLimitUnavailable: true,
-          };
-        }
+        return this.handleRedisFailure();
       }
     }
 
-    // Fallback to in-memory
+    if (this.config.useRedis) {
+      return this.handleRedisFailure();
+    }
+
+    // Use in-memory store only when Redis is disabled
     return this.checkAndIncrementMemory(fullKey);
+  }
+
+  /**
+   * Generate a result when Redis is unavailable based on fail-open/closed mode.
+   */
+  private handleRedisFailure(): RateLimitResult {
+    if (this.config.failOpen) {
+      return this.createUnavailableResult(true);
+    }
+    return this.createUnavailableResult(false);
+  }
+
+  private createUnavailableResult(allowed: boolean): RateLimitResult {
+    return {
+      allowed,
+      current: null,
+      limit: this.config.limit,
+      resetAt: new Date(Date.now() + this.config.windowMs),
+      rateLimitUnavailable: true,
+    };
   }
 
   /**
@@ -238,7 +403,7 @@ export class RedisRateLimiter {
 
     if (!entry || now >= entry.resetAt) {
       // Delete expired entry immediately if it exists
-      if (entry && now >= entry.resetAt) {
+      if (entry) {
         this.memoryStore.delete(key);
       }
 
@@ -344,13 +509,29 @@ export class RedisRateLimiter {
       this.cleanupTimer = null;
     }
 
+    this.isShuttingDown = true;
+    this.clearReconnectTimer();
+
     if (this.redisClient) {
       try {
-        await this.redisClient.quit();
+        const client = this.redisClient;
+        this.redisClient = null;
+        this.redisInitialized = false;
+        this.redisConnecting = false;
+
+        this.removeClientListeners(client);
+
+        await client.quit();
         logInfo('Redis rate limiter closed');
       } catch (error) {
         logError('Error closing Redis rate limiter', error instanceof Error ? error : undefined);
       }
     }
+
+    // Allow reuse after shutdown cleanup if needed
+    setImmediate(() => {
+      this.isShuttingDown = false;
+      this.reconnectAttempts = 0;
+    });
   }
 }

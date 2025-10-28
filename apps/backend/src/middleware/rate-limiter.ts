@@ -124,3 +124,24 @@ export function createLoginRateLimiter(
     keyPrefix: 'ratelimit:login',
   });
 }
+
+/**
+ * Refresh token rate limiter: 20 attempts per 15 minutes per IP
+ *
+ * Protects against brute-force attacks on refresh tokens while allowing
+ * legitimate use cases like multiple devices refreshing simultaneously.
+ *
+ * Higher limit than login because:
+ * - Legitimate users may have multiple devices
+ * - Apps may refresh tokens automatically
+ * - Failed attempts still require valid refresh token (not just guessing)
+ */
+export function createRefreshRateLimiter(
+  redisClient: ReturnType<typeof import('redis').createClient>
+) {
+  return createRateLimiter(redisClient, {
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    maxAttempts: 20,
+    keyPrefix: 'ratelimit:refresh',
+  });
+}

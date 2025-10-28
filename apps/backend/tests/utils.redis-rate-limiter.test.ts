@@ -39,7 +39,7 @@ describe('RedisRateLimiter', () => {
       });
 
       // Wait for Redis to initialize
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
       const result1 = await limiter.checkAndIncrement('user1');
       expect(result1.allowed).toBe(true);
@@ -64,7 +64,7 @@ describe('RedisRateLimiter', () => {
         useRedis: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
       const result1 = await limiter.checkAndIncrement('user2');
       expect(result1.allowed).toBe(true);
@@ -91,7 +91,7 @@ describe('RedisRateLimiter', () => {
         useRedis: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
       const result1a = await limiter.checkAndIncrement('user1');
       const result2a = await limiter.checkAndIncrement('user2');
@@ -119,7 +119,7 @@ describe('RedisRateLimiter', () => {
         useRedis: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
       const result = await limiter.checkAndIncrement('user3');
 
@@ -147,7 +147,7 @@ describe('RedisRateLimiter', () => {
         useRedis: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
       const before = Date.now();
       const result = await limiter.checkAndIncrement('user4');
@@ -164,7 +164,7 @@ describe('RedisRateLimiter', () => {
   });
 
   describe('Error Handling', () => {
-    it('should fall back to in-memory when Redis fails to connect', async () => {
+    it('blocks requests when Redis fails to connect in fail-closed mode', async () => {
       const failingClient = {
         ...mockRedisClient,
         connect: jest.fn().mockRejectedValue(new Error('Connection failed')),
@@ -181,21 +181,18 @@ describe('RedisRateLimiter', () => {
         useRedis: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
-      // Should use in-memory store
-      const result1 = await limiter.checkAndIncrement('user5');
-      expect(result1.allowed).toBe(true);
-      expect(result1.current).toBe(1);
-
-      const result2 = await limiter.checkAndIncrement('user5');
-      expect(result2.allowed).toBe(true);
-      expect(result2.current).toBe(2);
+      const result = await limiter.checkAndIncrement('user5');
+      expect(result.allowed).toBe(false);
+      expect(result.current).toBeNull();
+      expect(result.rateLimitUnavailable).toBe(true);
+      expect(result.limit).toBe(5);
 
       await limiter.close();
     });
 
-    it('should fall back to in-memory when Redis eval fails', async () => {
+    it('blocks requests when Redis eval fails in fail-closed mode', async () => {
       mockRedisClient.eval.mockRejectedValueOnce(new Error('Redis error'));
 
       const limiter = new RedisRateLimiter({
@@ -206,17 +203,12 @@ describe('RedisRateLimiter', () => {
         failOpen: false,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
-      // First call fails, falls back to memory
-      const result1 = await limiter.checkAndIncrement('user6');
-      expect(result1.allowed).toBe(true);
-      expect(result1.current).toBe(1);
-
-      // Second call uses memory
-      const result2 = await limiter.checkAndIncrement('user6');
-      expect(result2.allowed).toBe(true);
-      expect(result2.current).toBe(2);
+      const result = await limiter.checkAndIncrement('user6');
+      expect(result.allowed).toBe(false);
+      expect(result.current).toBeNull();
+      expect(result.rateLimitUnavailable).toBe(true);
 
       await limiter.close();
     });
@@ -232,7 +224,7 @@ describe('RedisRateLimiter', () => {
         failOpen: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
       const result = await limiter.checkAndIncrement('user7');
 
@@ -286,25 +278,27 @@ describe('RedisRateLimiter', () => {
         useRedis: false,
       });
 
-      // Make 5 requests
-      for (let i = 0; i < 5; i++) {
-        await limiter.checkAndIncrement('user9');
+      try {
+        // Make 5 requests
+        for (let i = 0; i < 5; i++) {
+          await limiter.checkAndIncrement('user9');
+        }
+
+        // 6th should be blocked
+        const blocked = await limiter.checkAndIncrement('user9');
+        expect(blocked.allowed).toBe(false);
+
+        // Advance time past window
+        jest.advanceTimersByTime(61000);
+
+        // Should be allowed again
+        const allowed = await limiter.checkAndIncrement('user9');
+        expect(allowed.allowed).toBe(true);
+        expect(allowed.current).toBe(1);
+      } finally {
+        jest.useRealTimers();
+        await limiter.close();
       }
-
-      // 6th should be blocked
-      const blocked = await limiter.checkAndIncrement('user9');
-      expect(blocked.allowed).toBe(false);
-
-      // Advance time past window
-      jest.advanceTimersByTime(61000);
-
-      // Should be allowed again
-      const allowed = await limiter.checkAndIncrement('user9');
-      expect(allowed.allowed).toBe(true);
-      expect(allowed.current).toBe(1);
-
-      jest.useRealTimers();
-      await limiter.close();
     });
   });
 
@@ -319,7 +313,7 @@ describe('RedisRateLimiter', () => {
         useRedis: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
       const count = await limiter.getCount('user10');
       expect(count).toBe(5);
@@ -337,7 +331,7 @@ describe('RedisRateLimiter', () => {
         useRedis: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await limiter.waitForReady();
 
       await limiter.reset('user11');
 

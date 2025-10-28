@@ -1,7 +1,7 @@
 /**
  * Voice Alert Routes Integration Tests
  *
- * Tests for POST /v1/alerts/voice endpoint
+ * Tests for POST /api/v1/alerts/voice and PATCH /api/v1/alerts/:alertId endpoints
  *
  * Test Coverage:
  * - Successful voice alert creation
@@ -14,7 +14,7 @@
 
 import * as crypto from 'crypto';
 
-import express, { Express } from 'express';
+import express, { Express, json } from 'express';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 import request from 'supertest';
@@ -103,7 +103,7 @@ describe('Alert Routes', () => {
 
     // Create Express app with routes
     app = express();
-    app.use(express.json());
+    app.use(json());
     app.use('/api/v1/auth', createAuthRoutes(pgPool, redisClient));
     app.use('/api/v1/alerts', createAlertRoutes(pgPool, redisClient));
 

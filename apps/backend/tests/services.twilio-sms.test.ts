@@ -8,7 +8,14 @@
  */
 
 import { env } from '../src/config/env';
+import { logDebug, logInfo } from '../src/config/logger';
 import { TwilioSMSService } from '../src/services/twilio-sms.service';
+
+jest.mock('../src/config/logger', () => ({
+  logDebug: jest.fn(),
+  logError: jest.fn(),
+  logInfo: jest.fn(),
+}));
 
 // Mock the Twilio SDK so we do not hit the network.
 jest.mock('twilio', () => ({
@@ -46,6 +53,9 @@ describe('TwilioSMSService', () => {
 
   const latestClient = () => {
     const Twilio = getTwilioMock();
+    if (Twilio.mock.results.length === 0) {
+      throw new Error('latestClient called before any Twilio mock instances were created');
+    }
     const latestCall = Twilio.mock.results[Twilio.mock.results.length - 1];
     return latestCall.value as { messages: { create: jest.Mock } };
   };
@@ -124,6 +134,14 @@ describe('TwilioSMSService', () => {
         body: message,
         statusCallback: 'https://example.org/webhooks/twilio/sms/status',
       });
+
+      expect(logDebug).toHaveBeenCalledWith(
+        'Twilio SMS status',
+        expect.objectContaining({
+          to: expect.stringMatching(/^\+\*+4567$/),
+          from: expect.stringMatching(/^\+\*+1111$/),
+        })
+      );
     });
 
     it('validates phone numbers and message content', async () => {
@@ -247,6 +265,14 @@ describe('TwilioSMSService', () => {
         from: '+15550002222',
         body: 'Hello!',
       });
+
+      expect(logInfo).toHaveBeenCalledWith(
+        'Twilio SMS delivered',
+        expect.objectContaining({
+          to: expect.stringMatching(/^\+\*+1111$/),
+          from: expect.stringMatching(/^\+\*+2222$/),
+        })
+      );
     });
 
     it('throws when Twilio omits required fields', () => {
@@ -295,16 +321,19 @@ describe('TwilioSMSService', () => {
   });
 
   describe('secrets manager integration', () => {
-    const originalTwilioConfig = { ...env.twilio };
+    let originalTwilioConfig: typeof env.twilio;
 
     beforeEach(() => {
-      env.twilio.accountSid = '';
-      env.twilio.authToken = '';
-      env.twilio.phoneNumber = '';
-      env.twilio.secretId = '';
+      originalTwilioConfig = { ...env.twilio };
+      Object.assign(env.twilio, {
+        accountSid: '',
+        authToken: '',
+        phoneNumber: '',
+        secretId: '',
+      });
     });
 
-    afterAll(() => {
+    afterEach(() => {
       Object.assign(env.twilio, originalTwilioConfig);
     });
 

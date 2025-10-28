@@ -6,7 +6,7 @@
 
 import * as crypto from 'crypto';
 
-import express, { Express } from 'express';
+import express, { Express, json } from 'express';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 
@@ -30,7 +30,7 @@ if (!TEST_REDIS_URL) {
  */
 export function createTestApp(pgPool: Pool, redisClient: ReturnType<typeof createClient>): Express {
   const app = express();
-  app.use(express.json());
+  app.use(json());
 
   // Mount routes
   app.use('/api/v1/auth', createAuthRoutes(pgPool, redisClient));

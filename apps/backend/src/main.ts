@@ -1,9 +1,9 @@
 import compression from 'compression';
 import cors from 'cors';
-import express, { Router } from 'express';
+import express, { type Application, Router, json } from 'express';
 import helmet from 'helmet';
 import { Pool } from 'pg';
-import { createClient } from 'redis';
+import { createClient, type RedisClientType } from 'redis';
 
 import { env, getPostgresPoolConfig, getRedisClientConfig } from './config/env';
 import { logError, logInfo } from './config/logger';
@@ -14,15 +14,16 @@ import { createCarePlanRoutes } from './routes/care-plans.routes';
 import { createClientRoutes } from './routes/clients.routes';
 import { createWebhookRoutes } from './routes/webhooks.routes';
 import { AlertEscalationService } from './services/alert-escalation.service';
+import { startSecretCacheCleanup, stopSecretCacheCleanup } from './utils/aws-secrets-manager';
 
-const app = express();
+const app: Application = express();
 const PORT = env.app.port;
 
 // Middleware
 app.use(helmet());
 app.use(cors());
 app.use(compression());
-app.use(express.json());
+app.use(json());
 
 // PostgreSQL connection
 const pgPool = new Pool({
@@ -30,7 +31,7 @@ const pgPool = new Pool({
 });
 
 // Redis connection
-const redisClient = createClient(getRedisClientConfig());
+const redisClient: RedisClientType = createClient(getRedisClientConfig());
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
@@ -90,6 +91,7 @@ let carePlanRoutes: Router | null = null;
 let alertRoutes: Router | null = null;
 let webhookRoutes: Router | null = null;
 let alertEscalationService: AlertEscalationService | null = null;
+let httpServer: ReturnType<Application['listen']> | null = null;
 
 // Initialize connections and start server
 async function startServer() {
@@ -133,7 +135,7 @@ async function startServer() {
     }
 
     // Start Express server
-    app.listen(PORT, () => {
+    httpServer = app.listen(PORT, () => {
       logInfo('BerthCare Backend Server started', {
         environment: env.app.nodeEnv,
         port: PORT,
@@ -148,26 +150,97 @@ async function startServer() {
   }
 }
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  logInfo('SIGTERM received, shutting down gracefully...');
-  await closeWebhookRateLimiter();
-  await alertEscalationService?.stop();
-  await pgPool.end();
-  await redisClient.quit();
-  process.exit(0);
+async function shutdown(signal: NodeJS.Signals) {
+  logInfo(`${signal} received, shutting down gracefully...`);
+
+  let encounteredErrors = false;
+
+  const cleanupTasks: Array<{ name: string; action: () => Promise<unknown> }> = [
+    {
+      name: 'HTTP server',
+      action: () =>
+        new Promise<void>((resolve, reject) => {
+          if (!httpServer) {
+            logInfo('HTTP server already stopped');
+            resolve();
+            return;
+          }
+
+          httpServer.close((err) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
+
+          httpServer = null;
+        }),
+    },
+    {
+      name: 'webhook rate limiter',
+      action: () => closeWebhookRateLimiter(),
+    },
+  ];
+
+  if (alertEscalationService) {
+    cleanupTasks.push({
+      name: 'alert escalation service',
+      action: () => alertEscalationService!.stop(),
+    });
+  }
+
+  cleanupTasks.push(
+    {
+      name: 'PostgreSQL pool',
+      action: () => pgPool.end(),
+    },
+    {
+      name: 'Redis client',
+      action: () => redisClient.quit(),
+    }
+  );
+
+  await Promise.allSettled(
+    cleanupTasks.map(async ({ name, action }) => {
+      try {
+        await action();
+        logInfo(`${name} shutdown complete`);
+      } catch (error) {
+        encounteredErrors = true;
+        const err = error instanceof Error ? error : new Error(String(error));
+        logError(`Error during ${name} shutdown`, err);
+      }
+    })
+  );
+
+  try {
+    stopSecretCacheCleanup();
+  } catch (error) {
+    encounteredErrors = true;
+    const err = error instanceof Error ? error : new Error(String(error));
+    logError('Error stopping secret cache cleanup', err);
+  }
+
+  if (encounteredErrors) {
+    logError('Shutdown completed with errors');
+    process.exit(1);
+  } else {
+    logInfo('Shutdown complete');
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
 });
 
-process.on('SIGINT', async () => {
-  logInfo('SIGINT received, shutting down gracefully...');
-  await closeWebhookRateLimiter();
-  await alertEscalationService?.stop();
-  await pgPool.end();
-  await redisClient.quit();
-  process.exit(0);
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
 });
 
 // Start the server
+startSecretCacheCleanup();
 startServer();
 
 // Export for testing

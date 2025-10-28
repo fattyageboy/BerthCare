@@ -186,6 +186,8 @@ pnpm run test -- --coverage auth.refresh.test.ts
 - ✅ Disabled user account returns 401
 - ✅ Multiple refresh attempts with same token
 - ✅ Different user roles (caregiver, coordinator)
+- ✅ Rate limiting enforced (20 requests per 15 minutes)
+- ✅ Rate limit exceeded returns 429
 - ✅ Error response format validation
 - ✅ No sensitive information leakage
 
@@ -244,11 +246,31 @@ curl -X GET http://localhost:3000/v1/clients \
 
 ### Rate Limiting
 
-**Note:** Rate limiting not implemented on refresh endpoint because:
+**Implemented:** 20 attempts per 15 minutes per IP
 
-- Refresh tokens are already rate-limited by their 30-day expiry
-- Failed refresh attempts require re-login (which is rate-limited)
-- Legitimate use case: multiple devices refreshing simultaneously
+**Rationale:**
+
+- Protects against brute-force attacks on refresh tokens
+- Higher limit than login (10/15min) to accommodate legitimate multi-device usage
+- Allows apps to refresh tokens automatically without hitting limits
+- Failed attempts still require valid refresh token (not just credential guessing)
+- Provides defense-in-depth alongside token expiry and rotation
+
+**Response on limit exceeded:**
+
+```json
+{
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Too many attempts. Please try again later.",
+    "details": {
+      "maxAttempts": 20,
+      "windowMs": 900000,
+      "retryAfter": 900
+    }
+  }
+}
+```
 
 ## Performance Considerations
 

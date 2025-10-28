@@ -199,22 +199,14 @@ The following checks must pass before merging to `main`:
 
 ## Configuration Requirements
 
-### Test Database Credentials (Hardcoded - Safe)
+### Test Database Credentials
 
-The CI workflow includes hardcoded test database credentials:
+The CI workflow currently references test database credentials:
 
 - `TEST_DATABASE_URL`: postgresql://test_user:test_password@localhost:5432/berthcare_test
 - `TEST_REDIS_URL`: redis://localhost:6379
 
-**Security Note**: These credentials are **safe to hardcode** because:
-
-1. They only apply to ephemeral GitHub Actions containers
-2. Containers are destroyed immediately after each CI run
-3. They cannot access any production or persistent infrastructure
-4. The PostgreSQL and Redis services are isolated to the CI job
-5. No external network access to these services
-
-This is a standard practice for CI/CD pipelines and is explicitly allowed in our security policy for ephemeral test environments.
+**Security Note**: Prefer storing these values in GitHub Actions Secrets so CI jobs inject them at runtime. Hardcoding or committing credentials leaves them in git history and exposes them to anyone with repository access. If you need example defaults for local development, place them in non-committed `.env.local` files and override them in CI via repository secrets.
 
 ### GitHub Secrets (Optional)
 

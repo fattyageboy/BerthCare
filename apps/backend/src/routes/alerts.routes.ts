@@ -73,7 +73,7 @@ function sanitizeOutcomeForSMS(outcome: string): string {
 
   // Truncate if needed and add ellipsis
   if (sanitized.length > MAX_SMS_OUTCOME_LENGTH) {
-    return sanitized.substring(0, MAX_SMS_OUTCOME_LENGTH) + '…';
+    return sanitized.substring(0, MAX_SMS_OUTCOME_LENGTH - 1) + '…';
   }
 
   return sanitized;
@@ -142,6 +142,7 @@ export function createAlertRoutes(
     requireRole(['caregiver']),
     async (req: Request, res: Response) => {
       const client = await pgPool.connect();
+      let transactionActive = false;
 
       try {
         // Extract authenticated user
@@ -296,6 +297,36 @@ export function createAlertRoutes(
         // Generate alert ID
         const alertId = crypto.randomUUID();
 
+        // Create alert record with pending status before initiating the call
+        await client.query('BEGIN');
+        transactionActive = true;
+
+        const insertAlertQuery = `
+          INSERT INTO care_alerts (
+            id,
+            client_id,
+            staff_id,
+            coordinator_id,
+            alert_type,
+            voice_message_url,
+            status,
+            initiated_at,
+            created_at,
+            updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, 'pending', NOW(), NOW(), NOW()
+          )
+        `;
+
+        await client.query(insertAlertQuery, [
+          alertId,
+          clientId,
+          user.userId,
+          coordinator.user_id,
+          alertType,
+          voiceMessageUrl,
+        ]);
+
         // Initiate Twilio voice call
         let callResult;
         try {
@@ -303,6 +334,14 @@ export function createAlertRoutes(
             alertId,
           });
         } catch (error) {
+          await client.query(
+            `UPDATE care_alerts SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+            [alertId]
+          );
+
+          await client.query('COMMIT');
+          transactionActive = false;
+
           if (error instanceof TwilioVoiceError) {
             logError('Twilio voice call failed', error, {
               alertId,
@@ -328,37 +367,22 @@ export function createAlertRoutes(
           throw error;
         }
 
-        // Create alert record in database with call_sid
-        const insertAlertQuery = `
-          INSERT INTO care_alerts (
-            id,
-            client_id,
-            staff_id,
-            coordinator_id,
-            alert_type,
-            voice_message_url,
-            call_sid,
-            status,
-            initiated_at,
-            created_at,
-            updated_at
-          ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), NOW()
-          ) RETURNING *
+        // Update alert record in database with call SID and initiated status
+        const updateAlertQuery = `
+          UPDATE care_alerts
+          SET call_sid = $1,
+              status = 'initiated',
+              updated_at = NOW()
+          WHERE id = $2
+          RETURNING *
         `;
 
-        const alertResult = await client.query(insertAlertQuery, [
-          alertId,
-          clientId,
-          user.userId,
-          coordinator.user_id,
-          alertType,
-          voiceMessageUrl,
-          callResult.callSid,
-          'initiated',
-        ]);
+        const alertResult = await client.query(updateAlertQuery, [callResult.callSid, alertId]);
 
         const alert = alertResult.rows[0];
+
+        await client.query('COMMIT');
+        transactionActive = false;
 
         // Log successful alert initiation
         logInfo('Voice alert initiated', {
@@ -385,9 +409,15 @@ export function createAlertRoutes(
           data: response,
         });
       } catch (error) {
+        if (transactionActive) {
+          await client.query('ROLLBACK').catch(() => undefined);
+          transactionActive = false;
+        }
+        const authRequest = req as AuthenticatedRequest;
+        const requestIdHeader = req.headers['x-request-id'];
         logError('Voice alert error', error instanceof Error ? error : new Error(String(error)), {
-          userId: (req as AuthenticatedRequest).user?.userId,
-          body: req.body,
+          userId: authRequest.user?.userId,
+          requestId: typeof requestIdHeader === 'string' ? requestIdHeader : undefined,
         });
 
         res.status(500).json({
@@ -504,87 +534,124 @@ export function createAlertRoutes(
           return;
         }
 
-        // Fetch alert and verify access
-        const alertQuery = `
-          SELECT 
-            ca.id,
-            ca.status,
-            ca.coordinator_id,
-            ca.staff_id,
-            ca.client_id,
-            c.zone_id,
-            c.first_name as client_first_name,
-            c.last_name as client_last_name,
-            u.phone_number as caregiver_phone
-          FROM care_alerts ca
-          JOIN clients c ON ca.client_id = c.id
-          LEFT JOIN users u ON ca.staff_id = u.id
-          WHERE ca.id = $1 AND ca.deleted_at IS NULL
-        `;
+        const outcomeTrimmed = outcome.trim();
 
-        const alertResult = await client.query(alertQuery, [alertId]);
+        await client.query('BEGIN');
+        let transactionActive = true;
 
-        if (alertResult.rows.length === 0) {
-          res.status(404).json({
-            error: {
-              code: 'ALERT_NOT_FOUND',
-              message: 'Alert not found',
-              timestamp: new Date().toISOString(),
-              requestId: req.headers['x-request-id'] || 'unknown',
-            },
-          });
-          return;
+        let alert;
+        let updatedAlert;
+
+        try {
+          const alertQuery = `
+            SELECT 
+              ca.id,
+              ca.status,
+              ca.coordinator_id,
+              ca.staff_id,
+              ca.client_id,
+              c.zone_id,
+              c.first_name as client_first_name,
+              c.last_name as client_last_name,
+              u.phone_number as caregiver_phone
+            FROM care_alerts ca
+            JOIN clients c ON ca.client_id = c.id
+            LEFT JOIN users u ON ca.staff_id = u.id
+            WHERE ca.id = $1 AND ca.deleted_at IS NULL
+            FOR UPDATE
+          `;
+
+          const alertResult = await client.query(alertQuery, [alertId]);
+
+          if (alertResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            transactionActive = false;
+            res.status(404).json({
+              error: {
+                code: 'ALERT_NOT_FOUND',
+                message: 'Alert not found',
+                timestamp: new Date().toISOString(),
+                requestId: req.headers['x-request-id'] || 'unknown',
+              },
+            });
+            return;
+          }
+
+          alert = alertResult.rows[0];
+
+          if (alert.zone_id !== user.zoneId) {
+            await client.query('ROLLBACK');
+            transactionActive = false;
+            res.status(403).json({
+              error: {
+                code: 'FORBIDDEN',
+                message: 'You can only resolve alerts in your zone',
+                timestamp: new Date().toISOString(),
+                requestId: req.headers['x-request-id'] || 'unknown',
+              },
+            });
+            return;
+          }
+
+          if (alert.status === 'resolved') {
+            await client.query('ROLLBACK');
+            transactionActive = false;
+            res.status(409).json({
+              error: {
+                code: 'ALERT_ALREADY_RESOLVED',
+                message: 'Alert has already been resolved',
+                timestamp: new Date().toISOString(),
+                requestId: req.headers['x-request-id'] || 'unknown',
+              },
+            });
+            return;
+          }
+
+          const updateQuery = `
+            UPDATE care_alerts
+            SET 
+              outcome = $1,
+              status = 'resolved',
+              resolved_at = NOW(),
+              updated_at = NOW()
+            WHERE id = $2 AND status != 'resolved'
+            RETURNING id, status, outcome, resolved_at
+          `;
+
+          const updateResult = await client.query(updateQuery, [outcomeTrimmed, alertId]);
+
+          if (updateResult.rowCount === 0) {
+            await client.query('ROLLBACK');
+            transactionActive = false;
+            res.status(409).json({
+              error: {
+                code: 'ALERT_ALREADY_RESOLVED',
+                message: 'Alert has already been resolved',
+                timestamp: new Date().toISOString(),
+                requestId: req.headers['x-request-id'] || 'unknown',
+              },
+            });
+            return;
+          }
+
+          updatedAlert = updateResult.rows[0];
+
+          await client.query('COMMIT');
+          transactionActive = false;
+        } catch (error) {
+          if (transactionActive) {
+            await client.query('ROLLBACK').catch(() => undefined);
+            transactionActive = false;
+          }
+          throw error;
         }
-
-        const alert = alertResult.rows[0];
-
-        // Verify coordinator has access to this alert's zone
-        if (alert.zone_id !== user.zoneId) {
-          res.status(403).json({
-            error: {
-              code: 'FORBIDDEN',
-              message: 'You can only resolve alerts in your zone',
-              timestamp: new Date().toISOString(),
-              requestId: req.headers['x-request-id'] || 'unknown',
-            },
-          });
-          return;
-        }
-
-        // Check if alert is already resolved
-        if (alert.status === 'resolved') {
-          res.status(409).json({
-            error: {
-              code: 'ALERT_ALREADY_RESOLVED',
-              message: 'Alert has already been resolved',
-              timestamp: new Date().toISOString(),
-              requestId: req.headers['x-request-id'] || 'unknown',
-            },
-          });
-          return;
-        }
-
-        // Update alert with outcome and resolved status
-        const updateQuery = `
-          UPDATE care_alerts
-          SET 
-            outcome = $1,
-            status = 'resolved',
-            resolved_at = NOW(),
-            updated_at = NOW()
-          WHERE id = $2
-          RETURNING id, status, outcome, resolved_at
-        `;
-
-        const updateResult = await client.query(updateQuery, [outcome.trim(), alertId]);
-        const updatedAlert = updateResult.rows[0];
 
         // Notify caregiver via SMS if phone number available
-        if (alert.caregiver_phone) {
+        if (alert?.caregiver_phone) {
           try {
             const twilioSMSService = new TwilioSMSService();
             const clientName = `${alert.client_first_name} ${alert.client_last_name}`;
-            const truncatedOutcome = sanitizeOutcomeForSMS(outcome.trim());
+            const truncatedOutcome = sanitizeOutcomeForSMS(outcomeTrimmed);
             const message = `Alert resolved for ${clientName}. Outcome: ${truncatedOutcome}`;
 
             await twilioSMSService.sendSMS(alert.caregiver_phone, message);
@@ -613,7 +680,7 @@ export function createAlertRoutes(
           alertId: updatedAlert.id,
           coordinatorId: user.userId,
           clientId: alert.client_id,
-          outcome: outcome.trim(),
+          outcome: outcomeTrimmed,
         });
 
         res.status(200).json({
@@ -625,13 +692,22 @@ export function createAlertRoutes(
           },
         });
       } catch (error) {
+        const authRequest = req as AuthenticatedRequest;
+        const requestIdHeader = req.headers['x-request-id'];
+        const outcomeValue =
+          typeof req.body?.outcome === 'string' ? req.body.outcome : undefined;
+        const sanitizedBody = {
+          outcomePresent: outcomeValue ? outcomeValue.length > 0 : Boolean(req.body?.outcome),
+          outcomeLength: outcomeValue?.length,
+        };
         logError(
           'Alert resolution error',
           error instanceof Error ? error : new Error(String(error)),
           {
-            userId: (req as AuthenticatedRequest).user?.userId,
+            userId: authRequest.user?.userId,
             alertId: req.params.alertId,
-            body: req.body,
+            sanitizedBody,
+            requestId: typeof requestIdHeader === 'string' ? requestIdHeader : undefined,
           }
         );
 

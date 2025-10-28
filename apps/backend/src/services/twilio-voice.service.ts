@@ -165,7 +165,22 @@ export class TwilioVoiceService {
     }
 
     // Validate voice message URL
-    if (!voiceMessageUrl || !voiceMessageUrl.startsWith('http')) {
+    if (!voiceMessageUrl) {
+      throw new TwilioVoiceError('Invalid voice message URL', 'INVALID_VOICE_MESSAGE_URL', {
+        voiceMessageUrl,
+      });
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(voiceMessageUrl);
+    } catch (error) {
+      throw new TwilioVoiceError('Invalid voice message URL', 'INVALID_VOICE_MESSAGE_URL', {
+        voiceMessageUrl,
+      });
+    }
+
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
       throw new TwilioVoiceError('Invalid voice message URL', 'INVALID_VOICE_MESSAGE_URL', {
         voiceMessageUrl,
       });
@@ -184,12 +199,7 @@ export class TwilioVoiceService {
     try {
       client = await this.ensureClient();
     } catch (error) {
-      if (
-        error instanceof TwilioVoiceError ||
-        (error instanceof Error &&
-          (error.name === 'TwilioVoiceError' ||
-            error.message?.includes('Twilio credentials not configured')))
-      ) {
+      if (error instanceof TwilioVoiceError) {
         throw error;
       }
 
@@ -220,7 +230,7 @@ export class TwilioVoiceService {
 
       const result: CallResult = {
         callSid: call.sid,
-        status: (call.status as CallStatus) ?? 'queued',
+        status: this.normalizeStatus(String(call.status ?? 'queued')),
         to: call.to ?? to,
         from: call.from ?? fromNumber,
         initiatedAt: new Date(),
@@ -320,19 +330,26 @@ export class TwilioVoiceService {
 
       return validateRequest(this.authToken, signature, url, params);
     } catch (error) {
-      logError('Webhook signature validation error', error instanceof Error ? error : undefined, {
-        service: 'twilio-voice',
-        url,
-      });
+      if (error instanceof TwilioVoiceError) {
+        logError(
+          'Webhook validation configuration error',
+          error instanceof Error ? error : undefined,
+          {
+            service: 'twilio-voice',
+            url,
+          }
+        );
+      } else {
+        logError('Webhook signature validation error', error instanceof Error ? error : undefined, {
+          service: 'twilio-voice',
+          url,
+        });
+      }
       return false;
     }
   }
 
   private normalizeStatus(status: string): CallStatus {
-    if (status === 'answered') {
-      return 'answered';
-    }
-
     const allowedStatuses: CallStatus[] = [
       'queued',
       'ringing',
@@ -367,15 +384,15 @@ export class TwilioVoiceService {
       return this.credentialsPromise;
     }
 
-    this.credentialsPromise = this.resolveCredentials().finally(() => {
-      this.credentialsPromise = undefined;
-    });
+    const pendingCredentials = this.resolveCredentials();
+    this.credentialsPromise = pendingCredentials;
 
-    const credentials = await this.credentialsPromise;
+    const credentials = await pendingCredentials;
     this.credentials = credentials;
     this.authToken = credentials.authToken;
     this.accountSid = credentials.accountSid;
     this.fromNumber = credentials.phoneNumber;
+    this.credentialsPromise = undefined;
     return credentials;
   }
 
@@ -456,16 +473,27 @@ export class TwilioVoiceService {
    * Generate TwiML for playing voice message.
    */
   private generateVoiceMessageTwiML(voiceMessageUrl: string): string {
+    const escapedUrl = this.escapeForXml(voiceMessageUrl);
+
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">You have an urgent care alert.</Say>
-  <Play>${voiceMessageUrl}</Play>
+  <Play>${escapedUrl}</Play>
   <Say voice="alice">Press any key to acknowledge this alert.</Say>
   <Gather numDigits="1" timeout="10">
     <Say voice="alice">Waiting for acknowledgment.</Say>
   </Gather>
   <Say voice="alice">Alert not acknowledged. Goodbye.</Say>
 </Response>`;
+  }
+
+  private escapeForXml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
   }
 
   private maskPhoneNumber(value?: string): string | undefined {

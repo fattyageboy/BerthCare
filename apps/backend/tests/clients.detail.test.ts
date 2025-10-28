@@ -23,7 +23,8 @@
  * - Validate response structure
  */
 
-import express from 'express';
+import express, { json } from 'express';
+import type { Application } from 'express';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 import request from 'supertest';
@@ -39,7 +40,7 @@ const TEST_REDIS_URL =
   process.env.TEST_REDIS_URL || 'redis://:berthcare_redis_password@localhost:6379/1';
 
 describe('GET /api/v1/clients/:clientId', () => {
-  let app: express.Application;
+  let app: Application;
   let pgPool: Pool;
   let redisClient: ReturnType<typeof createClient>;
 
@@ -67,7 +68,7 @@ describe('GET /api/v1/clients/:clientId', () => {
 
     // Create Express app with client routes
     app = express();
-    app.use(express.json());
+    app.use(json());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     app.use('/api/v1/clients', createClientRoutes(pgPool, redisClient as any));
 

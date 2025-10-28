@@ -197,28 +197,19 @@ describe('TwilioVoiceService', () => {
     });
 
     it('should throw configuration error when credentials and secret are missing', async () => {
-      const originalEnv = { ...env.twilio };
-      env.twilio.accountSid = '';
-      env.twilio.authToken = '';
-      env.twilio.phoneNumber = '';
-      env.twilio.secretId = '';
+      const serviceWithoutCreds = new TwilioVoiceService({
+        accountSid: '',
+        authToken: '',
+        fromNumber: '',
+        secretId: '',
+        webhookBaseUrl: 'https://api.test.com',
+      });
 
-      try {
-        const serviceWithoutCreds = new TwilioVoiceService({
-          webhookBaseUrl: 'https://api.test.com',
-        });
-
-        await expect(
-          serviceWithoutCreds.initiateCall(validPhoneNumber, validVoiceMessageUrl, {
-            alertId: 'alert-123',
-          })
-        ).rejects.toThrow('Twilio credentials not configured');
-      } finally {
-        env.twilio.accountSid = originalEnv.accountSid;
-        env.twilio.authToken = originalEnv.authToken;
-        env.twilio.phoneNumber = originalEnv.phoneNumber;
-        env.twilio.secretId = originalEnv.secretId;
-      }
+      await expect(
+        serviceWithoutCreds.initiateCall(validPhoneNumber, validVoiceMessageUrl, {
+          alertId: 'alert-123',
+        })
+      ).rejects.toThrow('Twilio credentials not configured');
     });
   });
 

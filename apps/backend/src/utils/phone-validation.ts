@@ -84,6 +84,10 @@ export function getPhoneValidationError(phoneNumber: string | null | undefined):
 
   const trimmed = phoneNumber.trim();
 
+  if (isValidE164PhoneNumber(trimmed)) {
+    return '';
+  }
+
   if (!trimmed.startsWith('+')) {
     return 'Phone number must start with + (E.164 format)';
   }
