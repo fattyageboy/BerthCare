@@ -100,10 +100,10 @@ Authorization: Bearer <access_token>
 - Extract access token from Authorization header
 - Decode token to read the `exp` (expiration) claim
 - Calculate TTL: `ttlSeconds = Math.ceil(decoded.exp - Date.now()/1000)`
-- Validate `ttlSeconds > 0` (token not already expired)
 - Add token to Redis blacklist with key: `token:blacklist:<token>`
-- Set TTL to calculated `ttlSeconds` to match token's actual expiry
-- If `exp` is missing or `ttlSeconds <= 0`, skip blacklisting (token already invalid)
+- Set TTL to `max(ttlSeconds, 3600)` - use calculated TTL or 1 hour minimum
+- **Always blacklist the token, even if expired or invalid** (prevents timing attacks)
+- If token decoding fails, blacklist the raw token string with 1 hour TTL
 - Log errors if token decoding fails or TTL calculation is invalid
 - Blacklisted tokens are checked by `authenticateJWT` middleware
 
@@ -143,11 +143,12 @@ WHERE user_id = $1
 const decoded = verifyToken(token);
 const ttlSeconds = Math.ceil(decoded.exp - Date.now() / 1000);
 
-// Only blacklist if token hasn't expired yet
-if (ttlSeconds > 0) {
-  const blacklistKey = `token:blacklist:${token}`;
-  await redisClient.setEx(blacklistKey, ttlSeconds, '1');
-}
+// Always blacklist the token, even if expired/invalid
+// This prevents timing attacks where an attacker could distinguish
+// between expired and valid tokens based on response timing
+const blacklistKey = `token:blacklist:${token}`;
+const ttl = Math.max(ttlSeconds, 3600); // Minimum 1 hour TTL
+await redisClient.setEx(blacklistKey, ttl, '1');
 ```
 
 ## Testing Requirements
@@ -163,7 +164,7 @@ if (ttlSeconds > 0) {
 2. **Error Cases**:
    - Missing Authorization header returns 401
    - Invalid Authorization format returns 401
-   - Invalid token is still blacklisted (timing attack prevention)
+   - Invalid/expired tokens are still blacklisted (timing attack prevention)
 
 3. **Integration Tests**:
    - Logged-out access token cannot access protected routes
@@ -190,7 +191,7 @@ if (ttlSeconds > 0) {
 2. **Invalid Token Format**: Return 401 with format guidance
 3. **Redis Connection Error**: Log error, return 500 (logout still succeeds partially)
 4. **Database Error**: Log error, return 500 (access token still blacklisted)
-5. **Token Decode Error**: Blacklist token anyway (timing attack prevention)
+5. **Token Decode Error**: Always blacklist the raw token string with 1 hour TTL (timing attack prevention - ensures consistent behavior regardless of token validity)
 
 ## Performance Considerations
 
