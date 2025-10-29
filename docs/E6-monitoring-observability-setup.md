@@ -48,6 +48,7 @@ This document describes the monitoring and observability infrastructure for Bert
 **API Performance Dashboard** (`BerthCare-API-Performance-staging`)
 
 Widgets:
+
 1. **API Response Time** - Average and P99 latency
 2. **Request Count & Status Codes** - 2XX, 4XX, 5XX counts
 3. **Connection Errors** - Failed connections
@@ -62,25 +63,76 @@ Access: https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashb
 - `/aws/ecs/staging/berthcare-api` - API container logs (30-day retention)
 - `/berthcare/staging/application` - Application logs (30-day retention)
 
+**Webhook IP Logging Controls**
+
+- `LOG_WEBHOOK_CLIENT_IP` (default: `false`) keeps full client IPs out of logs unless explicitly required for a security incident investigation. Leave disabled for routine operations.
+- `WEBHOOK_IP_HASH_SECRET` enables deterministic SHA-256 hashing when PII logging is off, allowing correlation without storing the raw address. When unset, the logger redacts the final octet (`/24`) for IPv4 and truncates IPv6 to `/64`.
+
+**Compliance & Privacy Considerations:**
+
+When enabling `LOG_WEBHOOK_CLIENT_IP`:
+
+1. **GDPR/CCPA Implications:**
+   - IP addresses are personal data under GDPR and may be personal information under CCPA
+   - Legal basis: Legitimate interest (security/fraud prevention) or legal obligation (incident response)
+   - Lawful purpose: Security monitoring, abuse prevention, incident investigation
+   - Data minimization: Only enable when necessary; use hashing/redaction when full IPs not required
+   - Retention limits: Align with security incident retention policy (typically 90 days max)
+   - Cross-border transfers: Ensure CloudWatch region complies with data residency requirements
+   - DPIA required: If processing high volumes or sensitive user data, conduct Data Protection Impact Assessment
+
+2. **Privacy Policy & Retention Register Updates:**
+   - **Who updates:** Data Protection Officer (DPO) or Privacy Officer must approve and document
+   - **Required fields:**
+     - Purpose: "Security monitoring and abuse prevention for webhook endpoints"
+     - Legal basis: "Legitimate interest" or "Legal obligation"
+     - Retention period: "90 days" (or per security policy)
+     - Access controls: "Security team, incident response team"
+     - Review cadence: "Quarterly review of necessity and retention"
+   - Update privacy policy section on "Data We Collect" and "How We Use Your Data"
+   - Add entry to data retention register with above fields
+
+3. **Data Deletion & Retention Workflow:**
+   - **Identification:** Query CloudWatch Logs for IP addresses using Insights queries
+   - **Deletion on request:** Use `aws logs delete-log-events` or filter-pattern exclusions
+   - **Automated expiry:** Set CloudWatch log retention to match retention policy (90 days)
+   - **Archival:** Export to S3 with lifecycle policies if long-term retention needed
+   - **Audit logging:** Enable CloudTrail to log all log deletion operations
+   - **Process:** Document deletion requests in incident tracking system
+
+4. **Approval Requirements:**
+   - **Required approvals before enabling flag:**
+     - Privacy Officer / Data Protection Officer (DPO)
+     - Security Lead
+     - Legal Counsel
+     - Service Owner / Engineering Manager
+   - **Documentation:** Record approval in change management system with:
+     - Justification for enabling
+     - Expected duration
+     - Review date
+     - Approver names and dates
+     - Link to DPIA if conducted
+
 ### Metric Alarms
 
-| Alarm Name | Metric | Threshold | Evaluation | Severity |
-|------------|--------|-----------|------------|----------|
-| `berthcare-api-error-rate-staging` | 5XX error count | >10 in 5 min | 2 periods | High |
-| `berthcare-api-response-time-staging` | Response time | >2000ms | 2 periods | Medium |
-| `berthcare-database-cpu-staging` | Database CPU | >80% | 2 periods | High |
-| `berthcare-database-connections-staging` | DB connections | >80 (80% of max) | 2 periods | Medium |
-| `berthcare-redis-cpu-staging` | Redis CPU | >75% | 2 periods | Medium |
-| `berthcare-application-errors-staging` | Application errors | >10 in 5 min | 1 period | High |
+| Alarm Name                               | Metric             | Threshold        | Evaluation | Severity |
+| ---------------------------------------- | ------------------ | ---------------- | ---------- | -------- |
+| `berthcare-api-error-rate-staging`       | 5XX error count    | >10 in 5 min     | 2 periods  | High     |
+| `berthcare-api-response-time-staging`    | Response time      | >2000ms          | 2 periods  | Medium   |
+| `berthcare-database-cpu-staging`         | Database CPU       | >80%             | 2 periods  | High     |
+| `berthcare-database-connections-staging` | DB connections     | >80 (80% of max) | 2 periods  | Medium   |
+| `berthcare-redis-cpu-staging`            | Redis CPU          | >75%             | 2 periods  | Medium   |
+| `berthcare-application-errors-staging`   | Application errors | >10 in 5 min     | 1 period   | High     |
 
 ### Alert Notifications
 
 Alerts are sent via SNS topic `berthcare-alerts-staging` to configured email addresses.
 
 **Alert Format:**
+
 ```
 ALARM: berthcare-api-error-rate-staging in ca-central-1
-Description: API 5XX error rate exceeds 10% over 10 minutes
+Description: API 5XX error count exceeds 10 over 5 minutes
 State Change: OK -> ALARM
 Timestamp: 2025-10-10T14:30:00.000Z
 ```
@@ -104,6 +156,7 @@ Timestamp: 2025-10-10T14:30:00.000Z
 ### Integration
 
 **Backend (Node.js/Express):**
+
 ```typescript
 import * as Sentry from '@sentry/node';
 
@@ -129,6 +182,7 @@ app.use(Sentry.Handlers.errorHandler());
 ```
 
 **Mobile (React Native):**
+
 ```typescript
 import * as Sentry from '@sentry/react-native';
 
@@ -145,11 +199,13 @@ Sentry.init({
 ### Alert Rules
 
 **High Severity (Immediate notification):**
+
 - Error rate >5% in 1 hour
 - New error type affecting >10 users
 - Performance degradation >50% from baseline
 
 **Medium Severity (Daily digest):**
+
 - Error rate >1% in 24 hours
 - Recurring errors affecting <10 users
 
@@ -186,9 +242,21 @@ All logs use JSON format for easy parsing:
 
 ### CloudWatch Insights Queries
 
+**Time Window Filtering:**
+
+All queries can be scoped to a specific time window by adding a filter at the beginning:
+- `| filter @timestamp > ago(1h)` - Last hour
+- `| filter @timestamp > ago(15m)` - Last 15 minutes
+- `| filter @timestamp > ago(24h)` - Last 24 hours
+- `| filter @timestamp > ago(7d)` - Last 7 days
+
+Insert the time filter as the first filter line after the `fields` statement for more precise results.
+
 **Top 10 Errors (Last Hour):**
+
 ```
 fields @timestamp, @message
+| filter @timestamp > ago(1h)
 | filter level = "error"
 | stats count() as error_count by @message
 | sort error_count desc
@@ -196,16 +264,20 @@ fields @timestamp, @message
 ```
 
 **Slow API Requests (>2s):**
+
 ```
 fields @timestamp, context.path, context.duration
+| filter @timestamp > ago(1h)
 | filter context.duration > 2000
 | sort context.duration desc
 | limit 20
 ```
 
 **User Activity:**
+
 ```
 fields @timestamp, context.userId, context.action
+| filter @timestamp > ago(24h)
 | filter context.userId = "user_123"
 | sort @timestamp desc
 ```
@@ -224,17 +296,20 @@ terraform apply
 ### Verify Deployment
 
 1. **CloudWatch Dashboard:**
+
    ```bash
    aws cloudwatch list-dashboards --region ca-central-1
    ```
 
 2. **CloudWatch Alarms:**
+
    ```bash
    aws cloudwatch describe-alarms --region ca-central-1 \
      --alarm-name-prefix "berthcare-"
    ```
 
 3. **SNS Topic:**
+
    ```bash
    aws sns list-topics --region ca-central-1 | grep berthcare-alerts
    ```
@@ -254,6 +329,7 @@ terraform apply
    - Create organization: `berthcare`
 
 2. **Create Projects:**
+
    ```bash
    # Backend project
    sentry-cli projects create berthcare-backend-staging \
@@ -267,6 +343,7 @@ terraform apply
    ```
 
 3. **Get DSN Keys:**
+
    ```bash
    # Backend DSN
    sentry-cli projects info berthcare-backend-staging \
@@ -277,7 +354,24 @@ terraform apply
      --organization berthcare
    ```
 
+   **Extracting the DSN:**
+   
+   Option 1: Manually copy the DSN from the CLI output (look for the "DSN" or "Public DSN" field)
+   
+   Option 2: Use JSON output and parse with jq:
+   ```bash
+   # Extract DSN using jq
+   sentry-cli projects info berthcare-backend-staging \
+     --organization berthcare \
+     --format json | jq -r '.dsn.public'
+   ```
+   
+   The DSN format is: `https://[public-key]@[org-id].ingest.sentry.io/[project-id]`
+   
+   Use the `dsn.public` field (or `keys[0].dsn.public` depending on CLI version) from the JSON output.
+
 4. **Store in AWS Secrets Manager:**
+
    ```bash
    aws secretsmanager create-secret \
      --name berthcare/staging/sentry-backend-dsn \
@@ -289,6 +383,43 @@ terraform apply
      --secret-string "https://[key]@[org].ingest.sentry.io/[project]" \
      --region ca-central-1
    ```
+
+   **Security Best Practices:**
+
+   - **Secret Rotation:**
+     - Configure automatic rotation policies where supported by Sentry
+     - Rotate DSNs periodically (recommended: every 90 days)
+     - Update application configuration after rotation
+     - Test new DSN before revoking old one
+
+   - **IAM Least Privilege:**
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [
+         {
+           "Effect": "Allow",
+           "Action": "secretsmanager:GetSecretValue",
+           "Resource": "arn:aws:secretsmanager:ca-central-1:ACCOUNT_ID:secret:berthcare/staging/sentry-*",
+           "Condition": {
+             "StringEquals": {
+               "aws:PrincipalTag/Environment": "staging"
+             }
+           }
+         }
+       ]
+     }
+     ```
+     - Restrict `GetSecretValue` to specific ECS task roles or Lambda execution roles
+     - Use resource ARNs with wildcards for secret families
+     - Add conditions for environment tags or VPC endpoints
+     - Deny access from outside VPC using `aws:SourceVpc` condition
+
+   - **Audit Logging:**
+     - Enable CloudTrail logging for Secrets Manager API calls
+     - Monitor `GetSecretValue` calls for unusual patterns
+     - Set up CloudWatch alarms for unauthorized access attempts
+     - Review access logs quarterly
 
 ## Testing
 
@@ -311,9 +442,37 @@ aws cloudwatch describe-alarm-history \
 ### Test Sentry Integration
 
 **Backend Test:**
+
 ```typescript
-// Add to backend test endpoint
-app.get('/test/sentry', (req, res) => {
+// Add to backend test endpoint (DEVELOPMENT/STAGING ONLY)
+// ⚠️ SECURITY: This endpoint must be disabled in production or require authentication
+
+// Option 1: Environment-gated (recommended)
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/test/sentry', (req, res) => {
+    try {
+      throw new Error('Test error for Sentry');
+    } catch (error) {
+      Sentry.captureException(error);
+      res.status(500).json({ error: 'Test error sent to Sentry' });
+    }
+  });
+}
+
+// Option 2: Feature flag-gated
+if (process.env.ENABLE_TEST_ENDPOINTS === 'true') {
+  app.get('/test/sentry', (req, res) => {
+    try {
+      throw new Error('Test error for Sentry');
+    } catch (error) {
+      Sentry.captureException(error);
+      res.status(500).json({ error: 'Test error sent to Sentry' });
+    }
+  });
+}
+
+// Option 3: Authentication-protected (if test endpoint needed in production)
+app.get('/test/sentry', requireAuth, requireRole('admin'), (req, res) => {
   try {
     throw new Error('Test error for Sentry');
   } catch (error) {
@@ -323,7 +482,13 @@ app.get('/test/sentry', (req, res) => {
 });
 ```
 
+**Configuration:**
+- Set `ENABLE_TEST_ENDPOINTS=false` in production environment variables
+- Document in README: "Test endpoints are disabled by default. Set `ENABLE_TEST_ENDPOINTS=true` in non-production environments only."
+- Remove test endpoints entirely before production deployment (preferred)
+
 **Mobile Test:**
+
 ```typescript
 // Add to mobile app test screen
 const testSentry = () => {
@@ -353,6 +518,7 @@ aws logs filter-log-events \
 ### Responding to Alerts
 
 **High Severity (API Error Rate >5%):**
+
 1. Check CloudWatch dashboard for error spike
 2. Review recent deployments (rollback if needed)
 3. Check Sentry for error details and stack traces
@@ -361,6 +527,7 @@ aws logs filter-log-events \
 6. Document incident and resolution
 
 **Medium Severity (Response Time >2s):**
+
 1. Check database query performance
 2. Review Redis cache hit rate
 3. Check for slow API endpoints in logs
@@ -368,6 +535,7 @@ aws logs filter-log-events \
 5. Consider scaling up if sustained
 
 **Database CPU >80%:**
+
 1. Check for long-running queries
 2. Review connection pool usage
 3. Consider read replica for read-heavy workloads
@@ -395,23 +563,27 @@ aws logs filter-log-events \
 ## Cost Optimization
 
 **CloudWatch Costs:**
+
 - Log ingestion: ~$0.50/GB
 - Log storage: ~$0.03/GB/month
 - Metrics: First 10 custom metrics free, then $0.30/metric/month
 - Dashboards: First 3 free, then $3/month each
 
 **Estimated Monthly Cost (Staging):**
+
 - Logs (10GB/month): $5
 - Metrics (20 custom): $3
 - Dashboards (1): Free
 - **Total: ~$8/month**
 
 **Sentry Costs:**
+
 - Free tier: 5,000 errors/month
 - Team plan: $26/month (50,000 errors/month)
 - Business plan: $80/month (250,000 errors/month)
 
 **Optimization Tips:**
+
 - Use log sampling for high-volume logs
 - Set appropriate log retention (30 days for staging)
 - Use metric filters instead of custom metrics where possible

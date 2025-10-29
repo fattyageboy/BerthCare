@@ -26,39 +26,45 @@ Created database schema for user authentication system including users and refre
 Stores user accounts for caregivers, coordinators, and administrators.
 
 **Columns:**
-- `id` (UUID, Primary Key) - Unique user identifier
-- `email` (VARCHAR, UNIQUE) - User email for login
-- `password_hash` (VARCHAR) - Bcrypt hashed password
-- `first_name` (VARCHAR) - User first name
-- `last_name` (VARCHAR) - User last name
-- `role` (VARCHAR) - User role: 'caregiver', 'coordinator', or 'admin'
-- `zone_id` (UUID) - Zone assignment for data isolation
-- `is_active` (BOOLEAN) - Account active status
-- `created_at` (TIMESTAMP) - Account creation timestamp
-- `updated_at` (TIMESTAMP) - Last update timestamp (auto-updated)
-- `deleted_at` (TIMESTAMP) - Soft delete timestamp
+
+- `id` (UUID, Primary Key, NOT NULL) - Unique user identifier
+- `email` (VARCHAR, UNIQUE, NOT NULL) - User email for login
+- `password_hash` (VARCHAR, NOT NULL) - Bcrypt hashed password
+- `first_name` (VARCHAR, NOT NULL) - User first name
+- `last_name` (VARCHAR, NOT NULL) - User last name
+- `role` (VARCHAR, NOT NULL) - User role: 'caregiver', 'coordinator', or 'admin'
+- `zone_id` (UUID, NULLABLE) - Zone assignment for data isolation (NULL for admins)
+- `is_active` (BOOLEAN, NOT NULL) - Account active status
+- `created_at` (TIMESTAMP, NOT NULL) - Account creation timestamp
+- `updated_at` (TIMESTAMP, NOT NULL) - Last update timestamp (auto-updated)
+- `deleted_at` (TIMESTAMP, NULLABLE) - Soft delete timestamp (NULL = not deleted)
 
 **Indexes:**
-- `idx_users_email` - Fast email lookup for login
-- `idx_users_zone_id` - Zone-based data isolation queries
-- `idx_users_role` - Role-based authorization checks
-- `idx_users_zone_role` - Composite index for zone + role queries
+
+- `idx_users_email` - Fast email lookup for login (partial index: `WHERE deleted_at IS NULL`)
+- `idx_users_zone_id` - Zone-based data isolation queries (partial index: `WHERE deleted_at IS NULL AND is_active = true`)
+- `idx_users_role` - Role-based authorization checks (partial index: `WHERE deleted_at IS NULL AND is_active = true`)
+- `idx_users_zone_role` - Composite index for zone + role queries (partial index: `WHERE deleted_at IS NULL AND is_active = true`)
+
+**Note:** All indexes use partial indexing with `WHERE deleted_at IS NULL` to efficiently filter soft-deleted records. This significantly reduces index size and improves query performance for active users.
 
 #### Refresh Tokens Table
 
 Manages JWT refresh tokens for multi-device session support.
 
 **Columns:**
-- `id` (UUID, Primary Key) - Unique token identifier
-- `user_id` (UUID, Foreign Key) - References users table
-- `token_hash` (VARCHAR, UNIQUE) - Hashed refresh token
-- `device_id` (VARCHAR) - Device identifier for multi-device support
-- `expires_at` (TIMESTAMP) - Token expiration (30 days)
-- `revoked_at` (TIMESTAMP) - Token revocation timestamp
-- `created_at` (TIMESTAMP) - Token creation timestamp
-- `updated_at` (TIMESTAMP) - Last update timestamp (auto-updated)
+
+- `id` (UUID, Primary Key, NOT NULL) - Unique token identifier
+- `user_id` (UUID, Foreign Key, NOT NULL) - References users table (ON DELETE CASCADE: automatically deleted when associated user is deleted)
+- `token_hash` (VARCHAR, UNIQUE, NOT NULL) - Hashed refresh token
+- `device_id` (VARCHAR, NOT NULL) - Device identifier for multi-device support
+- `expires_at` (TIMESTAMP, NOT NULL) - Token expiration (configured via `REFRESH_TOKEN_EXPIRY` constant in `libs/shared/src/jwt-utils.ts`, default: 30 days)
+- `revoked_at` (TIMESTAMP, NULLABLE) - Token revocation timestamp (NULL = active)
+- `created_at` (TIMESTAMP, NOT NULL) - Token creation timestamp
+- `updated_at` (TIMESTAMP, NOT NULL) - Last update timestamp (auto-updated)
 
 **Indexes:**
+
 - `idx_refresh_tokens_user_id` - Fast user token lookup
 - `idx_refresh_tokens_token_hash` - Token validation queries
 - `idx_refresh_tokens_device_id` - Multi-device session management
@@ -67,23 +73,27 @@ Manages JWT refresh tokens for multi-device session support.
 ### Features
 
 **Security:**
+
 - Password hashing (bcrypt) - never store plaintext passwords
 - Token hashing - never store raw refresh tokens
 - Soft delete support - preserve audit trail
 - Role-based access control - caregiver, coordinator, admin
 
 **Performance:**
+
 - Optimized indexes for common query patterns
 - Composite indexes for complex queries
 - Partial indexes with WHERE clauses for efficiency
 
 **Reliability:**
+
 - Foreign key constraints with CASCADE delete
 - Automatic timestamp management via triggers
 - Transaction support (BEGIN/COMMIT/ROLLBACK)
 - Comprehensive error handling
 
 **Maintainability:**
+
 - Clear table and column comments
 - Descriptive index names
 - Rollback scripts for safe deployment
@@ -95,27 +105,27 @@ Manages JWT refresh tokens for multi-device session support.
 
 ```bash
 # Apply migration
-npm run migrate:up
+pnpm run migrate:up
 
 # Verify schema
-npm run db:verify
+pnpm run db:verify
 ```
 
 ### Rollback Migration
 
 ```bash
 # Rollback if needed
-npm run migrate:down 001
+pnpm run migrate:down 001
 
 # Verify rollback
-npm run db:verify
+pnpm run db:verify
 ```
 
 ### Reset Database (Development)
 
 ```bash
 # Drop and recreate tables
-npm run db:reset
+pnpm run db:reset
 ```
 
 ## Verification Results
@@ -150,16 +160,19 @@ This migration implements the authentication system as specified in:
 ### Design Philosophy Applied
 
 **Simplicity is the Ultimate Sophistication:**
+
 - Plain SQL migrations (no complex ORM)
 - Clear, readable schema definitions
 - Straightforward migration runner
 
 **Obsess Over Details:**
+
 - Comprehensive indexes for performance
 - Automatic timestamp management
 - Detailed comments and documentation
 
 **Uncompromising Security:**
+
 - Password hashing (never plaintext)
 - Token hashing (never raw tokens)
 - Soft delete (preserve audit trail)

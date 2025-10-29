@@ -8,7 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import type { PoolConfig } from 'pg';
 
 type Optional<T> = T | undefined | null;
@@ -64,15 +64,52 @@ function toBoolean(value: Optional<string>, fallback: boolean): boolean {
   return fallback;
 }
 
+const SENSITIVE_PLACEHOLDER = '<redacted>';
+
+interface MaskOptions {
+  showStart?: number;
+  showEnd?: number;
+  minLength?: number;
+  placeholder?: string;
+  maskCharCount?: number;
+}
+
+function maskSensitive(value: Optional<string>, options: MaskOptions = {}): string {
+  const {
+    showStart = 0,
+    showEnd = 4,
+    minLength = 6,
+    placeholder = SENSITIVE_PLACEHOLDER,
+    maskCharCount,
+  } = options;
+
+  if (!value) {
+    return placeholder;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length < minLength || trimmed.length <= showStart + showEnd) {
+    return placeholder;
+  }
+
+  const prefix = showStart > 0 ? trimmed.slice(0, showStart) : '';
+  const suffix = showEnd > 0 ? trimmed.slice(-showEnd) : '';
+  const maskedLength = Math.max(3, maskCharCount ?? 3);
+
+  return `${prefix}${'*'.repeat(maskedLength)}${suffix}`;
+}
+
 export const env = {
   app: {
     nodeEnv: process.env.NODE_ENV || 'development',
     port: toNumber(process.env.PORT, 3000),
-    version: process.env.APP_VERSION || '2.0.0',
+    version: process.env.APP_VERSION || '1.0.0',
     logLevel: process.env.LOG_LEVEL || 'info',
   },
   logging: {
     cloudwatchLogGroup: process.env.CLOUDWATCH_LOG_GROUP,
+    logWebhookClientIp: toBoolean(process.env.LOG_WEBHOOK_CLIENT_IP, false),
+    webhookIpHashSecret: process.env.WEBHOOK_IP_HASH_SECRET,
   },
   postgres: {
     url: process.env.DATABASE_URL,
@@ -98,6 +135,7 @@ export const env = {
     region: process.env.AWS_REGION || 'ca-central-1',
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+    sessionToken: process.env.AWS_SESSION_TOKEN,
     endpoint: process.env.AWS_ENDPOINT,
     buckets: {
       photos: process.env.S3_BUCKET_PHOTOS || 'berthcare-photos-dev',
@@ -110,7 +148,124 @@ export const env = {
     tracesSampleRate: toNumber(process.env.SENTRY_TRACES_SAMPLE_RATE, 0.1),
     profilesSampleRate: toNumber(process.env.SENTRY_PROFILES_SAMPLE_RATE, 0.1),
   },
+  twilio: {
+    accountSid: process.env.TWILIO_ACCOUNT_SID || undefined,
+    authToken: process.env.TWILIO_AUTH_TOKEN || undefined,
+    phoneNumber: process.env.TWILIO_PHONE_NUMBER || undefined,
+    // Default to http://localhost for local development, but production must use https
+    webhookBaseUrl: process.env.TWILIO_WEBHOOK_BASE_URL || 'http://localhost:3000',
+    secretId: process.env.TWILIO_SECRET_ID || undefined,
+    // SMS rate limiter fail-open behavior
+    // When true: Allow SMS when Redis is unavailable (prioritizes availability)
+    // When false: Block SMS when Redis is unavailable (prioritizes security/rate limiting)
+    // Production default: false (fail-closed) for standard SMS
+    // Override to true for critical alerts where availability is paramount
+    smsRateLimiterFailOpen: toBoolean(process.env.SMS_RATE_LIMITER_FAIL_OPEN, false),
+  },
 };
+
+/**
+ * Validate webhook IP logging configuration
+ * Ensures WEBHOOK_IP_HASH_SECRET is provided when LOG_WEBHOOK_CLIENT_IP is enabled
+ */
+function validateWebhookIpConfig(): void {
+  const { logWebhookClientIp, webhookIpHashSecret } = env.logging;
+
+  // Skip validation in test environment
+  if (env.app.nodeEnv === 'test') {
+    return;
+  }
+
+  // If IP logging is enabled, hash secret must be provided
+  if (logWebhookClientIp && (!webhookIpHashSecret || webhookIpHashSecret.trim() === '')) {
+    throw new Error(
+      `WEBHOOK_IP_HASH_SECRET is required when LOG_WEBHOOK_CLIENT_IP is enabled. ` +
+        `Logging client IPs without hashing is insecure. ` +
+        `Either provide WEBHOOK_IP_HASH_SECRET or disable LOG_WEBHOOK_CLIENT_IP.`
+    );
+  }
+
+  if (logWebhookClientIp && env.app.nodeEnv === 'development') {
+    // eslint-disable-next-line no-console
+    console.log('✅ Webhook IP logging configured with hash secret');
+  }
+}
+
+/**
+ * Validate Twilio configuration
+ * Ensures required credentials are present and webhook URLs use HTTPS in production
+ */
+function validateTwilioConfig(): void {
+  const { accountSid, authToken, phoneNumber, webhookBaseUrl, secretId } = env.twilio;
+
+  // Skip validation in test environment
+  if (env.app.nodeEnv === 'test') {
+    return;
+  }
+
+  // Check if Twilio is configured (at least one credential provided)
+  const isDefaultWebhook =
+    webhookBaseUrl === 'http://localhost:3000' ||
+    webhookBaseUrl.includes('localhost') ||
+    webhookBaseUrl.includes('127.0.0.1');
+
+  const hasSecret = Boolean(secretId);
+  const isTwilioConfigured = accountSid || authToken || phoneNumber || !isDefaultWebhook;
+  const shouldValidate = hasSecret || isTwilioConfigured;
+
+  if (shouldValidate) {
+    if (!hasSecret) {
+      // If any Twilio config is provided, all required fields must be present
+      const missingFields: string[] = [];
+
+      if (!accountSid) missingFields.push('TWILIO_ACCOUNT_SID');
+      if (!authToken) missingFields.push('TWILIO_AUTH_TOKEN');
+      if (!phoneNumber) missingFields.push('TWILIO_PHONE_NUMBER');
+
+      if (missingFields.length > 0) {
+        throw new Error(
+          `Twilio integration is partially configured but missing required environment variables: ${missingFields.join(', ')}. ` +
+            `Either provide all Twilio credentials or remove them to disable Twilio integration.`
+        );
+      }
+
+      if (env.app.nodeEnv === 'development') {
+        // eslint-disable-next-line no-console
+        console.log('✅ Twilio integration configured:', {
+          accountSid: maskSensitive(accountSid, { showStart: 4, showEnd: 2, minLength: 10 }),
+          phoneNumber: maskSensitive(phoneNumber, { showEnd: 4, minLength: 8 }),
+          webhookBaseUrl: isDefaultWebhook ? 'localhost (default)' : webhookBaseUrl,
+        });
+      }
+    } else if (env.app.nodeEnv === 'development') {
+      // eslint-disable-next-line no-console
+      console.log('✅ Twilio integration configured via AWS Secrets Manager:', {
+        secretId,
+        webhookBaseUrl: isDefaultWebhook ? 'localhost (default)' : webhookBaseUrl,
+      });
+    }
+
+    // Validate webhook URL uses HTTPS in non-local environments
+    const isLocalhost =
+      webhookBaseUrl.includes('localhost') || webhookBaseUrl.includes('127.0.0.1');
+
+    if (!isLocalhost && !webhookBaseUrl.startsWith('https://')) {
+      throw new Error(
+        `TWILIO_WEBHOOK_BASE_URL must use HTTPS in production environments. ` +
+          `Current value: ${webhookBaseUrl}. ` +
+          `Use HTTPS or set to localhost for development.`
+      );
+    }
+  } else if (env.app.nodeEnv === 'development') {
+    // Twilio not configured - this is OK for development
+    // eslint-disable-next-line no-console
+    console.log('ℹ️  Twilio integration not configured (optional for development)');
+  }
+}
+
+// Run validation on module load
+validateWebhookIpConfig();
+validateTwilioConfig();
 
 /**
  * Generate a pg Pool configuration that respects either DATABASE_URL or

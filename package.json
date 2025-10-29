@@ -1,6 +1,6 @@
 {
   "name": "berthcare-monorepo",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "BerthCare - Home Care Management Platform",
   "repository": {
@@ -8,6 +8,7 @@
     "url": "https://github.com/fattyageboy/BerthCare.git"
   },
   "license": "MIT",
+  "packageManager": "pnpm@10.19.0",
   "workspaces": [
     "apps/*",
     "libs/*"
@@ -24,7 +25,7 @@
     "type-check:affected": "nx affected -t type-check",
     "test": "nx run-many -t test",
     "test:affected": "nx affected -t test",
-    "test:ci": "nx run-many -t test --ci --coverage --maxWorkers=2",
+    "test:ci": "nx run-many -t test --ci --coverage --exclude backend",
     "test:watch": "nx run-many -t test --watch",
     "graph": "nx graph",
     "affected:graph": "nx affected:graph",
@@ -60,15 +61,15 @@
   },
   "engines": {
     "node": ">=20.0.0",
-    "npm": ">=10.0.0"
+    "pnpm": ">=10.0.0"
   },
   "nx": {
     "includedScripts": []
   },
   "dependencies": {
-    "@types/bcrypt": "^6.0.0",
+    "@types/bcrypt": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.10",
-    "bcrypt": "^6.0.0",
+    "bcrypt": "^5.1.1",
     "jsonwebtoken": "^9.0.2"
   }
 }

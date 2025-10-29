@@ -5,6 +5,7 @@ Integration tests for the BerthCare backend API endpoints.
 ## Overview
 
 These tests verify the complete functionality of API endpoints including:
+
 - Request validation
 - Database operations
 - Authentication and authorization
@@ -26,12 +27,14 @@ tests/
 Before running tests, ensure you have:
 
 1. **PostgreSQL test database** running:
+
    ```bash
    # Database should be available at:
    # postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test
    ```
 
 2. **Redis test instance** running:
+
    ```bash
    # Redis should be available at:
    # redis://:berthcare_redis_password@localhost:6379/1
@@ -41,34 +44,39 @@ Before running tests, ensure you have:
 
 4. **Dependencies installed**:
    ```bash
-   npm install
+   pnpm install
    ```
 
 ## Running Tests
 
 ### Run all tests
+
 ```bash
-npm test
+pnpm run test
 ```
 
 ### Run tests in watch mode
+
 ```bash
-npm run test:watch
+pnpm run test:watch
 ```
 
 ### Run tests with coverage
+
 ```bash
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 ### Run specific test file
+
 ```bash
-npm test -- auth.register.test.ts
+pnpm run test -- auth.register.test.ts
 ```
 
 ### Run specific test suite
+
 ```bash
-npm test -- --testNamePattern="Successful Registration"
+pnpm run test -- --testNamePattern="Successful Registration"
 ```
 
 ## Test Database Setup
@@ -76,13 +84,15 @@ npm test -- --testNamePattern="Successful Registration"
 The tests automatically create required tables if they don't exist. However, for best results:
 
 1. **Create a dedicated test database**:
+
    ```sql
    CREATE DATABASE berthcare_test;
    ```
 
 2. **Run migrations on test database**:
+
    ```bash
-   DATABASE_URL=postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test npm run migrate:up
+   DATABASE_URL=postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test pnpm run migrate:up
    ```
 
 3. **Tests will clean up data** between runs (DELETE operations, not DROP)
@@ -124,9 +134,7 @@ describe('Feature Name', () => {
 
   describe('Specific Scenario', () => {
     it('should do something specific', async () => {
-      const response = await request(app)
-        .post('/v1/endpoint')
-        .send({ data });
+      const response = await request(app).post('/v1/endpoint').send({ data });
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({ expected });
@@ -147,16 +155,19 @@ describe('Feature Name', () => {
 ## Debugging Tests
 
 ### Enable verbose output
+
 ```bash
-npm test -- --verbose
+pnpm run test -- --verbose
 ```
 
 ### Run single test
+
 ```bash
-npm test -- --testNamePattern="should register a new caregiver successfully"
+pnpm run test -- --testNamePattern="should register a new caregiver successfully"
 ```
 
 ### Debug with Node inspector
+
 ```bash
 node --inspect-brk node_modules/.bin/jest --runInBand
 ```
@@ -175,16 +186,19 @@ Tests are designed to run in CI/CD pipelines:
 ## Troubleshooting
 
 ### "Connection refused" errors
+
 - Ensure PostgreSQL and Redis are running
 - Check connection strings in `.env` file
 - Verify network connectivity
 
 ### "Table does not exist" errors
+
 - Run migrations on test database
 - Check database permissions
 - Verify test database exists
 
 ### "Rate limit exceeded" errors
+
 - Tests clean Redis between runs
 - If running tests multiple times quickly, wait or flush Redis manually:
   ```bash
@@ -192,6 +206,7 @@ Tests are designed to run in CI/CD pipelines:
   ```
 
 ### Timeout errors
+
 - Increase Jest timeout in `setup.ts`
 - Check database query performance
 - Verify network latency

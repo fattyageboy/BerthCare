@@ -20,10 +20,12 @@
  * - Multiple layers of validation
  */
 
+import { verifyToken, decodeToken } from '@berthcare/shared';
+import type { JWTPayload, UserRole } from '@berthcare/shared';
 import { Request, Response, NextFunction } from 'express';
 import { createClient } from 'redis';
 
-import { verifyToken, JWTPayload, UserRole } from '../../../../libs/shared/src';
+import { logError, logInfo } from '../config/logger';
 
 /**
  * Extended Express Request with authenticated user
@@ -212,15 +214,20 @@ export function requireRole(allowedRoles: UserRole[]) {
 /**
  * Blacklist a JWT token (for logout functionality)
  *
- * Adds token to Redis blacklist with expiration matching token expiry.
+ * Adds token to Redis blacklist with expiration derived from token's exp claim.
  * This prevents the token from being used even if it hasn't expired yet.
+ *
+ * Security Notes:
+ * - Validates exp claim is a valid number before using it
+ * - Uses 7-day fallback TTL for tokens without exp or with malformed exp
+ * - Longer fallback prevents security gap where revoked tokens become usable after short blacklist expiry
  *
  * @param redisClient - Redis client for token blacklist
  * @param token - JWT token to blacklist
- * @param expirySeconds - Token expiry in seconds (default: 3600 = 1 hour)
+ * @param expirySeconds - Optional TTL override in seconds (default: derived from token exp, fallback: 7 days)
  *
  * @example
- * // Logout endpoint
+ * // Logout endpoint (TTL auto-derived from token)
  * router.post('/logout', authenticateJWT(redisClient), async (req, res) => {
  *   const token = req.headers.authorization?.split(' ')[1];
  *   if (token) {
@@ -232,8 +239,54 @@ export function requireRole(allowedRoles: UserRole[]) {
 export async function blacklistToken(
   redisClient: ReturnType<typeof createClient>,
   token: string,
-  expirySeconds: number = 3600
+  expirySeconds?: number
 ): Promise<void> {
+  let ttl = expirySeconds;
+
+  // If no explicit TTL provided, derive from token's exp claim
+  if (ttl === undefined) {
+    try {
+      const decoded = decodeToken(token);
+
+      if (decoded?.exp) {
+        // Validate exp claim is a valid number
+        if (typeof decoded.exp !== 'number' || !Number.isFinite(decoded.exp)) {
+          logError(
+            'Token exp claim is not a valid number, using fallback TTL',
+            new Error('Invalid exp')
+          );
+          ttl = 604800; // Fallback to 7 days for malformed exp
+        } else {
+          const nowInSeconds = Math.floor(Date.now() / 1000);
+          ttl = Math.ceil(decoded.exp - nowInSeconds);
+
+          // Don't blacklist if token is already expired
+          if (ttl <= 0) {
+            logInfo('Token already expired, skipping blacklist', {
+              ttlSeconds: ttl,
+            });
+            return;
+          }
+        }
+      } else if (decoded) {
+        // Use longer fallback TTL for tokens without exp claim to prevent security gap
+        logError(
+          'Token missing exp claim, using fallback TTL of 7 days',
+          new Error('No exp in JWT')
+        );
+        ttl = 604800; // Fallback to 7 days (tokens without exp are likely long-lived)
+      } else {
+        throw new Error('Unable to decode token');
+      }
+    } catch (error) {
+      logError(
+        'Failed to decode token for TTL calculation',
+        error instanceof Error ? error : new Error(String(error))
+      );
+      ttl = 604800; // Fallback to 7 days on decode error
+    }
+  }
+
   const blacklistKey = `token:blacklist:${token}`;
-  await redisClient.setEx(blacklistKey, expirySeconds, '1');
+  await redisClient.setEx(blacklistKey, ttl, '1');
 }

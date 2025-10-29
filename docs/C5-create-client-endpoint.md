@@ -17,6 +17,7 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 **File:** `apps/backend/src/services/geocoding.service.ts`
 
 **Features:**
+
 - Google Maps Geocoding API integration
 - Address to latitude/longitude conversion
 - Result caching (24 hour TTL) to reduce API calls
@@ -25,11 +26,13 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 - Retry logic for API failures
 
 **Key Methods:**
+
 - `geocodeAddress(address: string)`: Convert address to coordinates
 - `validateCoordinates(lat, lng)`: Validate coordinates are in Canada
 - `clearCache(address)`: Clear cached geocoding result
 
 **Error Handling:**
+
 - Invalid address format
 - Address not found
 - API timeout
@@ -41,6 +44,7 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 **File:** `apps/backend/src/services/zone-assignment.service.ts`
 
 **Features:**
+
 - Proximity-based zone assignment
 - Haversine formula for distance calculation
 - Zone data caching (1 hour TTL)
@@ -48,12 +52,14 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 - Manual zone override support
 
 **Key Methods:**
+
 - `assignZone(latitude, longitude)`: Assign zone based on location
 - `validateZoneId(zoneId)`: Validate zone exists
 - `calculateDistance(lat1, lon1, lat2, lon2)`: Calculate distance in km
 - `clearCache()`: Clear zone cache
 
 **Zone Data (MVP):**
+
 - North Zone: Montreal area (45.5017°N, -73.5673°W)
 - South Zone: Toronto area (43.6532°N, -79.3832°W)
 - West Zone: Vancouver area (49.2827°N, -123.1207°W)
@@ -67,7 +73,8 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 **Added Function:** `validateCreateClient`
 
 **Validations:**
-- Required fields: firstName, lastName, dateOfBirth, address, emergency contact details
+
+- Required fields: firstName, lastName, dateOfBirth, address, emergencyContactName, emergencyContactPhone, emergencyContactRelationship
 - String length limits (firstName: 100, lastName: 100, address: unlimited, etc.)
 - Date format: ISO 8601 (YYYY-MM-DD)
 - Date range: Not in future, not more than 120 years ago
@@ -75,6 +82,7 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 - Zone ID format: UUID (optional)
 
 **Error Responses:**
+
 - Clear error messages for each validation failure
 - Field-specific error details
 - Consistent error format
@@ -86,11 +94,13 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 **Endpoint:** `POST /v1/clients`
 
 **Middleware Chain:**
+
 1. `authenticateJWT(redisClient)` - Verify JWT token
 2. `requireRole(['admin'])` - Require admin role (MVP constraint)
 3. `validateCreateClient` - Validate request body
 
 **Business Logic:**
+
 1. Check for duplicate client (same name and DOB)
 2. Geocode address to get latitude/longitude
 3. Assign zone based on location (or use manual override)
@@ -100,7 +110,8 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 7. Commit transaction
 8. Return created client with care plan
 
-**Response (201):**
+**Response (201):** <a name="response-format"></a>
+
 ```json
 {
   "data": {
@@ -131,6 +142,7 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 ```
 
 **Error Responses:**
+
 - 400: Validation error, geocoding failure, invalid zone
 - 403: Non-admin user
 - 409: Duplicate client
@@ -141,6 +153,7 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 **File:** `apps/backend/tests/clients.create.test.ts`
 
 **Test Coverage:**
+
 - ✅ Authorization (401, 403)
 - ✅ Validation (400 for all required fields)
 - ✅ Duplicate detection (409)
@@ -151,6 +164,7 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 - ✅ Manual zone override
 
 **Test Scenarios:**
+
 - Reject request without authentication token
 - Reject non-admin user (caregiver)
 - Reject missing required fields
@@ -169,10 +183,12 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 ### 6. Environment Configuration
 
 **Files Updated:**
+
 - `.env.example` - Added Google Maps API configuration
 - `.env` - Added Google Maps API key placeholder
 
 **New Environment Variables:**
+
 ```bash
 GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400  # 24 hours
@@ -180,12 +196,18 @@ GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400  # 24 hours
 
 ### 7. Dependencies
 
-**NPM Package Installed:**
+**Package Installed:**
+
 ```bash
+# Using pnpm
+pnpm add @googlemaps/google-maps-services-js
+
+# Or using npm
 npm install @googlemaps/google-maps-services-js
 ```
 
 **Package Details:**
+
 - Official Google Maps API client for Node.js
 - Supports Geocoding API
 - TypeScript support
@@ -194,12 +216,14 @@ npm install @googlemaps/google-maps-services-js
 ## Design Philosophy Applied
 
 ### Simplicity is the Ultimate Sophistication
+
 - Clear, straightforward API design
 - Single endpoint for client creation
 - Automatic geocoding and zone assignment
 - No complex configuration required
 
 ### Obsess Over Details
+
 - Comprehensive input validation
 - Clear error messages for debugging
 - Caching to reduce API calls and improve performance
@@ -207,6 +231,7 @@ npm install @googlemaps/google-maps-services-js
 - Graceful handling of external API failures
 
 ### Start with User Experience
+
 - Admin can create clients quickly
 - Address geocoding is automatic
 - Zone assignment is automatic
@@ -214,6 +239,7 @@ npm install @googlemaps/google-maps-services-js
 - Clear error messages guide user to fix issues
 
 ### Uncompromising Security
+
 - Admin-only access (MVP constraint)
 - Input validation prevents injection attacks
 - Transaction support ensures data consistency
@@ -225,12 +251,14 @@ npm install @googlemaps/google-maps-services-js
 ### Caching Strategy
 
 **Geocoding Results:**
+
 - Cache key: `geocode:${address.toLowerCase().trim()}`
 - TTL: 24 hours (86400 seconds)
 - Reduces Google Maps API calls
 - Improves response time for duplicate addresses
 
 **Zone Data:**
+
 - Cache key: `zones:all`
 - TTL: 1 hour (3600 seconds)
 - Reduces database queries
@@ -239,25 +267,29 @@ npm install @googlemaps/google-maps-services-js
 ### Database Optimization
 
 **Transaction Support:**
+
 - Atomic client + care plan creation
 - Rollback on error
 - Data consistency guaranteed
 
 **Duplicate Detection:**
+
 - Query uses indexes on first_name, last_name, date_of_birth
 - Case-insensitive comparison
 - Fast lookup (< 10ms)
 
 **Connection Pooling:**
+
 - Reuses database connections
 - Reduces connection overhead
 - Improves throughput
 
 ### API Response Time
 
-**Target:** < 2 seconds (including geocoding)
+**Target:** ~600ms first request, ~100ms cached (2s ceiling for worst-case scenarios)
 
 **Breakdown:**
+
 - Validation: < 10ms
 - Duplicate check: < 10ms
 - Geocoding: 200-500ms (cached: < 10ms)
@@ -265,9 +297,12 @@ npm install @googlemaps/google-maps-services-js
 - Database insert: < 50ms
 - Total: ~300-600ms (first request), ~100ms (cached)
 
+**Note:** The 2-second ceiling accounts for worst-case scenarios including network latency, API slowdowns, and high server load. Under normal conditions with caching, responses are significantly faster (~100ms). The realistic target for first-time geocoding is ~600ms, with subsequent requests benefiting from 24-hour cache TTL.
+
 ## Security Considerations
 
 ### Input Validation
+
 - All required fields validated
 - String length limits enforced
 - Date format and range validated
@@ -275,18 +310,21 @@ npm install @googlemaps/google-maps-services-js
 - Zone ID format validated (UUID)
 
 ### Authorization
+
 - Admin-only access (MVP)
 - JWT token required
 - Token blacklist checked
 - Role-based access control
 
 ### Data Privacy
+
 - Minimal PII in logs
 - Sensitive data encrypted at rest
 - HTTPS for all API calls
 - Canadian data residency (PIPEDA compliant)
 
 ### SQL Injection Prevention
+
 - Parameterized queries
 - No string concatenation
 - Input sanitization
@@ -295,29 +333,46 @@ npm install @googlemaps/google-maps-services-js
 ## Error Handling
 
 ### Validation Errors (400)
+
 - Clear error messages
 - Field-specific details
 - Consistent error format
 - Request ID for tracking
 
 ### Authorization Errors (403)
+
 - Non-admin users rejected
 - Clear permission message
 - No sensitive information leaked
 
 ### Duplicate Errors (409)
+
 - Existing client ID returned
 - Clear conflict message
 - Helps admin find existing record
 
 ### Geocoding Errors (400/500)
+
 - Address not found: 400
 - API timeout: 500
 - API quota exceeded: 503
 - Invalid address: 400
 - Outside service area: 400
 
+**Error Code Mapping:**
+
+| Internal Error Code       | HTTP Status | Description                                      |
+| ------------------------- | ----------- | ------------------------------------------------ |
+| `CONFIGURATION_ERROR`     | 500         | Google Maps API key not configured               |
+| `ADDRESS_NOT_FOUND`       | 400         | Address could not be geocoded                    |
+| `QUOTA_EXCEEDED`          | 503         | Google Maps API quota limit reached              |
+| `OUTSIDE_SERVICE_AREA`    | 400         | Address is outside Canada (service area)         |
+| `GEOCODING_FAILED`        | 500         | Unexpected geocoding service error               |
+| `INVALID_ZONE`            | 400         | Provided zone ID does not exist                  |
+| `NO_ZONES_AVAILABLE`      | 500         | No zones configured in system                    |
+
 ### Server Errors (500)
+
 - Generic error message
 - Request ID for support
 - Detailed logging for debugging
@@ -326,18 +381,21 @@ npm install @googlemaps/google-maps-services-js
 ## Testing Strategy
 
 ### Unit Tests
+
 - Geocoding service (mocked API)
 - Zone assignment logic
 - Distance calculation
 - Validation middleware
 
 ### Integration Tests
+
 - Full endpoint flow
 - Database transactions
 - Error scenarios
 - Edge cases
 
 ### Manual Testing
+
 - Real addresses
 - Google Maps API
 - Zone assignment accuracy
@@ -346,6 +404,7 @@ npm install @googlemaps/google-maps-services-js
 ## Monitoring & Logging
 
 ### Metrics to Track
+
 - Client creation success rate
 - Geocoding API response time
 - Geocoding API error rate
@@ -354,6 +413,7 @@ npm install @googlemaps/google-maps-services-js
 - Cache hit rate
 
 ### Logging Events
+
 - Client created (INFO)
 - Geocoding failure (WARN)
 - Duplicate client detected (INFO)
@@ -361,6 +421,7 @@ npm install @googlemaps/google-maps-services-js
 - Unexpected errors (ERROR)
 
 ### Log Format
+
 ```json
 {
   "level": "info",
@@ -469,9 +530,34 @@ npm install @googlemaps/google-maps-services-js
    - Redis running
    - Backend server running
 
+**Service Failure Handling:**
+
+- **Redis Unavailable:**
+  - Behavior: Cache fallback to direct Google Maps API calls (no caching)
+  - Verification: Check Redis connection with `redis-cli ping`
+  - Flush cache: `redis-cli FLUSHDB` (development only)
+  - Restart: `brew services restart redis` (macOS) or `sudo systemctl restart redis` (Linux)
+  - Impact: Increased API usage and slower response times without cache
+
+- **PostgreSQL Connection Failures:**
+  - Inspect connection: Check `DATABASE_URL` in `.env` file
+  - Run migrations: `npm run migrate` or `pnpm migrate`
+  - Check DB logs: `tail -f /usr/local/var/log/postgres.log` (macOS) or `sudo journalctl -u postgresql` (Linux)
+  - Restart DB: `brew services restart postgresql` (macOS) or `sudo systemctl restart postgresql` (Linux)
+  - Restart backend: `npm run dev` or `pnpm dev`
+  - Verify connection: `psql $DATABASE_URL -c "SELECT 1"`
+
+- **Backend Server Startup Issues:**
+  - Check logs: `npm run dev` output or application logs
+  - Verify environment variables: Ensure all required vars in `.env` are set
+  - Check port conflicts: `lsof -i :3000` (change port if needed)
+  - Health check: `curl http://localhost:3000/health` (if endpoint exists)
+  - Common issues: Missing `GOOGLE_MAPS_API_KEY`, incorrect `DATABASE_URL`, Redis connection failure
+
 ### Create Client
 
 **Request:**
+
 ```bash
 curl -X POST http://localhost:3000/v1/clients \
   -H "Authorization: Bearer <admin_token>" \
@@ -488,39 +574,12 @@ curl -X POST http://localhost:3000/v1/clients \
   }'
 ```
 
-**Response:**
-```json
-{
-  "data": {
-    "id": "uuid",
-    "firstName": "John",
-    "lastName": "Doe",
-    "dateOfBirth": "1950-01-01",
-    "address": "100 Queen St W, Toronto, ON M5H 2N2",
-    "latitude": 43.6532,
-    "longitude": -79.3832,
-    "phone": "416-555-0100",
-    "emergencyContact": {
-      "name": "Jane Doe",
-      "phone": "416-555-0200",
-      "relationship": "Spouse"
-    },
-    "zoneId": "uuid",
-    "carePlan": {
-      "id": "uuid",
-      "summary": "Care plan for John Doe...",
-      "medications": [],
-      "allergies": [],
-      "specialInstructions": ""
-    },
-    "createdAt": "2025-10-10T12:00:00Z"
-  }
-}
-```
+**Response:** See [Response Format](#response-format) section above for the complete response structure.
 
 ### Manual Zone Override
 
 **Request:**
+
 ```bash
 curl -X POST http://localhost:3000/v1/clients \
   -H "Authorization: Bearer <admin_token>" \
@@ -542,38 +601,46 @@ curl -X POST http://localhost:3000/v1/clients \
 ### Geocoding Errors
 
 **Error:** `CONFIGURATION_ERROR`
+
 - **Cause:** Google Maps API key not configured
 - **Solution:** Add `GOOGLE_MAPS_API_KEY` to `.env` file
 
 **Error:** `ADDRESS_NOT_FOUND`
+
 - **Cause:** Invalid or incomplete address
 - **Solution:** Provide full street address with city and postal code
 
 **Error:** `QUOTA_EXCEEDED`
+
 - **Cause:** Google Maps API quota exceeded
 - **Solution:** Wait for quota reset or upgrade plan
 
 **Error:** `OUTSIDE_SERVICE_AREA`
+
 - **Cause:** Address is not in Canada
 - **Solution:** Provide Canadian address
 
 ### Zone Assignment Errors
 
 **Error:** `NO_ZONES_AVAILABLE`
+
 - **Cause:** No zones configured
 - **Solution:** Verify zone data in service (hardcoded for MVP)
 
 **Error:** `INVALID_ZONE`
+
 - **Cause:** Manual zone ID doesn't exist
 - **Solution:** Use valid zone ID from zones list
 
 ### Database Errors
 
 **Error:** `DUPLICATE_CLIENT`
+
 - **Cause:** Client with same name and DOB exists
 - **Solution:** Check existing client or use different name/DOB
 
 **Error:** Transaction rollback
+
 - **Cause:** Database error during insert
 - **Solution:** Check database logs, verify schema
 
@@ -623,6 +690,7 @@ The POST /v1/clients endpoint is now fully implemented and ready for testing. Th
 ---
 
 **Implementation Files:**
+
 - ✅ `apps/backend/src/services/geocoding.service.ts` - Geocoding service
 - ✅ `apps/backend/src/services/zone-assignment.service.ts` - Zone assignment service
 - ✅ `apps/backend/src/middleware/validation.ts` - Extended validation
@@ -631,4 +699,3 @@ The POST /v1/clients endpoint is now fully implemented and ready for testing. Th
 - ✅ `docs/C5-create-client-endpoint.md` - This implementation guide and API documentation
 
 **Next Task:** Testing and validation
-

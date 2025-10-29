@@ -16,16 +16,14 @@ Provides JWT token verification and role-based access control.
 import { authenticateJWT, requireRole, AuthenticatedRequest } from './middleware/auth';
 
 // Protect a route (any authenticated user)
-router.get('/protected', 
-  authenticateJWT(redisClient), 
-  (req: AuthenticatedRequest, res) => {
-    const userId = req.user?.userId;
-    res.json({ userId });
-  }
-);
+router.get('/protected', authenticateJWT(redisClient), (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.userId;
+  res.json({ userId });
+});
 
 // Protect a route (specific roles only)
-router.get('/admin', 
+router.get(
+  '/admin',
   authenticateJWT(redisClient),
   requireRole(['admin']),
   (req: AuthenticatedRequest, res) => {
@@ -35,11 +33,42 @@ router.get('/admin',
 ```
 
 **Features:**
+
 - JWT signature verification
 - Token expiration checking
 - Token blacklist support (logout)
 - User context attachment to request
 - Role-based authorization
+
+**User Context Attachment:**
+
+The `authenticateJWT` middleware attaches user information to the request object synchronously before route handlers execute. After successful JWT verification, the middleware sets `req.user` with the authenticated user's details:
+
+```typescript
+// User object shape attached to req.user
+req.user = {
+  userId: string;      // UUID from JWT payload
+  role: UserRole;      // 'admin' | 'coordinator' | 'caregiver'
+  zoneId: string;      // UUID of user's assigned zone
+  email?: string;      // Optional email address
+};
+```
+
+For unauthenticated requests or failed verification, `req.user` remains `undefined`. Route handlers can check `req.user` to determine authentication status.
+
+**TypeScript Support:**
+
+The middleware exports an `AuthenticatedRequest` interface that extends Express's `Request` type:
+
+```typescript
+import { AuthenticatedRequest } from './middleware/auth';
+
+router.get('/profile', authenticateJWT(redisClient), (req: AuthenticatedRequest, res) => {
+  // TypeScript knows req.user exists and its shape
+  const { userId, role, zoneId } = req.user!;
+  res.json({ userId, role, zoneId });
+});
+```
 
 **See:** `docs/A7-jwt-auth-middleware.md` for complete documentation
 
@@ -64,6 +93,7 @@ router.post('/register', createRegistrationRateLimiter(redisClient), registerHan
 ```
 
 **Features:**
+
 - Per-IP rate limiting
 - Configurable time windows and max attempts
 - Redis-backed for multi-instance support
@@ -88,6 +118,7 @@ router.post('/refresh', validateRefreshToken, refreshHandler);
 ```
 
 **Features:**
+
 - Email format validation
 - Password strength validation
 - Clear error messages
@@ -108,11 +139,12 @@ When using multiple middleware, apply them in this order:
 **Example:**
 
 ```typescript
-router.post('/protected-endpoint',
-  createRateLimiter(redisClient, config),  // 1. Rate limiting
-  validateRequest,                          // 2. Validation
-  authenticateJWT(redisClient),            // 3. Authentication
-  requireRole(['admin']),                  // 4. Authorization
+router.post(
+  '/protected-endpoint',
+  createRateLimiter(redisClient, config), // 1. Rate limiting
+  validateRequest, // 2. Validation
+  authenticateJWT(redisClient), // 3. Authentication
+  requireRole(['admin']), // 4. Authorization
   async (req: AuthenticatedRequest, res) => {
     // 5. Business logic
     res.json({ success: true });
@@ -151,10 +183,10 @@ Run tests:
 
 ```bash
 # Run all middleware tests
-npm test -- middleware
+pnpm run test -- middleware
 
 # Run specific middleware tests
-npm test -- auth.middleware.test.ts
+pnpm run test -- auth.middleware.test.ts
 ```
 
 ---

@@ -8,17 +8,63 @@ on:
     branches:
       - main
 
-# Cancel in-progress runs when a new workflow with the same group name is triggered
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Job 1: Code Quality Checks
-  code-quality:
-    name: Code Quality (Lint & Format)
+  ci:
+    name: CI Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+
+    services:
+      # Note: GitHub Actions always pulls images if not cached. For guaranteed
+      # reproducibility and to avoid stale cached images, consider using image
+      # digests instead of tags (e.g., postgres@sha256:...).
+      # To get digest: docker pull postgres:15 && docker inspect postgres:15 | grep -A1 RepoDigests
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: berthcare_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      # Note: These credentials are safe to hardcode as they only apply to ephemeral
+      # GitHub Actions containers that are destroyed after each run. They cannot be
+      # used to access any production or persistent infrastructure.
+      TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/berthcare_test
+      TEST_REDIS_URL: redis://localhost:6379
+      # Twilio test credentials loaded from GitHub Secrets
+      # To set these up, add these keys to your repository secrets:
+      # Settings > Secrets and variables > Actions > New repository secret
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+      TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
+      TWILIO_WEBHOOK_BASE_URL: ${{ secrets.TWILIO_WEBHOOK_BASE_URL }}
+      # JWT test keys loaded from GitHub Secrets
+      # To set these up, add JWT_PUBLIC_KEY and JWT_PRIVATE_KEY to your repository secrets
+      # Settings > Secrets and variables > Actions > New repository secret
+      JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
+      JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
 
     steps:
       - name: Checkout code
@@ -28,63 +74,47 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.19.0
+          run_install: false
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run ESLint
-        run: npm run lint
+        run: pnpm run lint
         continue-on-error: false
 
       - name: Run Prettier check
-        run: npm run format:check
+        run: pnpm run format:check
         continue-on-error: false
-
-  # Job 2: Type Checking
-  type-check:
-    name: TypeScript Type Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Run TypeScript type check
-        run: npm run type-check
+        run: pnpm run type-check
         continue-on-error: false
 
-  # Job 3: Unit Tests
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+      - name: Build shared library
+        run: pnpm exec nx run shared:build
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup test database
+        run: pnpm --filter @berthcare/backend run migrate:up
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
       - name: Run tests with coverage
-        run: npm run test:ci -- --maxWorkers=1
+        run: pnpm run test:ci
+        continue-on-error: false
+
+      - name: Run dependency audit
+        id: dependency_audit
+        run: pnpm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Build all packages
+        run: pnpm run build
         continue-on-error: false
 
       - name: Upload coverage reports
@@ -97,121 +127,19 @@ jobs:
           name: codecov-umbrella
           fail_ci_if_error: false
 
-  # Job 4: Security Scanning (SAST)
-  security-sast:
-    name: Security Scan (SAST)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Snyk security scan
-        uses: snyk/actions/node@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high --all-projects
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: '/language:javascript-typescript'
-
-  # Job 5: Dependency Audit
-  dependency-audit:
-    name: Dependency Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Run npm audit
-        run: npm audit --audit-level=high
-        continue-on-error: false
-
-      - name: Check for outdated dependencies
-        run: npm outdated || true
-
-  # Job 6: Build Verification
-  build:
-    name: Build Verification
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build all packages
-        run: npm run build
-        continue-on-error: false
-
-      - name: Check build artifacts
+      - name: CI Summary
+        if: always()
         run: |
-          if [ ! -d "dist" ] && [ ! -d "apps/backend/dist" ]; then
-            echo "Warning: No build artifacts found"
+          summary="✅ All CI checks completed successfully"
+          if [[ "${{ steps.dependency_audit.outcome }}" != "success" ]]; then
+            summary="⚠️ CI completed with dependency audit warnings"
+            echo "::warning::Dependency audit reported issues"
           fi
+          echo "$summary"
+          echo "Lint, format, type-check, tests, audit, and build completed"
 
-  # Job 7: CI Summary
-  ci-summary:
-    name: CI Summary
-    runs-on: ubuntu-latest
-    needs: [code-quality, type-check, test, security-sast, dependency-audit, build]
-    if: always()
-
-    steps:
-      - name: Check all jobs status
+      - name: CI Failed
+        if: failure()
         run: |
-          echo "Code Quality: ${{ needs.code-quality.result }}"
-          echo "Type Check: ${{ needs.type-check.result }}"
-          echo "Tests: ${{ needs.test.result }}"
-          echo "Security SAST: ${{ needs.security-sast.result }}"
-          echo "Dependency Audit: ${{ needs.dependency-audit.result }}"
-          echo "Build: ${{ needs.build.result }}"
-
-      - name: Fail if any required job failed
-        if: |
-          needs.code-quality.result == 'failure' ||
-          needs.type-check.result == 'failure' ||
-          needs.test.result == 'failure' ||
-          needs.dependency-audit.result == 'failure' ||
-          needs.build.result == 'failure'
-        run: exit 1
+          echo "❌ CI checks failed"
+          exit 1

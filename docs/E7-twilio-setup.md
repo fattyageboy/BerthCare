@@ -27,6 +27,7 @@ BerthCare uses Twilio for two critical communication features:
 ### 1. Required Information
 
 Before starting, gather:
+
 - [ ] Business email address (for Twilio account)
 - [ ] Business phone number (for verification)
 - [ ] Credit card for account setup
@@ -37,12 +38,12 @@ Before starting, gather:
 
 **Estimated Monthly Costs:**
 
-| Service | Usage | Cost |
-|---------|-------|------|
-| Phone Numbers | 2 numbers (staging + production) | $2.00/month |
-| Voice Calls | ~500 calls/month @ 1 min avg | $25.00/month |
-| SMS Messages | ~1,000 messages/month | $7.50/month |
-| **Total** | | **~$35/month** |
+| Service       | Usage                            | Cost           |
+| ------------- | -------------------------------- | -------------- |
+| Phone Numbers | 2 numbers (staging + production) | $2.00/month    |
+| Voice Calls   | ~500 calls/month @ 1 min avg     | $25.00/month   |
+| SMS Messages  | ~1,000 messages/month            | $7.50/month    |
+| **Total**     |                                  | **~$35/month** |
 
 ---
 
@@ -56,6 +57,7 @@ open https://www.twilio.com/try-twilio
 ```
 
 **Account Setup:**
+
 1. Click "Sign up and start building"
 2. Enter business email and create password
 3. Verify email address
@@ -84,6 +86,7 @@ Trial accounts have limitations (verified numbers only). Upgrade immediately:
 ### 1.3 Enable Required Products
 
 Navigate to **Console → Products** and enable:
+
 - ✅ Programmable Voice
 - ✅ Programmable SMS
 - ✅ Phone Numbers
@@ -100,6 +103,7 @@ Navigate to **Console → Products** and enable:
 ```
 
 **Search Criteria:**
+
 - **Country:** Canada
 - **Capabilities:** Voice + SMS
 - **Type:** Local
@@ -110,12 +114,14 @@ Navigate to **Console → Products** and enable:
   - ✅ MMS (optional, for future features)
 
 **Purchase Process:**
+
 1. Search for available numbers
 2. Select a number with both Voice and SMS capabilities
 3. Click "Buy" ($1.00/month)
 4. Confirm purchase
 
 **Configure Number:**
+
 1. Click on the purchased number
 2. Set **Friendly Name:** "BerthCare Staging"
 3. **Voice Configuration:**
@@ -136,9 +142,11 @@ Navigate to **Console → Products** and enable:
 Repeat the same process for production:
 
 **Search Criteria:**
+
 - Same as staging (Canada, Voice + SMS, Local)
 
 **Configure Number:**
+
 - **Friendly Name:** "BerthCare Production"
 - **Voice URL:** `https://api.berthcare.ca/v1/twilio/voice` (placeholder)
 - **SMS URL:** `https://api.berthcare.ca/v1/twilio/sms` (placeholder)
@@ -159,10 +167,12 @@ Subaccounts provide isolation between environments and separate billing tracking
 ```
 
 **Configuration:**
+
 - **Friendly Name:** BerthCare Staging
 - **Status:** Active
 
 **After Creation:**
+
 1. Note the **Account SID** (starts with `AC...`)
 2. Note the **Auth Token** (click "Show" to reveal)
 3. Transfer staging phone number to subaccount:
@@ -177,10 +187,12 @@ Subaccounts provide isolation between environments and separate billing tracking
 Repeat for production:
 
 **Configuration:**
+
 - **Friendly Name:** BerthCare Production
 - **Status:** Active
 
 **After Creation:**
+
 1. Note the **Account SID**
 2. Note the **Auth Token**
 3. Transfer production phone number to subaccount
@@ -222,6 +234,7 @@ POST /v1/twilio/sms/status
 Once your backend is deployed (after E5), update the webhook URLs:
 
 **For Staging Number:**
+
 ```bash
 # Navigate to: Console → Phone Numbers → Active Numbers → [Staging Number]
 
@@ -235,6 +248,7 @@ Message Status Changes: https://api-staging.berthcare.ca/v1/twilio/sms/status
 ```
 
 **For Production Number:**
+
 ```bash
 # Same URLs but with production domain
 A Call Comes In: https://api.berthcare.ca/v1/twilio/voice
@@ -271,6 +285,7 @@ aws secretsmanager tag-resource \
 ```
 
 **Replace placeholders:**
+
 - `AC...` - Your staging subaccount SID
 - `your_auth_token` - Your staging auth token
 - `+1234567890` - Your staging phone number
@@ -342,6 +357,128 @@ Ensure your ECS task role has permission to read Twilio secrets:
 
 ---
 
+### 5.5 Configure Backend to Use Secrets
+
+Set the `TWILIO_SECRET_ID` environment variable for each environment so the backend loads credentials directly from AWS Secrets Manager:
+
+```bash
+# Staging
+TWILIO_SECRET_ID=berthcare/staging/twilio
+
+# Production
+TWILIO_SECRET_ID=berthcare/production/twilio
+```
+
+**Backend Implementation Pattern:**
+
+The backend should implement the following credential loading strategy:
+
+```typescript
+// Example: apps/backend/src/config/twilio.ts
+import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+
+interface TwilioConfig {
+  accountSid: string;
+  authToken: string;
+  phoneNumber: string;
+}
+
+async function loadTwilioConfig(): Promise<TwilioConfig> {
+  // Priority 1: Load from Secrets Manager if TWILIO_SECRET_ID is set
+  if (process.env.TWILIO_SECRET_ID) {
+    try {
+      const client = new SecretsManagerClient({ region: process.env.AWS_REGION || 'ca-central-1' });
+      const command = new GetSecretValueCommand({
+        SecretId: process.env.TWILIO_SECRET_ID,
+      });
+
+      const response = await client.send(command);
+      if (!response.SecretString) {
+        throw new Error('Secret value is empty');
+      }
+
+      const secret = JSON.parse(response.SecretString);
+
+      // Validate required fields
+      if (!secret.accountSid || !secret.authToken || !secret.phoneNumber) {
+        throw new Error(
+          'Twilio secret missing required fields: accountSid, authToken, phoneNumber'
+        );
+      }
+
+      console.log('✅ Loaded Twilio credentials from Secrets Manager');
+      return {
+        accountSid: secret.accountSid,
+        authToken: secret.authToken,
+        phoneNumber: secret.phoneNumber,
+      };
+    } catch (error) {
+      console.error('❌ Failed to load Twilio credentials from Secrets Manager:', error);
+
+      // Fallback to environment variables if secret loading fails
+      if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+        console.warn('⚠️  Falling back to environment variables');
+        return loadFromEnvironment();
+      }
+
+      throw new Error(`Failed to load Twilio credentials: ${error.message}`);
+    }
+  }
+
+  // Priority 2: Load from environment variables (local development)
+  return loadFromEnvironment();
+}
+
+function loadFromEnvironment(): TwilioConfig {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+
+  if (!accountSid || !authToken || !phoneNumber) {
+    throw new Error(
+      'Twilio credentials not configured. Set TWILIO_SECRET_ID or provide ' +
+        'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER'
+    );
+  }
+
+  console.log('✅ Loaded Twilio credentials from environment variables');
+  return { accountSid, authToken, phoneNumber };
+}
+
+// Initialize Twilio client
+export const twilioConfig = await loadTwilioConfig();
+```
+
+**Credential Loading Precedence:**
+
+1. **TWILIO_SECRET_ID** (highest priority) - Loads from AWS Secrets Manager
+2. **Environment Variables** (fallback) - Uses TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+3. **Error** - Throws if neither is configured
+
+**Error Handling:**
+
+- **Secret doesn't exist:** Logs error, falls back to environment variables if available, otherwise throws
+- **Secret is inaccessible:** Logs error with details (permissions, network), attempts fallback
+- **Secret is malformed:** Validates required fields, throws descriptive error
+- **No credentials available:** Throws clear error message with configuration instructions
+
+**Benefits of Secrets Manager Approach:**
+
+- **Single Source of Truth:** One secret per environment, no credential duplication
+- **Easier Rotation:** Update secret in AWS, restart services - no code/config changes needed
+- **Audit Trails:** AWS CloudTrail logs all secret access for compliance
+- **Automatic Encryption:** Secrets encrypted at rest and in transit by AWS
+- **No Git Exposure:** Credentials never stored in source control or environment files
+- **Centralized Management:** Security team can manage all secrets in one place
+
+**When to Use Each Approach:**
+
+- **Local Development:** Use environment variables (`.env` file)
+- **Staging/Production:** Use Secrets Manager (`TWILIO_SECRET_ID`)
+- **CI/CD:** Use environment variables or Secrets Manager depending on setup
+
+---
+
 ## Step 6: Configure Local Development
 
 ### 6.1 Update .env File
@@ -351,7 +488,16 @@ Ensure your ECS task role has permission to read Twilio secrets:
 nano .env
 ```
 
-Add the following:
+> **⚠️ SECURITY WARNING: Never Commit Real Twilio Credentials**
+>
+> - **DO NOT** commit real Twilio Account SIDs, auth tokens, or phone numbers to Git
+> - **DO NOT** paste real credentials into source code or documentation
+> - **USE** a local `.env` file for development (ensure `.env` is in `.gitignore`)
+> - **UPDATE** `.env` only locally on your development machine
+> - **PRODUCTION** deployments must load credentials from AWS Secrets Manager using `TWILIO_SECRET_ID`
+> - **NEVER** check in `.env` files with real credentials
+
+Add the following to your **local** `.env` file:
 
 ```bash
 # =============================================================================
@@ -362,6 +508,8 @@ TWILIO_AUTH_TOKEN=your_auth_token           # Your staging auth token
 TWILIO_PHONE_NUMBER=+1234567890             # Your staging phone number
 TWILIO_VOICE_URL=http://localhost:3000/v1/twilio/voice
 TWILIO_SMS_URL=http://localhost:3000/v1/twilio/sms
+# For staging/production deployments, point to Secrets Manager instead of storing credentials directly
+# TWILIO_SECRET_ID=berthcare/staging/twilio
 
 # Twilio Configuration
 TWILIO_VOICE_TIMEOUT=30                     # Seconds before escalation
@@ -369,7 +517,95 @@ TWILIO_SMS_RETRY_ATTEMPTS=3                 # Retry failed SMS
 TWILIO_CALL_RECORDING_ENABLED=false         # Disable for privacy
 ```
 
-### 6.2 Test Credentials
+### 6.2 Configure Local AWS Credentials (For Secrets Manager Access)
+
+If you want to test loading Twilio credentials from AWS Secrets Manager locally (using `TWILIO_SECRET_ID`), you need to configure AWS CLI credentials:
+
+**Step 1: Configure AWS CLI**
+
+```bash
+# Option 1: Interactive configuration (uses default profile)
+aws configure
+
+# Option 2: Create credentials file manually
+mkdir -p ~/.aws
+nano ~/.aws/credentials
+```
+
+Add your AWS credentials:
+
+```ini
+[default]
+aws_access_key_id = YOUR_ACCESS_KEY
+aws_secret_access_key = YOUR_SECRET_KEY
+
+[berthcare-dev]
+aws_access_key_id = YOUR_ACCESS_KEY
+aws_secret_access_key = YOUR_SECRET_KEY
+region = ca-central-1
+```
+
+**Step 2: Verify IAM Permissions**
+
+Your IAM user/role must have the same permissions as the ECS task role:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+      "Resource": [
+        "arn:aws:secretsmanager:ca-central-1:*:secret:berthcare/staging/twilio-*",
+        "arn:aws:secretsmanager:ca-central-1:*:secret:berthcare/production/twilio-*"
+      ]
+    }
+  ]
+}
+```
+
+**Step 3: Verify Secret Access**
+
+Test that you can read the Twilio secret:
+
+```bash
+# Using default profile
+aws secretsmanager get-secret-value \
+  --secret-id berthcare/staging/twilio \
+  --region ca-central-1 \
+  --query SecretString \
+  --output text | jq .
+
+# Using named profile
+AWS_PROFILE=berthcare-dev aws secretsmanager get-secret-value \
+  --secret-id berthcare/staging/twilio \
+  --region ca-central-1 \
+  --query SecretString \
+  --output text | jq .
+```
+
+**Expected Output:**
+
+```json
+{
+  "accountSid": "AC...",
+  "authToken": "your_auth_token",
+  "phoneNumber": "+1234567890"
+}
+```
+
+**Step 4: Use Named Profile in Backend (Optional)**
+
+If using a named AWS profile, set the environment variable:
+
+```bash
+# In your .env file
+AWS_PROFILE=berthcare-dev
+TWILIO_SECRET_ID=berthcare/staging/twilio
+```
+
+### 6.3 Test Credentials
 
 ```bash
 # Test Twilio credentials with a simple script
@@ -448,6 +684,120 @@ curl -X POST https://api-staging.berthcare.ca/v1/twilio/sms \
 
 # Expected response: TwiML XML with message
 ```
+
+### 7.4 Test Webhooks Locally (Optional)
+
+For local development and testing, you can use a tunneling tool to expose your local backend to the internet so Twilio can send webhooks to your development machine.
+
+**⚠️ Security Warning:** Tunneling tools expose your local machine to the internet. Only use for development/testing, never in production. Revert webhook URLs immediately after testing.
+
+**Step 1: Install a Tunneling Tool**
+
+Choose one:
+
+```bash
+# Option 1: ngrok (recommended)
+brew install ngrok  # macOS
+# or download from https://ngrok.com/download
+
+# Option 2: localtunnel
+npm install -g localtunnel
+```
+
+**Step 2: Start Your Local Backend**
+
+```bash
+# Start your backend on port 3000
+cd apps/backend
+npm run dev
+```
+
+**Step 3: Start the Tunnel**
+
+```bash
+# Using ngrok
+ngrok http 3000
+
+# Using localtunnel
+lt --port 3000
+```
+
+**Expected Output (ngrok):**
+
+```
+ngrok by @inconshreveable
+
+Session Status                online
+Account                       your@email.com
+Version                       3.0.0
+Region                        United States (us)
+Forwarding                    https://abc123.ngrok.io -> http://localhost:3000
+```
+
+Copy the HTTPS forwarding URL (e.g., `https://abc123.ngrok.io`)
+
+**Step 4: Update Twilio Webhook URLs Temporarily**
+
+Go to Twilio Console → Phone Numbers → Your staging number → Configure:
+
+```
+Voice Configuration:
+  A CALL COMES IN: Webhook
+  URL: https://abc123.ngrok.io/v1/twilio/voice
+  HTTP: POST
+
+Messaging Configuration:
+  A MESSAGE COMES IN: Webhook
+  URL: https://abc123.ngrok.io/v1/twilio/sms
+  HTTP: POST
+```
+
+Click **Save**
+
+**Step 5: Test Webhook Delivery**
+
+```bash
+# Make a test call to your Twilio number
+# Check your local backend logs for incoming webhook
+
+# Send a test SMS to your Twilio number
+# Check your local backend logs for incoming webhook
+```
+
+**Step 6: Verify in Logs**
+
+Your local backend should log incoming webhooks:
+
+```
+[INFO] Incoming Twilio voice webhook: CallSid=CA123..., From=+1234567890
+[INFO] Incoming Twilio SMS webhook: MessageSid=SM123..., Body=test
+```
+
+**Step 7: Revert Webhook URLs**
+
+**IMPORTANT:** After testing, immediately revert the webhook URLs back to your staging/production endpoints:
+
+```
+Voice URL: https://api-staging.berthcare.ca/v1/twilio/voice
+SMS URL: https://api-staging.berthcare.ca/v1/twilio/sms
+```
+
+**Security Implications:**
+
+- Tunneling exposes your local machine to the internet
+- Anyone with the tunnel URL can send requests to your local backend
+- Tunnel URLs are temporary and change each time you restart
+- Never use tunnel URLs in production
+- Never commit tunnel URLs to source control
+- Always revert to staging/production URLs after testing
+- Consider using ngrok authentication for additional security
+
+**Troubleshooting:**
+
+- **Webhook not received:** Check that tunnel is running and URL is correct
+- **Connection refused:** Ensure backend is running on the correct port
+- **Timeout:** Check firewall settings and network connectivity
+- **Invalid signature:** Twilio signature validation may fail with tunnels (disable for local testing)
 
 ---
 
@@ -539,6 +889,7 @@ Prevent abuse and control costs:
 ## Security Best Practices
 
 ### Credential Management
+
 - ✅ Never commit Twilio credentials to Git
 - ✅ Use AWS Secrets Manager for production credentials
 - ✅ Rotate auth tokens every 90 days
@@ -546,18 +897,21 @@ Prevent abuse and control costs:
 - ✅ Enable IP whitelisting for API access (optional)
 
 ### Webhook Security
+
 - ✅ Validate Twilio request signatures
 - ✅ Use HTTPS only for webhooks
 - ✅ Implement rate limiting on webhook endpoints
 - ✅ Log all webhook requests for audit
 
 ### Cost Control
+
 - ✅ Set billing alerts at multiple thresholds
 - ✅ Enable geo permissions (Canada + US only)
 - ✅ Configure rate limits per number
 - ✅ Monitor usage daily during initial rollout
 
 ### Privacy & Compliance
+
 - ✅ Disable call recording by default
 - ✅ Implement data retention policies
 - ✅ Log all communications for audit (PIPEDA)
@@ -572,6 +926,7 @@ Prevent abuse and control costs:
 **Symptom:** No Canadian numbers available in search
 
 **Solution:**
+
 ```bash
 # Try different area codes:
 - 416, 647 (Toronto)
@@ -589,6 +944,7 @@ Prevent abuse and control costs:
 **Symptom:** Calls/SMS work but webhooks not triggered
 
 **Solution:**
+
 ```bash
 # Check webhook URL configuration:
 1. Verify URL is publicly accessible (not localhost)
@@ -603,6 +959,7 @@ Prevent abuse and control costs:
 **Symptom:** `[HTTP 401] Unable to create record: Authenticate`
 
 **Solution:**
+
 ```bash
 # Verify credentials:
 1. Check Account SID starts with "AC"
@@ -616,6 +973,7 @@ Prevent abuse and control costs:
 **Symptom:** SMS shows "sent" but not received
 
 **Solution:**
+
 ```bash
 # Check SMS logs:
 1. Navigate to: Console → Monitor → Logs → Messaging
@@ -722,4 +1080,3 @@ After Twilio configuration is complete:
 - [x] Documentation complete
 
 **Status:** ✅ Ready for backend integration
-

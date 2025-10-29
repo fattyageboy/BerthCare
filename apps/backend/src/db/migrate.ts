@@ -6,9 +6,9 @@
  * Supports both forward migrations and rollbacks.
  *
  * Usage:
- *   npm run migrate:up              # Run all pending migrations
- *   npm run migrate:up 001          # Run specific migration
- *   npm run migrate:down 001        # Rollback specific migration
+ *   pnpm run migrate:up              # Run all pending migrations
+ *   pnpm run migrate:up 001          # Run specific migration
+ *   pnpm run migrate:down 001        # Rollback specific migration
  *
  * Philosophy: Keep it simple. SQL files are the source of truth.
  */
@@ -132,6 +132,10 @@ async function migrateUp(migrationNumber?: string): Promise<void> {
     { version: '001', filename: '001_create_users_auth.sql' },
     { version: '002', filename: '002_create_clients.sql' },
     { version: '003', filename: '003_create_care_plans.sql' },
+    { version: '008', filename: '008_create_care_alerts.sql' },
+    { version: '009', filename: '009_create_coordinators.sql' },
+    { version: '010', filename: '010_add_call_sid_to_care_alerts.sql' },
+    { version: '011', filename: '011_add_phone_to_users.sql' },
   ];
 
   if (migrationNumber) {
@@ -186,7 +190,7 @@ async function migrateDown(migrationNumber: string): Promise<void> {
   }
 
   // Define ordered list of all migrations
-  const orderedMigrations = ['000', '001', '002', '003'];
+  const orderedMigrations = ['000', '001', '002', '003', '008', '009', '010', '011'];
 
   // Check for dependent migrations (migrations applied after the target)
   const targetIndex = orderedMigrations.indexOf(migrationNumber);
@@ -215,6 +219,10 @@ async function migrateDown(migrationNumber: string): Promise<void> {
     '001': '001_create_users_auth_rollback.sql',
     '002': '002_create_clients_rollback.sql',
     '003': '003_create_care_plans_rollback.sql',
+    '008': '008_create_care_alerts_rollback.sql',
+    '009': '009_create_coordinators_rollback.sql',
+    '010': '010_add_call_sid_to_care_alerts_rollback.sql',
+    '011': '011_add_phone_to_users_rollback.sql',
   };
 
   const filename = rollbackFiles[migrationNumber];
@@ -259,16 +267,16 @@ async function main() {
     } else if (command === 'down') {
       if (!migrationNumber) {
         console.error('❌ Migration number required for rollback');
-        console.log('Usage: npm run migrate:down <migration_number>');
+        console.log('Usage: pnpm run migrate:down <migration_number>');
         process.exit(1);
       }
       await migrateDown(migrationNumber);
     } else {
       console.error('❌ Invalid command. Use "up" or "down"');
       console.log('Usage:');
-      console.log('  npm run migrate:up              # Run all migrations');
-      console.log('  npm run migrate:up 001          # Run specific migration');
-      console.log('  npm run migrate:down 001        # Rollback migration');
+      console.log('  pnpm run migrate:up              # Run all migrations');
+      console.log('  pnpm run migrate:up 001          # Run specific migration');
+      console.log('  pnpm run migrate:down 001        # Rollback migration');
       process.exit(1);
     }
   } catch (error) {

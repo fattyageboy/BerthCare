@@ -16,6 +16,7 @@ Successfully configured AWS SDK v3 for S3 with pre-signed URL generation, photo 
 **Location:** `apps/backend/src/storage/s3-client.ts`
 
 **Dependencies Installed:**
+
 ```json
 {
   "@aws-sdk/client-s3": "^3.x",
@@ -24,6 +25,7 @@ Successfully configured AWS SDK v3 for S3 with pre-signed URL generation, photo 
 ```
 
 **Client Configuration:**
+
 ```typescript
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || 'ca-central-1',
@@ -38,6 +40,7 @@ const s3Client = new S3Client({
 ```
 
 **Features:**
+
 - AWS SDK v3 (modular, tree-shakeable)
 - Canadian region (ca-central-1) for data residency
 - LocalStack support for local development
@@ -47,10 +50,11 @@ const s3Client = new S3Client({
 ### 2. Pre-signed URL Generation ✅
 
 **Upload URL Generation:**
+
 ```typescript
 // Generate pre-signed URL for upload
 const url = await generateUploadUrl(bucket, key, {
-  expiresIn: 3600,        // 1 hour
+  expiresIn: 3600, // 1 hour
   contentType: 'image/jpeg',
   metadata: {
     originalName: 'photo.jpg',
@@ -61,12 +65,14 @@ const url = await generateUploadUrl(bucket, key, {
 ```
 
 **Download URL Generation:**
+
 ```typescript
 // Generate pre-signed URL for download
 const url = await generateDownloadUrl(bucket, key, 3600);
 ```
 
 **Pre-signed URL Features:**
+
 - Time-limited access (configurable expiration)
 - Specific operation (upload or download)
 - Content type validation
@@ -75,6 +81,7 @@ const url = await generateDownloadUrl(bucket, key, 3600);
 - Direct client-to-S3 upload/download
 
 **Security Benefits:**
+
 - Backend doesn't handle file data (reduced load)
 - Time-limited URLs prevent abuse
 - Specific permissions per URL
@@ -86,23 +93,25 @@ const url = await generateDownloadUrl(bucket, key, 3600);
 **Location:** `apps/backend/src/storage/photo-storage.ts`
 
 **Photo Metadata Interface:**
+
 ```typescript
 interface PhotoMetadata {
-  originalName: string;           // Original filename
-  mimeType: string;               // MIME type
-  size: number;                   // File size in bytes
-  width?: number;                 // Image width
-  height?: number;                // Image height
-  compressed?: boolean;           // Compression applied
-  compressionQuality?: number;    // Quality (0-100)
-  uploadedBy: string;             // User ID
-  uploadedAt: string;             // ISO timestamp
-  visitId?: string;               // Associated visit
-  clientId?: string;              // Associated client
+  originalName: string; // Original filename
+  mimeType: string; // MIME type
+  size: number; // File size in bytes
+  width?: number; // Image width
+  height?: number; // Image height
+  compressed?: boolean; // Compression applied
+  compressionQuality?: number; // Quality (0-100)
+  uploadedBy: string; // User ID
+  uploadedAt: string; // ISO timestamp
+  visitId?: string; // Associated visit
+  clientId?: string; // Associated client
 }
 ```
 
 **Photo Upload Request:**
+
 ```typescript
 const result = await requestPhotoUpload({
   visitId: 'visit-123',
@@ -127,6 +136,7 @@ const result = await requestPhotoUpload({
 ```
 
 **Compression Metadata Tracking:**
+
 - Original dimensions (width × height)
 - Compression applied (boolean)
 - Compression quality (0-100)
@@ -135,6 +145,7 @@ const result = await requestPhotoUpload({
 - Compression ratio calculation
 
 **Use Cases:**
+
 - Track photo quality for compliance
 - Optimize storage costs
 - Audit trail for photo modifications
@@ -144,6 +155,7 @@ const result = await requestPhotoUpload({
 ### 4. Helper Functions ✅
 
 **Photo Operations:**
+
 ```typescript
 // Request photo upload
 requestPhotoUpload(request: PhotoUploadRequest)
@@ -165,6 +177,7 @@ validatePhotoMetadata(metadata: Partial<PhotoMetadata>)
 ```
 
 **Document Operations:**
+
 ```typescript
 // Generate document upload URL
 generateDocumentUploadUrl(
@@ -175,6 +188,7 @@ generateDocumentUploadUrl(
 ```
 
 **Signature Operations:**
+
 ```typescript
 // Generate signature upload URL
 generateSignatureUploadUrl(
@@ -185,6 +199,7 @@ generateSignatureUploadUrl(
 ```
 
 **Utility Operations:**
+
 ```typescript
 // Check if object exists
 objectExists(bucket: string, key: string)
@@ -202,6 +217,7 @@ verifyS3Connection()
 ### 5. File Organization ✅
 
 **Photos:**
+
 ```
 visits/{visitId}/photos/{timestamp}-{filename}
 
@@ -211,6 +227,7 @@ visits/visit-123/photos/1696789023456-photo2.jpg
 ```
 
 **Documents:**
+
 ```
 documents/{documentType}/{timestamp}-{filename}
 
@@ -220,6 +237,7 @@ documents/assessment/1696789023456-assessment.pdf
 ```
 
 **Signatures:**
+
 ```
 visits/{visitId}/signatures/{signatureType}-{timestamp}.png
 
@@ -230,6 +248,7 @@ visits/visit-123/signatures/family-1696789034567.png
 ```
 
 **Organization Benefits:**
+
 - Easy visit-based retrieval
 - Logical grouping
 - Timestamp-based ordering
@@ -247,6 +266,7 @@ All file types follow the same lifecycle policy for regulatory compliance:
 **Deletion:** After 7 years
 
 **Terraform Configuration:**
+
 ```hcl
 # Location: terraform/modules/storage/main.tf
 
@@ -254,18 +274,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "photos" {
   bucket = aws_s3_bucket.photos.id
 
   rule {
-    id     = "archive-old-photos"
+    id = "archive-old-photos"
     status = "Enabled"
 
     # Transition to Glacier after 1 year
     transition {
-      days          = 365
-      storage_class = "GLACIER"
+ days = 365
+ storage_class = "GLACIER"
     }
 
     # Delete after 7 years
     expiration {
-      days = 2555  # 7 years
+ days = 2555  # 7 years
     }
 
     # Apply to all objects
@@ -277,16 +297,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "photos" {
 ```
 
 **Cost Optimization:**
+
 - Standard storage: First year (frequent access)
 - Glacier storage: Years 2-7 (archival, lower cost)
 - Automatic deletion: After 7 years (compliance)
 
 **Estimated Cost Savings:**
+
 - Standard S3: $0.023/GB/month
 - Glacier: $0.004/GB/month
 - Savings: ~83% after first year
 
 **Compliance:**
+
 - Meets 7-year retention requirement
 - Automatic enforcement (no manual intervention)
 - Audit trail through S3 versioning
@@ -295,16 +318,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "photos" {
 ### 7. S3 Buckets ✅
 
 **Development (LocalStack):**
+
 - `berthcare-photos-dev` - Visit photos
 - `berthcare-documents-dev` - Care plans, assessments
 - `berthcare-signatures-dev` - Digital signatures
 
 **Production (AWS S3):**
+
 - `berthcare-photos-prod` - Visit photos
 - `berthcare-documents-prod` - Care plans, assessments
 - `berthcare-signatures-prod` - Digital signatures
 
 **Bucket Configuration:**
+
 - Versioning enabled (data safety)
 - CORS configured (mobile app access)
 - Encryption at rest (AES-256)
@@ -317,6 +343,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "photos" {
 **Location:** `scripts/init-localstack.sh`
 
 **Initialization Script:**
+
 ```bash
 # Create S3 buckets
 awslocal s3 mb s3://berthcare-photos-dev
@@ -335,6 +362,7 @@ awslocal s3api put-bucket-cors \
 ```
 
 **LocalStack Features:**
+
 - Automatic bucket creation on startup
 - CORS configuration for local development
 - Versioning enabled
@@ -346,16 +374,16 @@ awslocal s3api put-bucket-cors \
 ### 1. S3 Connection Test ✅
 
 ```bash
-$ npm run test:s3 --prefix apps/backend
+$ pnpm --dir apps/backend run test:s3
 
 🧪 Testing S3 Connection...
 
 1️⃣  Testing S3 connection...
    ✅ S3 connection verified
    📦 Buckets configured:
-      - Photos: berthcare-photos-dev
-      - Documents: berthcare-documents-dev
-      - Signatures: berthcare-signatures-dev
+ - Photos: berthcare-photos-dev
+ - Documents: berthcare-documents-dev
+ - Signatures: berthcare-signatures-dev
 
 2️⃣  Testing photo upload URL generation...
    ✅ Photo upload URL generated
@@ -412,12 +440,13 @@ $ aws --endpoint-url=http://localhost:4566 \
 ## Environment Configuration
 
 **Required Environment Variables:**
+
 ```bash
 # AWS Configuration
 AWS_REGION=ca-central-1
-AWS_ACCESS_KEY_ID=test                    # LocalStack: 'test'
-AWS_SECRET_ACCESS_KEY=test                # LocalStack: 'test'
-AWS_ENDPOINT=http://localhost:4566        # LocalStack endpoint
+AWS_ACCESS_KEY_ID=test # LocalStack: 'test'
+AWS_SECRET_ACCESS_KEY=test # LocalStack: 'test'
+AWS_ENDPOINT=http://localhost:4566 # LocalStack endpoint
 
 # S3 Buckets
 S3_BUCKET_PHOTOS=berthcare-photos-dev
@@ -425,11 +454,12 @@ S3_BUCKET_DOCUMENTS=berthcare-documents-dev
 S3_BUCKET_SIGNATURES=berthcare-signatures-dev
 
 # S3 Configuration
-S3_FORCE_PATH_STYLE=true                  # Required for LocalStack
+S3_FORCE_PATH_STYLE=true # Required for LocalStack
 S3_SIGNATURE_VERSION=v4
 ```
 
 **Production Configuration:**
+
 ```bash
 # AWS Configuration
 AWS_REGION=ca-central-1
@@ -453,6 +483,7 @@ S3_SIGNATURE_VERSION=v4
 
 **Decision:** Use AWS SDK v3 (not v2)  
 **Rationale:**
+
 - Modular architecture (tree-shakeable)
 - Smaller bundle size
 - Better TypeScript support
@@ -461,6 +492,7 @@ S3_SIGNATURE_VERSION=v4
 - Future-proof
 
 **Trade-offs:**
+
 - Different API from v2 (migration effort)
 - Some v2 features not yet in v3
 - v3 is the recommended version going forward
@@ -469,6 +501,7 @@ S3_SIGNATURE_VERSION=v4
 
 **Decision:** Use pre-signed URLs for all uploads/downloads  
 **Rationale:**
+
 - Reduces backend load (no file proxying)
 - Improves performance (direct S3 access)
 - Scales better (S3 handles traffic)
@@ -476,6 +509,7 @@ S3_SIGNATURE_VERSION=v4
 - Lower costs (less backend compute)
 
 **Trade-offs:**
+
 - URLs expire (need regeneration)
 - Less control over upload process
 - Requires client-side upload logic
@@ -485,6 +519,7 @@ S3_SIGNATURE_VERSION=v4
 
 **Decision:** Organize by visit ID and document type  
 **Rationale:**
+
 - Logical grouping for retrieval
 - Easy batch operations
 - Supports visit-based workflows
@@ -492,6 +527,7 @@ S3_SIGNATURE_VERSION=v4
 - Scalable structure
 
 **Trade-offs:**
+
 - Deep folder structure
 - Requires visit ID for all photos
 - Acceptable for use case
@@ -500,12 +536,14 @@ S3_SIGNATURE_VERSION=v4
 
 **Decision:** 7-year retention with Glacier transition  
 **Rationale:**
+
 - Regulatory compliance (7-year requirement)
 - Cost optimization (Glacier cheaper)
 - Automatic enforcement
 - No manual intervention needed
 
 **Trade-offs:**
+
 - Glacier retrieval slower (hours)
 - Acceptable for archival data
 
@@ -513,12 +551,14 @@ S3_SIGNATURE_VERSION=v4
 
 **Decision:** Track compression metadata in S3 object metadata  
 **Rationale:**
+
 - Audit trail for quality
 - Compliance documentation
 - Quality assurance
 - No separate database needed
 
 **Trade-offs:**
+
 - Metadata size limits (2KB)
 - Acceptable for current needs
 
@@ -527,12 +567,14 @@ S3_SIGNATURE_VERSION=v4
 ### Upload Performance
 
 **Metrics:**
+
 - Pre-signed URL generation: <100ms
 - Direct S3 upload: 1-5 seconds (depends on file size)
 - No backend bottleneck
 - Scales with S3 capacity
 
 **Optimization:**
+
 - Compress images before upload
 - Use WebP format for better compression
 - Implement progressive JPEG
@@ -541,11 +583,13 @@ S3_SIGNATURE_VERSION=v4
 ### Download Performance
 
 **Metrics:**
+
 - Pre-signed URL generation: <100ms
 - Direct S3 download: 1-5 seconds
 - CloudFront CDN for faster delivery (production)
 
 **Optimization:**
+
 - Use CloudFront CDN
 - Cache download URLs
 - Implement lazy loading
@@ -556,6 +600,7 @@ S3_SIGNATURE_VERSION=v4
 ### Pre-signed URL Security
 
 ✅ **Implemented:**
+
 - Time-limited URLs (default: 1 hour)
 - Specific operation (upload or download)
 - Content type validation
@@ -563,6 +608,7 @@ S3_SIGNATURE_VERSION=v4
 - No AWS credentials exposed
 
 🔒 **Production Requirements:**
+
 - Use HTTPS only (TLS)
 - Short expiration times
 - Monitor for abuse
@@ -572,12 +618,14 @@ S3_SIGNATURE_VERSION=v4
 ### Bucket Security
 
 ✅ **Implemented:**
+
 - Private buckets (no public access)
 - IAM roles for backend
 - Encryption at rest (AES-256)
 - Encryption in transit (TLS)
 
 🔒 **Production Requirements:**
+
 - Enable S3 access logging
 - Enable CloudTrail for audit
 - Implement bucket policies
@@ -587,12 +635,14 @@ S3_SIGNATURE_VERSION=v4
 ### Data Security
 
 ✅ **Implemented:**
+
 - Metadata validation
 - File size limits
 - MIME type validation
 - Audit trail through metadata
 
 🔒 **Production Requirements:**
+
 - Virus scanning on upload
 - Content moderation
 - Data loss prevention (DLP)
@@ -603,6 +653,7 @@ S3_SIGNATURE_VERSION=v4
 ### Metrics to Track
 
 **S3 Operations:**
+
 - Upload success rate
 - Download success rate
 - Pre-signed URL generation time
@@ -611,12 +662,14 @@ S3_SIGNATURE_VERSION=v4
 - Cost per bucket
 
 **Performance:**
+
 - Upload duration
 - Download duration
 - URL generation latency
 - Error rates
 
 **Security:**
+
 - Failed upload attempts
 - Expired URL usage
 - Unauthorized access attempts
@@ -631,11 +684,13 @@ import { CloudWatch } from '@aws-sdk/client-cloudwatch';
 // Track upload success
 await cloudwatch.putMetricData({
   Namespace: 'BerthCare/Storage',
-  MetricData: [{
-    MetricName: 'PhotoUploadSuccess',
-    Value: 1,
-    Unit: 'Count',
-  }],
+  MetricData: [
+    {
+      MetricName: 'PhotoUploadSuccess',
+      Value: 1,
+      Unit: 'Count',
+    },
+  ],
 });
 ```
 
@@ -643,34 +698,36 @@ await cloudwatch.putMetricData({
 
 ```
 apps/backend/src/storage/
-├── s3-client.ts           # S3 client configuration
-├── photo-storage.ts       # Photo storage helpers
-├── test-s3.ts            # S3 connection test
-└── README.md             # Storage documentation
+├── s3-client.ts # S3 client configuration
+├── photo-storage.ts  # Photo storage helpers
+├── test-s3.ts  # S3 connection test
+└── README.md   # Storage documentation
 ```
 
 ## Acceptance Criteria Status
 
-| Criteria | Status | Evidence |
-|----------|--------|----------|
-| AWS SDK v3 for S3 configured | ✅ | @aws-sdk/client-s3 installed and configured |
-| Pre-signed URL generation for uploads | ✅ | generateUploadUrl() implemented and tested |
-| Helper functions for photo storage | ✅ | photo-storage.ts with full API |
-| Compression metadata tracking | ✅ | PhotoMetadata interface with compression fields |
-| Lifecycle policies configured | ✅ | Documented in Terraform and README |
-| Generate pre-signed URL works | ✅ | Verified in test:s3 |
-| Upload test file successfully | ✅ | Verified with curl test |
+| Criteria                              | Status | Evidence                                        |
+| ------------------------------------- | ------ | ----------------------------------------------- |
+| AWS SDK v3 for S3 configured          | ✅     | @aws-sdk/client-s3 installed and configured     |
+| Pre-signed URL generation for uploads | ✅     | generateUploadUrl() implemented and tested      |
+| Helper functions for photo storage    | ✅     | photo-storage.ts with full API                  |
+| Compression metadata tracking         | ✅     | PhotoMetadata interface with compression fields |
+| Lifecycle policies configured         | ✅     | Documented in Terraform and README              |
+| Generate pre-signed URL works         | ✅     | Verified in test:s3                             |
+| Upload test file successfully         | ✅     | Verified with curl test                         |
 
 **All acceptance criteria met. B4 is complete and production-ready.**
 
 ## Next Steps
 
 ### Immediate (G2)
+
 - Complete backend scaffold PR review
 - Merge to main branch
 - Begin Phase A (Authentication system)
 
 ### Future Enhancements
+
 - Add image thumbnail generation
 - Implement automatic image optimization
 - Add virus scanning integration

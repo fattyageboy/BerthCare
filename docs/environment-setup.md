@@ -15,24 +15,28 @@ The BerthCare development environment is fully configured and documented. All in
 ## Completed Tasks
 
 ### E1: Git Repository Initialization ✅
+
 - Repository structure created
 - Branch protection configured
 - Git workflow documented
 - CODEOWNERS file configured
 
 ### E2: CI Pipeline Setup ✅
+
 - GitHub Actions workflows configured
 - Automated testing on pull requests
 - Code quality checks (ESLint, Prettier)
 - Build validation
 
 ### E3: Monorepo Structure Setup ✅
+
 - Nx workspace configured
 - Backend and mobile app projects created
 - Shared libraries structure
 - TypeScript configuration
 
 ### E4: Local Development Setup ✅
+
 - Docker Compose configuration
 - PostgreSQL 15 database
 - Redis 7 cache
@@ -41,6 +45,7 @@ The BerthCare development environment is fully configured and documented. All in
 - Makefile for easy commands
 
 ### E5: AWS Infrastructure Setup (Staging) ✅
+
 - VPC with Multi-AZ configuration
 - RDS PostgreSQL 15 (Multi-AZ)
 - ElastiCache Redis cluster
@@ -50,6 +55,7 @@ The BerthCare development environment is fully configured and documented. All in
 - Terraform infrastructure as code
 
 ### E6: Monitoring & Observability Setup ✅
+
 - CloudWatch dashboards
 - CloudWatch alarms
 - Sentry error tracking (backend + mobile)
@@ -57,6 +63,7 @@ The BerthCare development environment is fully configured and documented. All in
 - Performance monitoring
 
 ### E7: Twilio Configuration ✅
+
 - Twilio account created
 - Staging and production subaccounts
 - Canadian phone numbers purchased
@@ -65,6 +72,7 @@ The BerthCare development environment is fully configured and documented. All in
 - Security configuration (geo permissions, rate limits)
 
 ### E8: Architecture Documentation ✅
+
 - Comprehensive architecture document
 - All infrastructure decisions documented
 - Resource inventory
@@ -78,15 +86,15 @@ The BerthCare development environment is fully configured and documented. All in
 
 ### Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [docs/architecture.md](./architecture.md) | Comprehensive system architecture |
-| [docs/architecture-diagrams.md](./architecture-diagrams.md) | Visual architecture diagrams |
-| [docs/E4-local-setup.md](./E4-local-setup.md) | Local development guide |
-| [docs/E5-aws-infrastructure-setup.md](./E5-aws-infrastructure-setup.md) | AWS infrastructure guide |
-| [docs/E7-twilio-setup.md](./E7-twilio-setup.md) | Twilio configuration guide |
-| [docs/monitoring-quick-reference.md](./monitoring-quick-reference.md) | Monitoring commands |
-| [docs/twilio-quick-reference.md](./twilio-quick-reference.md) | Twilio commands |
+| Document                                                                | Purpose                           |
+| ----------------------------------------------------------------------- | --------------------------------- |
+| [docs/architecture.md](./architecture.md)                               | Comprehensive system architecture |
+| [docs/architecture-diagrams.md](./architecture-diagrams.md)             | Visual architecture diagrams      |
+| [docs/E4-local-setup.md](./E4-local-setup.md)                           | Local development guide           |
+| [docs/E5-aws-infrastructure-setup.md](./E5-aws-infrastructure-setup.md) | AWS infrastructure guide          |
+| [docs/E7-twilio-setup.md](./E7-twilio-setup.md)                         | Twilio configuration guide        |
+| [docs/monitoring-quick-reference.md](./monitoring-quick-reference.md)   | Monitoring commands               |
+| [docs/twilio-quick-reference.md](./twilio-quick-reference.md)           | Twilio commands                   |
 
 ### Quick Start Commands
 
@@ -99,11 +107,11 @@ make logs-f         # Follow logs
 
 # Backend Development
 cd apps/backend
-npm run dev
+pnpm run dev
 
 # Mobile Development
 cd apps/mobile
-npm start
+pnpm start
 
 # Infrastructure
 cd terraform/environments/staging
@@ -118,6 +126,7 @@ terraform apply
 ### Local Development
 
 **Services Running:**
+
 - PostgreSQL 15 on port 5432
 - Redis 7 on port 6379
 - LocalStack S3 on port 4566
@@ -125,10 +134,12 @@ terraform apply
 - Redis Commander on port 8081 (optional)
 
 **Databases:**
+
 - `berthcare_dev` - Main development database
 - `berthcare_test` - Test database
 
 **S3 Buckets:**
+
 - `berthcare-photos-dev`
 - `berthcare-documents-dev`
 - `berthcare-signatures-dev`
@@ -138,30 +149,36 @@ terraform apply
 **Region:** ca-central-1 (Canada Central)
 
 **Network:**
+
 - VPC: 10.0.0.0/16
 - 2 Public Subnets (ca-central-1a, ca-central-1b)
 - 2 Private Subnets (ca-central-1a, ca-central-1b)
 - 2 NAT Gateways (Multi-AZ)
 
 **Compute:**
+
 - ECS Fargate cluster
 - Application Load Balancer
 
 **Database:**
+
 - RDS PostgreSQL 15 (db.t4g.medium, Multi-AZ)
 - ElastiCache Redis 7 (cache.t4g.micro x2, Multi-AZ)
 
 **Storage:**
+
 - S3 buckets: photos, documents, signatures, logs
 - CloudFront CDN distribution
 
 **Security:**
+
 - KMS encryption
 - Security groups with least privilege
 - IAM roles
 - Secrets Manager for credentials
 
 **Monitoring:**
+
 - CloudWatch dashboards and alarms
 - Sentry error tracking
 - VPC Flow Logs
@@ -169,15 +186,18 @@ terraform apply
 ### Twilio Communication Services
 
 **Accounts:**
+
 - Master account
 - Staging subaccount
 - Production subaccount
 
 **Phone Numbers:**
+
 - Staging: Canadian local number (Voice + SMS)
 - Production: Canadian local number (Voice + SMS)
 
 **Configuration:**
+
 - Webhooks configured
 - Geo permissions: Canada + US only
 - Rate limits configured
@@ -189,25 +209,25 @@ terraform apply
 
 ### AWS Staging (Monthly)
 
-| Service | Cost |
-|---------|------|
-| RDS PostgreSQL (Multi-AZ) | $120 |
-| ElastiCache Redis | $30 |
-| NAT Gateways | $65 |
-| S3 Storage | $5 |
-| CloudFront | $10 |
-| Data Transfer | $10 |
-| CloudWatch | $5 |
-| **Total** | **~$245/month** |
+| Service                   | Cost            |
+| ------------------------- | --------------- |
+| RDS PostgreSQL (Multi-AZ) | $120            |
+| ElastiCache Redis         | $30             |
+| NAT Gateways              | $65             |
+| S3 Storage                | $5              |
+| CloudFront                | $10             |
+| Data Transfer             | $10             |
+| CloudWatch                | $5              |
+| **Total**                 | **~$245/month** |
 
 ### Twilio (Monthly)
 
-| Service | Cost |
-|---------|------|
-| Phone Numbers (2) | $2 |
-| Voice Calls | $11 |
-| SMS Messages | $8 |
-| **Total** | **~$21/month** |
+| Service           | Cost           |
+| ----------------- | -------------- |
+| Phone Numbers (2) | $2             |
+| Voice Calls       | $11            |
+| SMS Messages      | $8             |
+| **Total**         | **~$21/month** |
 
 ### Combined Total: ~$266/month
 
@@ -216,21 +236,25 @@ terraform apply
 ## Security & Compliance
 
 ### Data Residency
+
 ✅ All data stored in ca-central-1 (Canada)  
 ✅ PIPEDA compliant  
 ✅ PHIPA compliant (Ontario)
 
 ### Encryption
+
 ✅ At rest: RDS, Redis, S3, Secrets Manager (KMS)  
 ✅ In transit: TLS 1.2+ for all connections
 
 ### Access Control
+
 ✅ IAM roles with least privilege  
 ✅ Security groups with restrictive rules  
 ✅ MFA recommended for console access  
 ✅ JWT-based API authentication
 
 ### Audit & Monitoring
+
 ✅ CloudTrail for API audit logs  
 ✅ VPC Flow Logs for network monitoring  
 ✅ Application logs in CloudWatch  
@@ -241,12 +265,14 @@ terraform apply
 ## Next Steps
 
 ### Phase G: Git Workflow & Backend Foundation
+
 - [ ] G1-G10: Create feature branches and implement base backend structure
 - [ ] Database migrations
 - [ ] Authentication endpoints
 - [ ] Basic CRUD operations
 
 ### Phase T: Twilio Integration
+
 - [ ] T1: Database schema for care coordination
 - [ ] T2: Implement Twilio Voice client
 - [ ] T3: Voice alert endpoints
@@ -256,6 +282,7 @@ terraform apply
 - [ ] T7: Testing and documentation
 
 ### Phase M: Mobile App Development
+
 - [ ] M1-M10: React Native setup and offline-first architecture
 - [ ] WatermelonDB integration
 - [ ] Core UI components
@@ -269,22 +296,25 @@ terraform apply
 ### For Backend Developers
 
 1. **Clone repository:**
+
    ```bash
    git clone <repository-url>
    cd berthcare
    ```
 
 2. **Start local environment:**
+
    ```bash
    make setup
    make start
    ```
 
 3. **Run backend:**
+
    ```bash
    cd apps/backend
-   npm install
-   npm run dev
+   pnpm install
+   pnpm run dev
    ```
 
 4. **Read documentation:**
@@ -295,22 +325,25 @@ terraform apply
 ### For Mobile Developers
 
 1. **Clone repository:**
+
    ```bash
    git clone <repository-url>
    cd berthcare
    ```
 
 2. **Start local environment:**
+
    ```bash
    make setup
    make start
    ```
 
 3. **Run mobile app:**
+
    ```bash
    cd apps/mobile
-   npm install
-   npm start
+   pnpm install
+   pnpm start
    ```
 
 4. **Read documentation:**
@@ -340,18 +373,21 @@ terraform apply
 ## Support & Resources
 
 ### Documentation
+
 - **Main README:** [../README.md](../README.md)
 - **Quick Start:** [../quick-start.md](../quick-start.md)
 - **Architecture:** [./architecture.md](./architecture.md)
 - **Task Plan:** [../project-documentation/task-plan.md](../project-documentation/task-plan.md)
 
 ### Tools & Services
+
 - **GitHub:** Repository and CI/CD
 - **AWS Console:** https://console.aws.amazon.com (ca-central-1)
 - **Twilio Console:** https://console.twilio.com
 - **Sentry:** https://sentry.io
 
 ### Quick Reference
+
 - [Monitoring Commands](./monitoring-quick-reference.md)
 - [Twilio Commands](./twilio-quick-reference.md)
 - [Makefile Commands](../Makefile) - Run `make help`
@@ -361,6 +397,7 @@ terraform apply
 ## Verification Checklist
 
 ### Local Development
+
 - [x] Docker Compose configured
 - [x] PostgreSQL running and accessible
 - [x] Redis running and accessible
@@ -372,6 +409,7 @@ terraform apply
 - [x] Verification script working
 
 ### AWS Infrastructure
+
 - [x] VPC created with Multi-AZ
 - [x] RDS PostgreSQL operational
 - [x] ElastiCache Redis operational
@@ -384,6 +422,7 @@ terraform apply
 - [x] Terraform state in S3
 
 ### Twilio
+
 - [x] Account created and upgraded
 - [x] Subaccounts created
 - [x] Phone numbers purchased
@@ -394,6 +433,7 @@ terraform apply
 - [x] Billing alerts set
 
 ### Monitoring
+
 - [x] CloudWatch dashboards created
 - [x] CloudWatch alarms configured
 - [x] Sentry projects created
@@ -402,6 +442,7 @@ terraform apply
 - [x] Email subscriptions confirmed
 
 ### Documentation
+
 - [x] Architecture document complete
 - [x] All setup guides complete
 - [x] Quick reference guides created
@@ -421,7 +462,7 @@ terraform apply
 ✅ Monitoring and observability operational  
 ✅ Comprehensive documentation complete  
 ✅ Team can start backend and mobile development  
-✅ All resources documented and accessible  
+✅ All resources documented and accessible
 
 ---
 
@@ -433,4 +474,3 @@ terraform apply
 
 **Completed By:** DevOps Team  
 **Date:** October 10, 2025
-

@@ -37,12 +37,14 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 ## Security Features
 
 ### Bcrypt Configuration
+
 - **Cost Factor:** 12 (2^12 = 4,096 iterations)
 - **Hashing Time:** ~200ms (secure but not too slow)
 - **Salt:** Automatically generated, 22 characters
 - **Algorithm:** bcrypt ($2b$ variant)
 
 ### Security Measures
+
 - ✅ Automatic salt generation (prevents rainbow table attacks)
 - ✅ Constant-time comparison (prevents timing attacks)
 - ✅ Strong cost factor (prevents brute force attacks)
@@ -52,9 +54,10 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 
 ## Test Coverage
 
-### Test Suite: 31 Tests, All Passing ✅
+### Test Suite: 28 Tests, All Passing ✅
 
 **Hash Generation Tests (8 tests)**
+
 - Valid password hashing
 - Different hashes for same password (salt uniqueness)
 - Special characters support
@@ -64,6 +67,7 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 - Non-string input rejection
 
 **Password Verification Tests (8 tests)**
+
 - Valid password verification
 - Invalid password rejection
 - Case sensitivity
@@ -74,30 +78,36 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 - Invalid hash format rejection
 
 **Timing Attack Resistance (2 tests)**
+
 - Similar time for correct/incorrect passwords
 - Similar time for different password lengths
 - Time difference < 50ms (constant-time comparison)
 
 **Configuration Tests (2 tests)**
+
 - Cost factor verification (12)
 - Estimated hashing time (200ms)
 
 **Real-world Scenarios (4 tests)**
+
 - User registration flow
 - Failed login attempts
 - Password change flow
 - Multiple users with same password
 
 **Edge Cases (3 tests)**
+
 - Passwords with only spaces
 - Unicode characters (密码123🔒)
 - Newlines and special whitespace
 
 **Performance Tests (1 test)**
+
 - Multiple password hashing efficiency
 - Parallel hashing operations
 
 ### Test Execution Time
+
 - Total: ~15 seconds
 - Individual hash operations: ~200ms each
 - All tests pass consistently
@@ -105,12 +115,26 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 ## Performance Metrics
 
 ### Hashing Performance
+
 - **Target:** ~200ms per hash
-- **Actual:** 100-500ms (system variance acceptable)
+- **Actual:** 100-500ms (system-dependent variance)
 - **Cost Factor:** 12 (2^12 iterations)
 - **Meets Requirement:** ✅ Yes
 
+**Performance Variance Explanation:**
+
+The 100-500ms range around the 200ms target reflects expected system-dependent variance, not a defect. Factors affecting performance include:
+
+- CPU load and available cores
+- Memory pressure and available RAM
+- Hardware differences (CPU generation, clock speed)
+- Operating system scheduling
+- Concurrent operations
+
+This variance is normal and expected behavior for bcrypt operations. When choosing cost factors for your deployment, measure hashing time on representative hardware under representative load conditions to ensure the performance meets your requirements.
+
 ### Verification Performance
+
 - **Timing Attack Resistance:** < 50ms difference
 - **Constant-time Comparison:** ✅ Verified
 - **Consistent Performance:** ✅ Yes
@@ -118,11 +142,13 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 ## Architecture Alignment
 
 ### Reference: Architecture Blueprint
+
 - **Section:** Security - Password Hashing
 - **Philosophy:** "Uncompromising Security"
 - **Principle:** Use proven security patterns, don't invent your own
 
 ### Design Decisions
+
 1. **Bcrypt over alternatives:** Industry standard, proven security
 2. **Cost factor 12:** Balanced security vs performance
 3. **Automatic salt generation:** Simplicity and security
@@ -136,16 +162,18 @@ libs/shared/
 ├── src/
 │   └── auth-utils.ts          # Implementation (170 lines)
 ├── tests/
-│   └── auth-utils.test.ts     # Test suite (31 tests)
+│   └── auth-utils.test.ts     # Test suite (28 tests)
 └── tsconfig.spec.json         # Updated to include tests/ directory
 ```
 
 ## Dependencies
 
 ### Production Dependencies
+
 - `bcrypt`: ^5.1.1 (password hashing)
 
 ### Development Dependencies
+
 - `@types/bcrypt`: ^5.0.2 (TypeScript types)
 - `jest`: Testing framework
 - `@types/jest`: TypeScript types for Jest
@@ -153,42 +181,126 @@ libs/shared/
 ## Usage Examples
 
 ### User Registration
+
 ```typescript
 import { hashPassword } from '@berthcare/shared';
 
-// Hash password before storing in database
-const userPassword = 'mySecurePassword123';
-const hashedPassword = await hashPassword(userPassword);
+async function registerUser(email: string, password: string) {
+  try {
+    // Validate input before hashing
+    if (!password || password.length < 8) {
+      throw new ValidationError('Password must be at least 8 characters');
+    }
 
-// Store hashedPassword in database
-await db.users.create({
-  email: 'user@example.com',
-  passwordHash: hashedPassword
-});
+    // Hash password before storing in database
+    const hashedPassword = await hashPassword(password);
+
+    // Store hashedPassword in database
+    await db.users.create({
+      email,
+      passwordHash: hashedPassword,
+    });
+
+    return { success: true };
+  } catch (error) {
+    // Handle hashing failures
+    if (error instanceof ValidationError) {
+      // Input validation failed - return actionable error to user
+      throw error;
+    }
+
+    // Log hashing error with context for debugging
+    logger.error('Password hashing failed during registration', {
+      email,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    // Recommended actions:
+    // 1. Implement retry logic (transient failures)
+    // 2. Surface actionable error to user (e.g., "Registration failed, please try again")
+    // 3. Alert monitoring system if failures persist
+    throw new InternalServerError('Unable to complete registration. Please try again.');
+  }
+}
 ```
 
 ### User Login
+
 ```typescript
 import { verifyPassword } from '@berthcare/shared';
 
-// Retrieve stored hash from database
-const user = await db.users.findByEmail('user@example.com');
+async function loginUser(email: string, password: string) {
+  try {
+    // Retrieve stored hash from database
+    const user = await db.users.findByEmail(email);
+    if (!user) {
+      // User not found - use same error as invalid password (prevent user enumeration)
+      throw new UnauthorizedError('Invalid credentials');
+    }
 
-// Verify provided password
-const isValid = await verifyPassword(loginPassword, user.passwordHash);
+    // Verify provided password
+    let isValid: boolean;
+    try {
+      isValid = await verifyPassword(password, user.passwordHash);
+    } catch (verificationError) {
+      // Handle verification errors (malformed hash, bcrypt failure, etc.)
+      logger.error('Password verification failed', {
+        userId: user.id,
+        email: user.email,
+        error: verificationError.message,
+        stack: verificationError.stack,
+      });
 
-if (isValid) {
-  // Password correct, proceed with authentication
-  return generateJWT(user);
-} else {
-  // Password incorrect, deny access
-  throw new UnauthorizedError('Invalid credentials');
+      // Return 5xx error for verification failures (not authentication failures)
+      // This indicates a system problem, not incorrect credentials
+      throw new InternalServerError(
+        'Authentication service temporarily unavailable. Please try again.'
+      );
+    }
+
+    if (isValid) {
+      // Password correct, proceed with authentication
+      return generateJWT(user);
+    } else {
+      // Password incorrect (authentication failure, not verification error)
+      // Log failed attempt for security monitoring
+      logger.warn('Failed login attempt', {
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
+
+      throw new UnauthorizedError('Invalid credentials');
+    }
+  } catch (error) {
+    // Re-throw known errors
+    if (error instanceof UnauthorizedError || error instanceof InternalServerError) {
+      throw error;
+    }
+
+    // Log unexpected errors
+    logger.error('Unexpected error during login', {
+      email,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    throw new InternalServerError('Login failed. Please try again.');
+  }
 }
 ```
+
+**Error Handling Summary:**
+
+- **Authentication Failure (incorrect password):** `verifyPassword` returns `false` → throw `UnauthorizedError` (401)
+- **Verification Error (system failure):** `verifyPassword` throws → log error, throw `InternalServerError` (500)
+- **Hashing Error (registration):** `hashPassword` throws → log error, implement retry logic, throw actionable error
+- **Security:** Use same error message for "user not found" and "incorrect password" to prevent user enumeration
 
 ## Next Steps
 
 This implementation is ready for integration with:
+
 - **A3:** User registration endpoint
 - **A4:** User login endpoint
 - **A5:** Password reset functionality
@@ -196,12 +308,14 @@ This implementation is ready for integration with:
 ## Compliance & Standards
 
 ### Security Standards
+
 - ✅ OWASP Password Storage Guidelines
 - ✅ NIST Digital Identity Guidelines
 - ✅ PIPEDA (Canadian privacy law)
 - ✅ Industry best practices
 
 ### Code Quality
+
 - ✅ TypeScript strict mode
 - ✅ Comprehensive documentation
 - ✅ 100% test coverage
@@ -211,7 +325,7 @@ This implementation is ready for integration with:
 ## Verification Checklist
 
 - ✅ Implementation complete
-- ✅ All tests passing (31/31)
+- ✅ All tests passing (28/28)
 - ✅ Performance requirements met (~200ms)
 - ✅ Security requirements met (cost factor 12)
 - ✅ Timing attack resistance verified
@@ -224,13 +338,17 @@ This implementation is ready for integration with:
 ## Notes
 
 ### Bcrypt Warnings
+
 The implementation shows two ESLint warnings about bcrypt named exports. These are informational only - we're correctly using the default export which is the recommended approach for bcrypt.
 
 ### Test Configuration
+
 Updated `libs/shared/tsconfig.spec.json` to include the `tests/` directory for proper TypeScript and ESLint integration.
 
 ### Philosophy Alignment
+
 This implementation embodies the project's core philosophy:
+
 - **"Uncompromising Security"** - Uses proven bcrypt with strong cost factor
 - **"Simplicity is the ultimate sophistication"** - Clean API, automatic salt generation
 - **"Obsess over every detail"** - Comprehensive tests, timing attack resistance

@@ -6,11 +6,13 @@
 **Date:** October 10, 2025
 
 ## Overview
+
 Successfully created the backend scaffold feature branch and implemented all core infrastructure components (B1-B4) along with supporting environment setup (E3-E8).
 
 ## Deliverables
 
 ### 1. Feature Branch ✅
+
 - Branch: `feat/backend-scaffold`
 - Base: `main`
 - Status: Pushed to origin
@@ -19,9 +21,11 @@ Successfully created the backend scaffold feature branch and implemented all cor
 ### 2. Backend Core Infrastructure (B1-B4)
 
 #### B1: Express.js Backend ✅
+
 **Location:** `apps/backend/src/main.ts`
 
 **Implemented:**
+
 - Express.js 4.x with TypeScript
 - Security middleware (helmet)
 - CORS configuration
@@ -32,6 +36,7 @@ Successfully created the backend scaffold feature branch and implemented all cor
 - Graceful shutdown handlers (SIGTERM, SIGINT)
 
 **Health Check Response:**
+
 ```json
 {
   "status": "ok",
@@ -44,7 +49,9 @@ Successfully created the backend scaffold feature branch and implemented all cor
 ```
 
 #### B2: PostgreSQL Connection ✅
+
 **Configuration:**
+
 - Library: `pg` with connection pooling
 - Pool size: 10 max, 2 min (configurable via env)
 - Idle timeout: 30 seconds
@@ -53,31 +60,38 @@ Successfully created the backend scaffold feature branch and implemented all cor
 - Connection string from `DATABASE_URL` env variable
 
 **Features:**
+
 - Automatic connection on startup
 - Health monitoring
 - Version logging
 - Error handling with graceful degradation
 
 #### B3: Redis Connection ✅
+
 **Configuration:**
+
 - Library: `ioredis` (via `redis` package)
 - Connection URL from `REDIS_URL` env variable
 - Automatic connection on startup
 - Health check: `PING` command
 
 **Features:**
+
 - Connection status monitoring
 - Version detection and logging
 - Ready for session management and caching
 
 #### B4: S3 Client Setup ✅
+
 **Configuration:**
+
 - AWS SDK v3 ready (infrastructure in place)
 - LocalStack for local development
 - S3 bucket configuration in docker-compose
 - Pre-signed URL generation capability (infrastructure ready)
 
 **Local Development:**
+
 - LocalStack S3 endpoint: `http://localhost:4566`
 - Bucket: `berthcare-photos-local`
 - Ready for photo upload implementation
@@ -85,6 +99,7 @@ Successfully created the backend scaffold feature branch and implemented all cor
 ### 3. Supporting Infrastructure
 
 #### Monitoring & Logging ✅
+
 **Location:** `apps/backend/src/config/`
 
 - Winston logger configured
@@ -93,20 +108,25 @@ Successfully created the backend scaffold feature branch and implemented all cor
 - Error tracking setup
 
 #### Docker Compose ✅
+
 **Location:** `docker-compose.yml`
 
 **Services:**
+
 - PostgreSQL 15 (port 5432)
 - Redis 7 (port 6379)
 - LocalStack (port 4566) - S3 emulation
 - Automatic initialization scripts
 
 #### Environment Configuration ✅
+
 **Files:**
+
 - `.env.example` - Template with all required variables
 - `.env` - Local configuration (gitignored)
 
 **Key Variables:**
+
 ```bash
 DATABASE_URL=postgresql://berthcare:berthcare@localhost:5432/berthcare
 REDIS_URL=redis://localhost:6379
@@ -118,6 +138,7 @@ PORT=3000
 ## Testing Results
 
 ### Manual Testing ✅
+
 ```bash
 # Services started successfully
 docker-compose up -d
@@ -126,7 +147,7 @@ docker-compose up -d
 ✅ LocalStack running
 
 # Backend started successfully
-cd apps/backend && npm start
+cd apps/backend && pnpm start
 ✅ Connected to PostgreSQL
 ✅ Connected to Redis
 ✅ Server listening on port 3000
@@ -138,6 +159,7 @@ curl http://localhost:3000/health
 ```
 
 ### Code Quality ✅
+
 - ✅ No TypeScript errors
 - ✅ No ESLint errors
 - ✅ Proper error handling
@@ -147,31 +169,36 @@ curl http://localhost:3000/health
 ## Architecture Decisions
 
 ### 1. Connection Pooling
+
 - **Decision:** Use pg connection pooling with configurable limits
 - **Rationale:** Better resource management and scalability
 - **Configuration:** Max 10 connections for local dev, adjustable for production
 
 ### 2. Health Check Design
+
 - **Decision:** Comprehensive health check with service status
 - **Rationale:** Enables proper monitoring and load balancer integration
 - **Response:** Returns 200 (ok) or 503 (degraded) based on service health
 
 ### 3. Graceful Shutdown
+
 - **Decision:** Implement SIGTERM and SIGINT handlers
 - **Rationale:** Ensures clean connection closure and prevents data loss
 - **Implementation:** Close database and Redis connections before exit
 
 ### 4. Environment-based Configuration
+
 - **Decision:** All configuration via environment variables
 - **Rationale:** 12-factor app principles, easy deployment across environments
 - **Template:** Comprehensive .env.example for documentation
 
 ## File Structure
+
 ```
 apps/backend/
 ├── src/
-│   ├── main.ts                    # Main application entry
-│   ├── main-with-monitoring.ts    # Alternative with full monitoring
+│   ├── main.ts                    # Main application entry (standard)
+│   ├── main-with-monitoring.ts    # Alternative entry with Sentry, CloudWatch, and enhanced logging
 │   ├── test-connection.ts         # Connection testing utility
 │   └── config/
 │       ├── logger.ts              # Winston logger configuration
@@ -182,7 +209,18 @@ apps/backend/
 └── README.md                      # Backend documentation
 ```
 
+**Entry Point Selection:**
+
+- **main.ts**: Standard entry point for development and basic deployments
+- **main-with-monitoring.ts**: Use for staging/production when full observability is required
+  - Enables Sentry error tracking and performance monitoring
+  - Adds structured request/response logging
+  - Includes CloudWatch integration
+  - Provides detailed health checks with service status
+  - Requires: `SENTRY_DSN` environment variable (optional but recommended)
+
 ## Dependencies Added
+
 ```json
 {
   "express": "^4.18.2",
@@ -200,6 +238,7 @@ apps/backend/
 ## Next Steps (G2)
 
 ### Pre-merge Checklist
+
 - [ ] Run full CI pipeline
 - [ ] Fix any remaining linting issues
 - [ ] Add unit tests for health check endpoint
@@ -208,22 +247,26 @@ apps/backend/
 - [ ] Update CHANGELOG.md
 
 ### Merge Strategy
+
 - Squash and merge
 - Commit message: `feat: initialize backend core infrastructure`
 - Delete branch after merge
 
 ### Post-merge
+
 - Create issue #2 for authentication system (G3)
 - Branch `feat/auth-system` from updated `main`
 - Begin Phase A implementation (A1-A9)
 
 ## References
+
 - Task Plan: `project-documentation/task-plan.md`
 - Architecture Blueprint: `project-documentation/architecture-output.md`
 - Local Setup Guide: `docs/E4-local-setup.md`
 - Architecture Docs: `docs/architecture.md`
 
 ## Notes
+
 - All acceptance criteria met
 - Backend ready for authentication system implementation
 - Infrastructure supports offline-first architecture

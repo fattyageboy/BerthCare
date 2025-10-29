@@ -6,14 +6,14 @@
  * Creates sample users with different roles for testing authentication.
  *
  * Usage:
- *   npm run db:seed
+ *   pnpm run db:seed
  *
  * WARNING: This will delete existing data! Only use in development.
  */
 
-import { Pool } from 'pg';
+import { hashPassword } from '@berthcare/shared';
+import { Pool, PoolClient } from 'pg';
 
-import { hashPassword } from '../../../../libs/shared/src';
 import { getPostgresPoolConfig } from '../config/env';
 
 const pool = new Pool(
@@ -136,14 +136,14 @@ const ZONE_FIXTURES = [
 /**
  * Clear existing data
  */
-async function clearData(): Promise<void> {
+async function clearData(client: PoolClient): Promise<void> {
   console.log('🗑️  Clearing existing data...');
 
-  await pool.query('DELETE FROM care_plans');
-  await pool.query('DELETE FROM clients');
-  await pool.query('DELETE FROM refresh_tokens');
-  await pool.query('DELETE FROM users');
-  await pool.query('DELETE FROM zones');
+  await client.query('DELETE FROM care_plans');
+  await client.query('DELETE FROM clients');
+  await client.query('DELETE FROM refresh_tokens');
+  await client.query('DELETE FROM users');
+  await client.query('DELETE FROM zones');
 
   console.log('✅ Data cleared');
 }
@@ -151,11 +151,11 @@ async function clearData(): Promise<void> {
 /**
  * Seed zones for development
  */
-async function seedZones(): Promise<void> {
+async function seedZones(client: PoolClient): Promise<void> {
   console.log('\n📍 Seeding zones...');
 
   for (const zone of ZONE_FIXTURES) {
-    await pool.query(
+    await client.query(
       `INSERT INTO zones (id, name, slug, description, center_latitude, center_longitude, radius_km, is_active, metadata)
        VALUES ($1, $2, $3, $4, $5, $6, 15, true, '{}'::jsonb)
        ON CONFLICT (id) DO UPDATE
@@ -177,19 +177,29 @@ async function seedZones(): Promise<void> {
 /**
  * Seed users
  */
-async function seedUsers(): Promise<void> {
+async function seedUsers(client: PoolClient): Promise<void> {
   console.log('\n👥 Seeding users...');
 
   for (const user of SAMPLE_USERS) {
     const passwordHash = await hashPassword(user.password);
 
-    await pool.query(
+    const result = await client.query(
       `INSERT INTO users (email, password_hash, first_name, last_name, role, zone_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (email) DO UPDATE SET
+         password_hash = EXCLUDED.password_hash,
+         first_name = EXCLUDED.first_name,
+         last_name = EXCLUDED.last_name,
+         role = EXCLUDED.role,
+         zone_id = EXCLUDED.zone_id,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING (xmax = 0) AS inserted`,
       [user.email, passwordHash, user.firstName, user.lastName, user.role, user.zoneId]
     );
 
-    console.log(`  ✅ Created ${user.role}: ${user.email} (password: ${user.password})`);
+    const wasInserted = result.rows[0]?.inserted;
+    const action = wasInserted ? 'Created' : 'Updated';
+    console.log(`  ✅ ${action} ${user.role}: ${user.email} (password: ${user.password})`);
   }
 
   console.log(`\n✅ Created ${SAMPLE_USERS.length} users`);
@@ -254,22 +264,44 @@ async function main() {
   console.log('⚠️  WARNING: This will delete all existing data!');
   console.log('   Only use this in development environments.\n');
 
+  const client = await pool.connect();
+
   try {
     // Verify connection
     await pool.query('SELECT 1');
     console.log('✅ Database connection successful\n');
 
-    // Clear and seed
-    await clearData();
-    await seedZones();
-    await seedUsers();
+    // Start transaction
+    console.log('🔄 Starting transaction...\n');
+    await client.query('BEGIN');
+
+    // Clear and seed within transaction
+    await clearData(client);
+    await seedZones(client);
+    await seedUsers(client);
+
+    // Commit transaction
+    await client.query('COMMIT');
+    console.log('\n✅ Transaction committed\n');
+
+    // Display summary after successful commit
     await displaySummary();
 
     console.log('✨ Database seeding complete!\n');
   } catch (error) {
-    console.error('\n❌ Seeding failed:', error);
+    // Rollback on error
+    try {
+      await client.query('ROLLBACK');
+      console.error('\n🔄 Transaction rolled back due to error\n');
+    } catch (rollbackError) {
+      console.error('\n❌ Error during rollback:', rollbackError);
+    }
+
+    console.error('❌ Seeding failed:', error);
     process.exit(1);
   } finally {
+    // Always release the client and close the pool
+    client.release();
     await pool.end();
   }
 }

@@ -14,6 +14,9 @@ module.exports = {
   testMatch: ['**/tests/**/*.test.ts'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   maxWorkers: 1, // Run tests serially to avoid database connection issues
+  moduleNameMapper: {
+    '^bcrypt$': '<rootDir>/../../tools/testing/bcrypt-mock.ts',
+  },
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.test.ts',

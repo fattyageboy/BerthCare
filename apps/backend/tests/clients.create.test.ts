@@ -447,7 +447,7 @@ describe('POST /api/v1/clients - Create Client', () => {
     });
 
     it('should allow manual zone override (admin)', async () => {
-      const manualZoneId = '00000000-0000-0000-0000-000000000002';
+      const manualZoneId = '550e8400-e29b-41d4-a716-446655440002'; // South Zone
 
       const response = await request(app)
         .post('/api/v1/clients')

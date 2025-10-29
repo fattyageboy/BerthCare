@@ -94,7 +94,8 @@ export function requireRole(allowedRoles: UserRole[]) {
 import { authenticateJWT, requireRole } from './middleware/auth';
 
 // Only admins can access
-router.get('/admin', 
+router.get(
+  '/admin',
   authenticateJWT(redisClient),
   requireRole(['admin']),
   (req: AuthenticatedRequest, res) => {
@@ -107,7 +108,8 @@ router.get('/admin',
 
 ```typescript
 // coordinators and admins can access
-router.get('/reports', 
+router.get(
+  '/reports',
   authenticateJWT(redisClient),
   requireRole(['coordinator', 'admin']),
   async (req: AuthenticatedRequest, res) => {
@@ -121,7 +123,8 @@ router.get('/reports',
 
 ```typescript
 // Any authenticated user can access
-router.get('/profile', 
+router.get(
+  '/profile',
   authenticateJWT(redisClient),
   requireRole(['caregiver', 'coordinator', 'admin']),
   (req: AuthenticatedRequest, res) => {
@@ -137,16 +140,19 @@ router.get('/profile',
 The system supports three user roles:
 
 ### 1. Caregiver
+
 - **Description:** Home care workers who provide direct care to clients
 - **Access Level:** Can view and document visits for assigned clients
 - **Zone Restriction:** Limited to their assigned zone
 
-### 2. coordinator
+### 2. Coordinator
+
 - **Description:** Zone managers who handle alerts and oversight
 - **Access Level:** Can view all data in their zone, manage care plans, handle alerts
 - **Zone Restriction:** Limited to their assigned zone
 
 ### 3. Admin
+
 - **Description:** System administrators with full access
 - **Access Level:** Full system access, user management, all zones
 - **Zone Restriction:** None (access to all zones)
@@ -220,11 +226,12 @@ Time:        1.263 s
 The authorization middleware follows a standard middleware chain pattern:
 
 ```typescript
-router.post('/endpoint',
-  rateLimiter,                              // 1. Rate limiting
-  validateRequest,                          // 2. Input validation
-  authenticateJWT(redisClient),            // 3. Authentication
-  requireRole(['coordinator', 'admin']),   // 4. Authorization
+router.post(
+  '/endpoint',
+  rateLimiter, // 1. Rate limiting
+  validateRequest, // 2. Input validation
+  authenticateJWT(redisClient), // 3. Authentication
+  requireRole(['coordinator', 'admin']), // 4. Authorization
   async (req: AuthenticatedRequest, res) => {
     // 5. Business logic
   }
@@ -232,6 +239,7 @@ router.post('/endpoint',
 ```
 
 **Order is critical:**
+
 1. Rate limiting prevents abuse
 2. Validation ensures data integrity
 3. Authentication verifies identity
@@ -243,21 +251,25 @@ router.post('/endpoint',
 ## Security Considerations
 
 ### 1. Defense in Depth
+
 - Authorization is a second layer after authentication
 - Both layers must pass for access
 - Clear separation of concerns
 
 ### 2. Fail Secure
+
 - Default behavior is to deny access
 - Explicit role check required
 - No implicit permissions
 
 ### 3. Clear Error Messages
+
 - Distinguishes between authentication and authorization failures
 - Provides role details for debugging (safe in internal API)
 - Includes request ID for support tracking
 
 ### 4. Type Safety
+
 - TypeScript ensures only valid roles can be specified
 - Compile-time checking prevents typos
 - IDE autocomplete for role names
@@ -296,14 +308,14 @@ router.post('/endpoint',
 
 ## Acceptance Criteria
 
-| Criteria | Status | Evidence |
-|----------|--------|----------|
-| Check user role against required roles | ✅ PASS | Line 180-206 in auth.ts |
-| Support multiple roles per endpoint | ✅ PASS | Takes `allowedRoles: UserRole[]` array |
-| Return 403 for insufficient permissions | ✅ PASS | Returns 403 with clear error message |
-| Return 401 if not authenticated | ✅ PASS | Checks `req.user` existence |
-| Comprehensive unit tests | ✅ PASS | 14 tests passing, 100% coverage |
-| Documentation and examples | ✅ PASS | README.md and examples provided |
+| Criteria                                | Status  | Evidence                               |
+| --------------------------------------- | ------- | -------------------------------------- |
+| Check user role against required roles  | ✅ PASS | Line 180-206 in auth.ts                |
+| Support multiple roles per endpoint     | ✅ PASS | Takes `allowedRoles: UserRole[]` array |
+| Return 403 for insufficient permissions | ✅ PASS | Returns 403 with clear error message   |
+| Return 401 if not authenticated         | ✅ PASS | Checks `req.user` existence            |
+| Comprehensive unit tests                | ✅ PASS | 14 tests passing, 100% coverage        |
+| Documentation and examples              | ✅ PASS | README.md and examples provided        |
 
 ---
 

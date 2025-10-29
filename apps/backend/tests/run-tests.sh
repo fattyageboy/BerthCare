@@ -40,9 +40,16 @@ else
   echo "✅ Test database created"
 fi
 
+# Check if DATABASE_URL is set
+if [ -z "$DATABASE_URL" ]; then
+  echo "❌ DATABASE_URL environment variable is not set"
+  echo "   Set DATABASE_URL or source your .env file before running tests"
+  exit 1
+fi
+
 # Run migrations on test database
 echo "🔄 Running migrations on test database..."
-DATABASE_URL=postgresql://berthcare:berthcare_dev_password@localhost:5432/berthcare_test npm run migrate:up > /dev/null 2>&1 || true
+pnpm run migrate:up > /dev/null
 echo "✅ Migrations complete"
 
 # Clear test Redis database
@@ -58,7 +65,7 @@ echo ""
 
 # Run tests with provided arguments
 # Tests are located in apps/backend/tests/*.test.ts
-npm test "$@"
+pnpm run test "$@"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

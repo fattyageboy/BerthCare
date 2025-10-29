@@ -20,7 +20,7 @@ nx dev backend
 nx build backend
 
 # Run production build
-npm start
+pnpm start
 ```
 
 ## Tech Stack

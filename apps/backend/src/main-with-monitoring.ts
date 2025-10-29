@@ -11,7 +11,8 @@
 
 import compression from 'compression';
 import cors from 'cors';
-import express from 'express';
+import express, { json } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
@@ -23,6 +24,7 @@ import {
   configureSentryMiddleware,
   configureSentryErrorHandler,
 } from './config/sentry';
+import { startSecretCacheCleanup, stopSecretCacheCleanup } from './utils/aws-secrets-manager';
 
 const app = express();
 const PORT = env.app.port;
@@ -44,7 +46,7 @@ configureSentryMiddleware(app);
 app.use(helmet());
 app.use(cors());
 app.use(compression());
-app.use(express.json());
+app.use(json());
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -138,7 +140,7 @@ if (NODE_ENV === 'development') {
 configureSentryErrorHandler(app);
 
 // Global error handler
-app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   logError('Unhandled error', err, {
     path: req.path,
     method: req.method,
@@ -202,6 +204,17 @@ async function shutdown(signal: string) {
     await redisClient.quit();
     logInfo('Redis connection closed');
 
+    logInfo('Stopping secret cache cleanup');
+    try {
+      stopSecretCacheCleanup();
+      logInfo('Secret cache cleanup stopped');
+    } catch (error) {
+      logError('Error stopping secret cache cleanup', error as Error, {
+        context: 'graceful-shutdown',
+      });
+      // Continue shutdown even if cache cleanup fails
+    }
+
     logInfo('Shutdown complete');
     process.exit(0);
   } catch (error) {
@@ -225,4 +238,5 @@ process.on('uncaughtException', (error: Error) => {
 });
 
 // Start the server
+startSecretCacheCleanup();
 startServer();

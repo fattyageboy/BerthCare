@@ -27,15 +27,16 @@ Complete implementation of JWT-based authentication system with role-based acces
 
 **Overall Coverage: 93.9%** ✅ (Target: ≥80%)
 
-| Component | Statements | Branches | Functions | Lines |
-|-----------|------------|----------|-----------|-------|
-| **middleware/auth.ts** | 90.24% | 81.48% | 100% | 90.24% |
-| **middleware/rate-limiter.ts** | 92% | 75% | 100% | 92% |
-| **middleware/validation.ts** | 98.61% | 98.18% | 100% | 98.61% |
-| **routes/auth.routes.ts** | 92.59% | 80.85% | 100% | 92.59% |
-| **Overall** | **93.9%** | **87.23%** | **100%** | **93.9%** |
+| Component                      | Statements | Branches   | Functions | Lines     |
+| ------------------------------ | ---------- | ---------- | --------- | --------- |
+| **middleware/auth.ts**         | 90.24%     | 81.48%     | 100%      | 90.24%    |
+| **middleware/rate-limiter.ts** | 92%        | 75%        | 100%      | 92%       |
+| **middleware/validation.ts**   | 98.61%     | 98.18%     | 100%      | 98.61%    |
+| **routes/auth.routes.ts**      | 92.59%     | 80.85%     | 100%      | 92.59%    |
+| **Overall**                    | **93.9%**  | **87.23%** | **100%**  | **93.9%** |
 
 **Test Suite Results:**
+
 - ✅ 87 tests passing
 - ✅ 0 tests failing
 - ✅ All test suites passing
@@ -80,6 +81,7 @@ Complete implementation of JWT-based authentication system with role-based acces
 ## Security Features
 
 ### Authentication & Authorization
+
 - ✅ JWT-based stateless authentication (RS256 algorithm)
 - ✅ Access tokens (1-hour expiry)
 - ✅ Refresh tokens (30-day expiry)
@@ -87,11 +89,13 @@ Complete implementation of JWT-based authentication system with role-based acces
 - ✅ Zone-based data isolation
 
 ### Password Security
+
 - ✅ Bcrypt hashing (cost factor 12)
 - ✅ Password strength validation (min 8 chars, 1 uppercase, 1 number)
 - ✅ Constant-time password comparison
 
 ### Token Security
+
 - ✅ Token blacklisting (Redis) for logout
 - ✅ Refresh token revocation (database)
 - ✅ Token hash storage (SHA-256)
@@ -99,11 +103,13 @@ Complete implementation of JWT-based authentication system with role-based acces
 - ✅ Automatic token expiry
 
 ### Rate Limiting
+
 - ✅ Registration: 5 attempts/hour per IP
 - ✅ Login: 10 attempts/hour per IP
 - ✅ Redis-based distributed rate limiting
 
 ### Input Validation
+
 - ✅ Email format validation
 - ✅ Password strength validation
 - ✅ Required field validation
@@ -113,9 +119,11 @@ Complete implementation of JWT-based authentication system with role-based acces
 ## API Endpoints
 
 ### POST /v1/auth/register
+
 Register a new user account.
 
 **Request:**
+
 ```json
 {
   "email": "user@example.com",
@@ -129,6 +137,7 @@ Register a new user account.
 ```
 
 **Response (201):**
+
 ```json
 {
   "data": {
@@ -147,9 +156,11 @@ Register a new user account.
 ```
 
 ### POST /v1/auth/login
+
 Authenticate user and issue tokens.
 
 **Request:**
+
 ```json
 {
   "email": "user@example.com",
@@ -159,20 +170,30 @@ Authenticate user and issue tokens.
 ```
 
 **Response (200):**
+
 ```json
 {
   "data": {
     "accessToken": "jwt-token",
     "refreshToken": "jwt-token",
-    "user": { /* user profile */ }
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "firstName": "John",
+      "lastName": "Doe",
+      "role": "caregiver",
+      "zoneId": "uuid"
+    }
   }
 }
 ```
 
 ### POST /v1/auth/refresh
+
 Refresh access token using refresh token.
 
 **Request:**
+
 ```json
 {
   "refreshToken": "jwt-token"
@@ -180,6 +201,7 @@ Refresh access token using refresh token.
 ```
 
 **Response (200):**
+
 ```json
 {
   "data": {
@@ -189,14 +211,17 @@ Refresh access token using refresh token.
 ```
 
 ### POST /v1/auth/logout
+
 Logout user and invalidate tokens.
 
 **Headers:**
+
 ```
 Authorization: Bearer <access-token>
 ```
 
 **Response (200):**
+
 ```json
 {
   "data": {
@@ -208,6 +233,7 @@ Authorization: Bearer <access-token>
 ## Database Schema
 
 ### users table
+
 - `id` (UUID, PK)
 - `email` (VARCHAR, UNIQUE)
 - `password_hash` (VARCHAR)
@@ -221,12 +247,14 @@ Authorization: Bearer <access-token>
 - `deleted_at` (TIMESTAMP, nullable)
 
 **Indexes:**
+
 - `idx_users_email` (email WHERE deleted_at IS NULL)
 - `idx_users_zone_id` (zone_id WHERE deleted_at IS NULL AND is_active = true)
 - `idx_users_role` (role WHERE deleted_at IS NULL AND is_active = true)
 - `idx_users_zone_role` (zone_id, role WHERE deleted_at IS NULL AND is_active = true)
 
 ### refresh_tokens table
+
 - `id` (UUID, PK)
 - `user_id` (UUID, FK → users.id)
 - `token_hash` (VARCHAR, UNIQUE)
@@ -237,6 +265,7 @@ Authorization: Bearer <access-token>
 - `updated_at` (TIMESTAMP)
 
 **Indexes:**
+
 - `idx_refresh_tokens_user_id` (user_id WHERE revoked_at IS NULL)
 - `idx_refresh_tokens_token_hash` (token_hash WHERE revoked_at IS NULL)
 - `idx_refresh_tokens_device_id` (device_id WHERE revoked_at IS NULL)
@@ -245,6 +274,7 @@ Authorization: Bearer <access-token>
 ## Files Changed
 
 ### New Files
+
 - `apps/backend/src/routes/auth.routes.ts` - Authentication endpoints
 - `apps/backend/src/middleware/auth.ts` - JWT authentication middleware
 - `apps/backend/src/middleware/validation.ts` - Input validation middleware
@@ -260,6 +290,7 @@ Authorization: Bearer <access-token>
 - `apps/backend/tests/auth.middleware.test.ts` - Middleware tests
 
 ### Documentation
+
 - `docs/A1-users-auth-migration.md` - Database migration spec
 - `docs/A2-password-hashing.md` - Password hashing spec
 - `docs/A3-jwt-token-generation.md` - JWT token spec
@@ -273,6 +304,7 @@ Authorization: Bearer <access-token>
 ## Dependencies
 
 ### Production Dependencies
+
 - `bcrypt` (^5.1.1) - Password hashing
 - `jsonwebtoken` (^9.0.2) - JWT token generation/verification
 - `express` (^4.18.2) - Web framework
@@ -280,6 +312,7 @@ Authorization: Bearer <access-token>
 - `redis` (^4.6.12) - Redis client for rate limiting & token blacklist
 
 ### Development Dependencies
+
 - `@types/bcrypt` (^5.0.2)
 - `@types/jsonwebtoken` (^9.0.5)
 - `jest` (^29.7.0) - Testing framework
@@ -288,17 +321,20 @@ Authorization: Bearer <access-token>
 ## Performance Considerations
 
 ### Database Optimization
+
 - Indexed queries for fast lookups
 - Parameterized queries to prevent SQL injection
 - Connection pooling for efficient resource usage
 - Soft deletes for data retention
 
 ### Caching Strategy
+
 - Redis for token blacklist (1-hour TTL)
 - Redis for rate limiting counters
 - Automatic key expiration
 
 ### Scalability
+
 - Stateless JWT authentication (horizontal scaling)
 - Distributed rate limiting (Redis)
 - Multi-device session support
@@ -307,6 +343,7 @@ Authorization: Bearer <access-token>
 ## Security Compliance
 
 ### OWASP Top 10 Protection
+
 - ✅ A01: Broken Access Control - Role-based authorization
 - ✅ A02: Cryptographic Failures - Bcrypt password hashing, JWT encryption
 - ✅ A03: Injection - Parameterized SQL queries
@@ -333,11 +370,13 @@ None - This is a new feature implementation.
 ## Migration Guide
 
 ### Database Migration
+
 ```bash
 make db-migrate
 ```
 
 ### Environment Variables Required
+
 ```env
 # JWT Keys (RS256 key pair)
 JWT_PRIVATE_KEY=<base64-encoded-private-key>
@@ -353,33 +392,38 @@ REDIS_URL=redis://localhost:6379
 ## Testing Instructions
 
 ### Run All Tests
+
 ```bash
 cd apps/backend
-npm test
+pnpm run test
 ```
 
 ### Run with Coverage
+
 ```bash
-npm test -- --coverage
+pnpm run test -- --coverage
 ```
 
 ### Run Specific Test Suite
+
 ```bash
-npm test -- auth.register.test.ts
-npm test -- auth.login.test.ts
-npm test -- auth.refresh.test.ts
-npm test -- auth.logout.test.ts
-npm test -- auth.middleware.test.ts
+pnpm run test -- auth.register.test.ts
+pnpm run test -- auth.login.test.ts
+pnpm run test -- auth.refresh.test.ts
+pnpm run test -- auth.logout.test.ts
+pnpm run test -- auth.middleware.test.ts
 ```
 
 ### Run Tests Sequentially (avoid race conditions)
+
 ```bash
-npm test -- --runInBand
+pnpm run test -- --runInBand
 ```
 
 ## Checklist for Reviewers
 
 ### Code Quality
+
 - [ ] Code follows project style guide
 - [ ] No console.log statements in production code
 - [ ] Error handling is comprehensive
@@ -387,6 +431,7 @@ npm test -- --runInBand
 - [ ] SQL queries are parameterized
 
 ### Security
+
 - [ ] Passwords are properly hashed
 - [ ] JWT tokens are securely generated
 - [ ] Rate limiting is implemented
@@ -394,6 +439,7 @@ npm test -- --runInBand
 - [ ] Role-based authorization is enforced
 
 ### Testing
+
 - [ ] All tests pass
 - [ ] Coverage ≥ 80% (currently 93.9%)
 - [ ] Edge cases are tested
@@ -401,6 +447,7 @@ npm test -- --runInBand
 - [ ] Integration tests are comprehensive
 
 ### Documentation
+
 - [ ] API endpoints are documented
 - [ ] Database schema is documented
 - [ ] Security features are documented
@@ -408,6 +455,7 @@ npm test -- --runInBand
 - [ ] Code comments are helpful
 
 ### Performance
+
 - [ ] Database queries are optimized
 - [ ] Indexes are properly defined
 - [ ] Rate limiting is efficient
@@ -416,6 +464,7 @@ npm test -- --runInBand
 ## Next Steps
 
 After merge:
+
 1. Deploy to staging environment
 2. Run integration tests against staging
 3. Security audit by security team

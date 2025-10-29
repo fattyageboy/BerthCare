@@ -6,7 +6,7 @@
 
 import * as crypto from 'crypto';
 
-import express, { Express } from 'express';
+import express, { Express, json } from 'express';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 
@@ -30,7 +30,7 @@ if (!TEST_REDIS_URL) {
  */
 export function createTestApp(pgPool: Pool, redisClient: ReturnType<typeof createClient>): Express {
   const app = express();
-  app.use(express.json());
+  app.use(json());
 
   // Mount routes
   app.use('/api/v1/auth', createAuthRoutes(pgPool, redisClient));
@@ -121,10 +121,16 @@ export async function cleanAllTestData(
     await client.query('BEGIN');
 
     // Delete in order to respect foreign key constraints
-    // Note: refresh_tokens has ON DELETE CASCADE, so deleting users will cascade
+    // care_alerts references clients and users (staff_id, coordinator_id)
+    await client.query('DELETE FROM care_alerts');
+    // coordinators references users and zones
+    await client.query('DELETE FROM coordinators');
+    // care_plans references clients
     await client.query('DELETE FROM care_plans');
+    // clients references zones
     await client.query('DELETE FROM clients');
-    await client.query('DELETE FROM refresh_tokens');
+    // refresh_tokens references users (with ON DELETE CASCADE)
+    // Delete users last - this will cascade to refresh_tokens
     await client.query("DELETE FROM users WHERE email LIKE '%test-%@example.com'");
 
     await client.query('COMMIT');

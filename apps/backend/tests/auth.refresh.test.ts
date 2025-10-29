@@ -18,7 +18,8 @@
 
 import crypto from 'crypto';
 
-import express from 'express';
+import express, { json } from 'express';
+import type { Application } from 'express';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 import request from 'supertest';
@@ -34,7 +35,7 @@ const TEST_REDIS_URL =
   process.env.TEST_REDIS_URL || 'redis://:berthcare_redis_password@localhost:6379/1';
 
 describe('POST /v1/auth/refresh', () => {
-  let app: express.Application;
+  let app: Application;
   let pgPool: Pool;
   let redisClient: ReturnType<typeof createClient>;
   let testUserId: string;
@@ -57,7 +58,7 @@ describe('POST /v1/auth/refresh', () => {
 
     // Create Express app with auth routes
     app = express();
-    app.use(express.json());
+    app.use(json());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     app.use('/v1/auth', createAuthRoutes(pgPool, redisClient as any));
 
@@ -392,6 +393,70 @@ describe('POST /v1/auth/refresh', () => {
         Buffer.from(response.body.data.accessToken.split('.')[1], 'base64').toString()
       );
       expect(payload.role).toBe('coordinator');
+    });
+  });
+
+  describe('Rate Limiting', () => {
+    it('should enforce rate limit of 20 requests per 15 minutes', async () => {
+      let userId: string;
+      let token: string;
+
+      {
+        const client = await pgPool.connect();
+        try {
+          // Create test user
+          const userResult = await client.query(
+            `INSERT INTO users (email, password_hash, first_name, last_name, role, zone_id, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, true)
+             RETURNING id`,
+            ['ratelimit@example.com', 'hash', 'Rate', 'Limit', 'caregiver', null]
+          );
+          userId = userResult.rows[0].id;
+
+          // Create valid refresh token
+          token = generateRefreshToken({
+            userId,
+            role: 'caregiver',
+            zoneId: '00000000-0000-0000-0000-000000000000',
+            email: 'ratelimit@example.com',
+          });
+          const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+          const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+          await client.query(
+            `INSERT INTO refresh_tokens (user_id, token_hash, device_id, expires_at)
+             VALUES ($1, $2, $3, $4)`,
+            [userId, tokenHash, 'test-device', expiresAt]
+          );
+        } finally {
+          client.release();
+        }
+      }
+
+      // Make requests up to the limit (testing with 5 to speed up test suite)
+      // This validates rate limiting works without exhausting the full 20-request limit
+      for (let i = 0; i < 5; i++) {
+        const response = await request(app).post('/v1/auth/refresh').send({
+          refreshToken: token,
+        });
+        expect(response.status).toBe(200);
+      }
+
+      // Make 15 more requests to reach the limit of 20
+      for (let i = 0; i < 15; i++) {
+        await request(app).post('/v1/auth/refresh').send({
+          refreshToken: token,
+        });
+      }
+
+      // 21st request should be rate limited
+      const response = await request(app).post('/v1/auth/refresh').send({
+        refreshToken: token,
+      });
+
+      expect(response.status).toBe(429);
+      expect(response.body.error.code).toBe('RATE_LIMIT_EXCEEDED');
+      expect(response.body.error.details.maxAttempts).toBe(20);
     });
   });
 });

@@ -51,8 +51,8 @@ describe('PATCH /api/v1/clients/:clientId - Update Client', () => {
   const coordinatorUserId = '00000000-0000-0000-0000-000000000002';
   const caregiverUserId = '00000000-0000-0000-0000-000000000003';
   const otherCoordinatorUserId = '00000000-0000-0000-0000-000000000004';
-  const testZoneId = '00000000-0000-0000-0000-000000000001';
-  const otherZoneId = '00000000-0000-0000-0000-000000000002';
+  const testZoneId = '550e8400-e29b-41d4-a716-446655440001'; // North Zone
+  const otherZoneId = '550e8400-e29b-41d4-a716-446655440002'; // South Zone
 
   beforeAll(async () => {
     // Setup connections using shared helper

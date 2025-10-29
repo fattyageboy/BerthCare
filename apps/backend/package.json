@@ -16,11 +16,14 @@
     "migrate:down": "tsx src/db/migrate.ts down",
     "db:reset": "tsx src/db/migrate.ts down 001 && tsx src/db/migrate.ts up 001",
     "db:verify": "tsx src/db/verify-schema.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "load-test:alerts": "tsx tests/load-test-alert-writes.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.907.0",
     "@aws-sdk/client-s3": "^3.907.0",
     "@aws-sdk/s3-request-presigner": "^3.907.0",
+    "@berthcare/shared": "workspace:*",
     "@googlemaps/google-maps-services-js": "^3.4.2",
     "@sentry/node": "^7.99.0",
     "@sentry/profiling-node": "^1.3.3",
@@ -28,9 +31,13 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.1.0",
     "helmet": "^7.1.0",
     "pg": "^8.11.3",
+    "rate-limit-redis": "^4.2.3",
     "redis": "^4.6.12",
+    "tslib": "^2.6.2",
+    "twilio": "^5.10.3",
     "winston": "^3.11.0"
   },
   "devDependencies": {

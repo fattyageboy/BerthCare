@@ -32,15 +32,15 @@ db/
 Apply all pending migrations:
 
 ```bash
-npm run migrate:up
+pnpm run migrate:up
 ```
 
 Apply specific migration:
 
 ```bash
-npm run migrate:up 001  # Users and auth
-npm run migrate:up 002  # Clients
-npm run migrate:up 003  # Care plans
+pnpm run migrate:up 001  # Users and auth
+pnpm run migrate:up 002  # Clients
+pnpm run migrate:up 003  # Care plans
 ```
 
 ### 2. Verify Schema
@@ -48,7 +48,7 @@ npm run migrate:up 003  # Care plans
 Check that the database schema matches specifications:
 
 ```bash
-npm run db:verify
+pnpm run db:verify
 ```
 
 ### 3. Rollback Migration
@@ -56,9 +56,9 @@ npm run db:verify
 Rollback a specific migration:
 
 ```bash
-npm run migrate:down 001  # Rollback users and auth
-npm run migrate:down 002  # Rollback clients
-npm run migrate:down 003  # Rollback care plans
+pnpm run migrate:down 001  # Rollback users and auth
+pnpm run migrate:down 002  # Rollback clients
+pnpm run migrate:down 003  # Rollback care plans
 ```
 
 ### 4. Reset Database
@@ -66,7 +66,7 @@ npm run migrate:down 003  # Rollback care plans
 Drop and recreate all tables (useful for development):
 
 ```bash
-npm run db:reset
+pnpm run db:reset
 ```
 
 ## Migration Files
@@ -76,17 +76,20 @@ npm run db:reset
 Creates the authentication system tables:
 
 **users table:**
+
 - Stores user accounts (caregivers, coordinators, admins)
 - Supports role-based access control
 - Zone-based data isolation
 - Soft delete support
 
 **refresh_tokens table:**
+
 - JWT refresh token management
 - Multi-device session support
 - Token revocation for security
 
 **Indexes:**
+
 - Optimized for authentication flows
 - Fast email lookup for login
 - Efficient zone-based queries
@@ -97,6 +100,7 @@ Creates the authentication system tables:
 Creates the client management table:
 
 **clients table:**
+
 - Stores client (patient) information
 - Personal details (name, DOB, address)
 - Geographic coordinates for route optimization
@@ -105,6 +109,7 @@ Creates the client management table:
 - Soft delete support
 
 **Indexes:**
+
 - Zone-based queries for caregiver assignment
 - Name search (last name, full name)
 - Geographic proximity searches
@@ -115,6 +120,7 @@ Creates the client management table:
 Creates the care plan management table:
 
 **care_plans table:**
+
 - Stores care plan information for clients
 - Summary of care needs
 - Medications (JSONB array with name, dosage, frequency)
@@ -124,16 +130,19 @@ Creates the care plan management table:
 - Foreign key to clients with CASCADE delete
 
 **Indexes:**
+
 - Fast client lookup
 - GIN indexes for JSONB medication/allergy searches
 - Version tracking for conflict detection
 - Unique constraint: one active care plan per client
 
 **Triggers:**
+
 - Auto-increment version on content changes
 - Auto-update timestamps
 
 **Functions:**
+
 - `increment_care_plan_version()` - Version management
 - `validate_medication_structure()` - JSONB validation
 - `validate_allergies_structure()` - JSONB validation
@@ -159,14 +168,15 @@ These are configured in your `.env` file and match the `docker-compose.yml` setu
 1. Create forward migration file: `00X_description.sql`
 2. Create rollback file: `00X_description_rollback.sql`
 3. Update `migrate.ts` to include new migration
-4. Test migration: `npm run migrate:up 00X`
-5. Verify schema: `npm run db:verify`
-6. Test rollback: `npm run migrate:down 00X`
+4. Test migration: `pnpm run migrate:up 00X`
+5. Verify schema: `pnpm run db:verify`
+6. Test rollback: `pnpm run migrate:down 00X`
 7. Commit both files to version control
 
 ### Migration Best Practices
 
 **DO:**
+
 - ✅ Use descriptive migration names
 - ✅ Include comments explaining the purpose
 - ✅ Create rollback scripts for every migration
@@ -176,6 +186,7 @@ These are configured in your `.env` file and match the `docker-compose.yml` setu
 - ✅ Document table and column purposes
 
 **DON'T:**
+
 - ❌ Modify existing migration files after deployment
 - ❌ Skip rollback script creation
 - ❌ Use database-specific features without fallbacks
@@ -194,7 +205,7 @@ The `verify-schema.ts` script checks:
 Run after every migration to ensure schema integrity:
 
 ```bash
-npm run db:verify
+pnpm run db:verify
 ```
 
 ## Troubleshooting
@@ -204,7 +215,7 @@ npm run db:verify
 The migration has already been run. Check your database state:
 
 ```bash
-npm run test:connection
+pnpm run test:connection
 ```
 
 ### Connection refused
@@ -258,11 +269,11 @@ care_plans
 
 ### Migration History
 
-| Migration | Description | Status |
-|-----------|-------------|--------|
-| 001 | Users & Authentication | ✅ Applied |
-| 002 | Clients | ✅ Applied |
-| 003 | Care Plans | ✅ Applied |
+| Migration | Description            | Status     |
+| --------- | ---------------------- | ---------- |
+| 001       | Users & Authentication | ✅ Applied |
+| 002       | Clients                | ✅ Applied |
+| 003       | Care Plans             | ✅ Applied |
 
 ## Reference
 

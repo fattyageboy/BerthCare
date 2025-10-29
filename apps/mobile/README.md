@@ -17,10 +17,10 @@ React Native mobile application built with Expo SDK 50+.
 nx dev mobile
 
 # Run on iOS simulator
-npm run ios
+pnpm run ios
 
 # Run on Android emulator
-npm run android
+pnpm run android
 ```
 
 ## Tech Stack

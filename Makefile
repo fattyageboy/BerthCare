@@ -47,7 +47,7 @@ setup:
 		echo "⚠️  .env already exists, skipping"; \
 	fi
 	@echo "Installing dependencies..."
-	@npm install
+	@pnpm install
 	@echo "✅ Setup complete! Run 'make start' to begin."
 
 # Start services
@@ -95,12 +95,12 @@ verify:
 # Start backend
 backend:
 	@echo "Starting backend in development mode..."
-	@cd apps/backend && npm run dev
+	@cd apps/backend && pnpm run dev
 
 # Start mobile
 mobile:
 	@echo "Starting mobile app..."
-	@cd apps/mobile && npm start
+	@cd apps/mobile && pnpm start
 
 # Database shell
 db-shell:
@@ -109,24 +109,24 @@ db-shell:
 # Run migrations
 db-migrate:
 	@echo "Running database migrations..."
-	@cd apps/backend && npm run migrate:up
+	@cd apps/backend && pnpm run migrate:up
 	@echo "✅ Migrations complete"
 
 # Verify schema
 db-verify:
 	@echo "Verifying database schema..."
-	@cd apps/backend && npm run db:verify
+	@cd apps/backend && pnpm run db:verify
 
 # Reset database
 db-reset:
 	@echo "Resetting database..."
-	@cd apps/backend && npm run db:reset
+	@cd apps/backend && pnpm run db:reset
 	@echo "✅ Database reset complete"
 
 # Seed database
 db-seed:
 	@echo "Seeding database with sample data..."
-	@cd apps/backend && npm run db:seed
+	@cd apps/backend && pnpm run db:seed
 
 # Backup database
 db-backup:
@@ -167,4 +167,4 @@ reset: clean start
 # Run tests
 test:
 	@echo "Running tests..."
-	@npm test
+	@pnpm run test

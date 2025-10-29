@@ -50,7 +50,7 @@ Successfully configured a comprehensive CI/CD pipeline using GitHub Actions that
 
 ✅ **Job 5: Dependency Audit**
 
-- npm audit for known vulnerabilities
+- pnpm audit for known vulnerabilities
 - Audit level: High and above
 - Outdated dependency check
 - Timeout: 10 minutes
@@ -199,6 +199,17 @@ The following checks must pass before merging to `main`:
 
 ## Configuration Requirements
 
+### Test Database Credentials
+
+The CI workflow currently references test database credentials:
+
+**Example (do not use in production):**
+
+- `TEST_DATABASE_URL`: postgresql://test_user:test_password@localhost:5432/berthcare_test
+- `TEST_REDIS_URL`: redis://localhost:6379
+
+**Security Note**: These are example placeholders only. Never use these credentials in production or commit real credentials to the repository. Store actual values in GitHub Actions Secrets so CI jobs inject them at runtime. Hardcoding or committing credentials leaves them in git history and exposes them to anyone with repository access. For local development, place credentials in non-committed `.env.local` files and override them in CI via repository secrets.
+
 ### GitHub Secrets (Optional)
 
 For enhanced features, configure these secrets:
@@ -273,14 +284,14 @@ According to the task plan:
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Run all checks locally
-npm run lint
-npm run format:check
-npm run type-check
-npm run test
-npm run build
+pnpm run lint
+pnpm run format:check
+pnpm run type-check
+pnpm run test
+pnpm run build
 ```
 
 ### CI Testing (After PR)
@@ -310,11 +321,11 @@ npm run build
 
 ### Common Issues
 
-- **Lint errors**: Run `npm run lint:fix` to auto-fix
-- **Format errors**: Run `npm run format` to auto-format
+- **Lint errors**: Run `pnpm run lint:fix` to auto-fix
+- **Format errors**: Run `pnpm run format` to auto-format
 - **Type errors**: Check TypeScript compiler output
-- **Test failures**: Run `npm run test:watch` to debug
-- **Build failures**: Run `npm run build` locally
+- **Test failures**: Run `pnpm run test:watch` to debug
+- **Build failures**: Run `pnpm run build` locally
 
 ## Reference Documentation
 

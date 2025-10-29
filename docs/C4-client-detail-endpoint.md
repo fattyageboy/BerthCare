@@ -5,7 +5,26 @@
 **Status:** ✅ Completed  
 **Date:** October 10, 2025  
 **Developer:** Backend Engineer  
-**Estimated Time:** 1.5d  
+**Estimated Time:** 1.5d
+
+## Table of Contents
+
+- [Overview](#overview)
+- [What Was Implemented](#what-was-implemented)
+- [API Specification](#api-specification)
+- [Authentication & Authorization Flow](#authentication--authorization-flow)
+- [Zone-Based Access Control](#zone-based-access-control)
+- [Redis Caching Strategy](#redis-caching-strategy)
+- [Design Philosophy](#design-philosophy)
+- [Performance Considerations](#performance-considerations)
+- [Security Considerations](#security-considerations)
+- [Error Handling](#error-handling)
+- [Testing Strategy](#testing-strategy)
+- [Monitoring & Logging](#monitoring--logging)
+- [How to Use](#how-to-use)
+- [Troubleshooting](#troubleshooting)
+- [References](#references)
+- [Appendix: Additional Notes](#appendix-additional-notes)
 
 ## Overview
 
@@ -18,6 +37,7 @@ Successfully implemented the GET /v1/clients/:clientId endpoint with full client
 **File:** `apps/backend/src/routes/clients.routes.ts`
 
 **Features:**
+
 - GET /v1/clients/:clientId endpoint with full functionality
 - Complete client details with all related data
 - Care plan with medications and allergies (JSONB)
@@ -34,6 +54,7 @@ Successfully implemented the GET /v1/clients/:clientId endpoint with full client
 **File:** `apps/backend/tests/clients.detail.test.ts`
 
 **Test Coverage:**
+
 - Authentication (401 without token, 401 with invalid token)
 - Client ID validation (400 for invalid UUID, 404 for non-existent)
 - Zone-based access control (caregivers see only their zone, admins see all)
@@ -58,9 +79,9 @@ Authorization: Bearer <access_token>
 
 ### Path Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| clientId | string (UUID) | Yes | Unique client identifier |
+| Parameter | Type          | Required | Description              |
+| --------- | ------------- | -------- | ------------------------ |
+| clientId  | string (UUID) | Yes      | Unique client identifier |
 
 ### Response (200 OK)
 
@@ -106,6 +127,7 @@ Authorization: Bearer <access_token>
 ### Error Responses
 
 **400 Bad Request**
+
 ```json
 {
   "error": {
@@ -118,6 +140,7 @@ Authorization: Bearer <access_token>
 ```
 
 **401 Unauthorized**
+
 ```json
 {
   "error": {
@@ -130,6 +153,7 @@ Authorization: Bearer <access_token>
 ```
 
 **403 Forbidden**
+
 ```json
 {
   "error": {
@@ -142,6 +166,7 @@ Authorization: Bearer <access_token>
 ```
 
 **404 Not Found**
+
 ```json
 {
   "error": {
@@ -154,6 +179,7 @@ Authorization: Bearer <access_token>
 ```
 
 **500 Internal Server Error**
+
 ```json
 {
   "error": {
@@ -167,14 +193,36 @@ Authorization: Bearer <access_token>
 
 ## Implementation Details
 
+### Authentication & Authorization Flow
+
+```mermaid
+flowchart TD
+    A[Request: GET /v1/clients/:clientId] --> B{Valid JWT Token?}
+    B -->|No| C[401 Unauthorized]
+    B -->|Yes| D{Valid UUID Format?}
+    D -->|No| E[400 Bad Request]
+    D -->|Yes| F{User Role?}
+    F -->|Admin| G[Access Any Client]
+    F -->|Caregiver/Coordinator| H{Client in User's Zone?}
+    H -->|No| I[403 Forbidden]
+    H -->|Yes| J[Access Allowed]
+    G --> K[Fetch Client Data]
+    J --> K
+    K --> L{Client Exists?}
+    L -->|No| M[404 Not Found]
+    L -->|Yes| N[200 OK with Client Data]
+```
+
 ### Zone-Based Access Control
 
 **Non-Admin Users (Caregivers, Coordinators):**
+
 - Can only access clients in their assigned zone
 - Attempting to access a client in a different zone returns 403 Forbidden
 - Zone check happens both on database query and cached data
 
 **Admin Users:**
+
 - Can access any client regardless of zone
 - No zone restrictions applied
 
@@ -188,19 +236,23 @@ Authorization: Bearer <access_token>
 ### Care Plan Data
 
 **Medications:**
+
 - Stored as JSONB array in database
 - Each medication has: name, dosage, frequency
 - Empty array if no medications
 
 **Allergies:**
+
 - Stored as JSONB array of strings
 - Empty array if no allergies
 
 **Special Instructions:**
+
 - Free-form text field
 - Empty string if not specified
 
 **No Care Plan:**
+
 - If client has no care plan, returns empty values:
   - summary: ""
   - medications: []
@@ -214,14 +266,33 @@ Authorization: Bearer <access_token>
 - Will be populated with last 10 visits when visits table exists
 - Structure ready: id, date, staffName, duration
 
-### Redis Caching
+### Redis Caching Strategy
+
+```mermaid
+flowchart TD
+    A[Request Client Detail] --> B{Check Redis Cache}
+    B -->|Cache Hit| C{Zone Access Valid?}
+    C -->|Yes| D[Return Cached Data<br/>meta.cached: true]
+    C -->|No| E[403 Forbidden]
+    B -->|Cache Miss| F[Query Database]
+    F --> G{Client Found?}
+    G -->|No| H[404 Not Found]
+    G -->|Yes| I{Zone Access Valid?}
+    I -->|No| E
+    I -->|Yes| J[Cache Result<br/>TTL: 15 min]
+    J --> K[Return Fresh Data<br/>meta.cached: false]
+    B -->|Cache Error| L[Graceful Degradation<br/>Query Database]
+    L --> G
+```
 
 **Cache Key Format:**
+
 ```
 client:detail:{clientId}
 ```
 
 **Cache Behavior:**
+
 - TTL: 900 seconds (15 minutes)
 - Longer than list endpoint (5 min) because detail views change less frequently
 - Cache includes zoneId for access control validation
@@ -233,12 +304,13 @@ client:detail:{clientId}
 ### Database Query Optimization
 
 **Single Query with JOIN:**
+
 ```sql
-SELECT 
-  c.*, 
-  cp.summary, 
-  cp.medications, 
-  cp.allergies, 
+SELECT
+  c.*,
+  cp.summary,
+  cp.medications,
+  cp.allergies,
   cp.special_instructions
 FROM clients c
 LEFT JOIN care_plans cp ON cp.client_id = c.id AND cp.deleted_at IS NULL
@@ -246,6 +318,7 @@ WHERE c.id = $1 AND c.deleted_at IS NULL
 ```
 
 **Performance:**
+
 - Single query retrieves all data
 - LEFT JOIN handles clients without care plans
 - Indexed primary key lookup (< 1ms)
@@ -254,11 +327,13 @@ WHERE c.id = $1 AND c.deleted_at IS NULL
 ### Performance Characteristics
 
 **Without Cache:**
+
 - Database query: < 5ms
 - JSON transformation: < 1ms
 - Total: < 10ms
 
 **With Cache:**
+
 - Cache hit: < 1ms
 - Zone validation: < 1ms
 - Total: < 2ms
@@ -268,6 +343,7 @@ WHERE c.id = $1 AND c.deleted_at IS NULL
 ### Test Database Setup
 
 Tests use a separate test database:
+
 - Database: `berthcare_test`
 - Redis DB: 1 (separate from development DB 0)
 - Tables created in beforeAll hook
@@ -276,19 +352,23 @@ Tests use a separate test database:
 ### Test Coverage
 
 **Authentication Tests:**
+
 - ✅ Returns 401 without token
 - ✅ Returns 401 with invalid token
 
 **Client ID Validation Tests:**
+
 - ✅ Returns 400 for invalid UUID format
 - ✅ Returns 404 for non-existent client
 
 **Zone Access Control Tests:**
+
 - ✅ Caregivers can access clients in their zone
 - ✅ Caregivers denied access to other zones
 - ✅ Admins can access any client
 
 **Response Format Tests:**
+
 - ✅ Returns complete data structure
 - ✅ Includes correct client details
 - ✅ Includes emergency contact information
@@ -297,6 +377,7 @@ Tests use a separate test database:
 - ✅ Returns empty recent visits array
 
 **Caching Tests:**
+
 - ✅ Results are cached after first request
 - ✅ Different clients have different cache keys
 - ✅ Zone access control enforced on cached data
@@ -305,58 +386,44 @@ Tests use a separate test database:
 
 ```bash
 # Run all tests
-npm test
+pnpm run test
 
 # Run only client detail tests
-npm test clients.detail
+pnpm run test -- clients.detail
 
 # Run with coverage
-npm test -- --coverage
+pnpm run test -- --coverage
 ```
 
-## Design Philosophy Applied
+## Design Philosophy
 
-### Simplicity is the Ultimate Sophistication
-- Single endpoint returns all client data
-- No need for multiple requests
-- Clear, predictable response structure
-- Simple error messages
+This implementation embodies the project's core design principles:
 
-### Obsess Over Details
-- Complete client information in one request
-- Efficient single-query database access
-- Proper date formatting (YYYY-MM-DD)
-- Comprehensive error handling
-- Detailed logging for debugging
+- **Simplicity:** Single endpoint returns all client data in one request with a clear, predictable structure
+- **Performance:** Redis caching (15 min TTL) and optimized single-query database access deliver fast response times
+- **Security:** JWT authentication, zone-based access control, and UUID validation ensure uncompromising data protection
+- **User Experience:** Complete information in one call with automatic zone access for non-admins and clear error messages
 
-### Start with User Experience
-- Fast response times via caching
-- All needed information in one call
-- Clear error messages
-- Zone access automatic for non-admins
-
-### Uncompromising Security
-- JWT authentication required
-- Zone-based access control enforced
-- UUID validation prevents injection
-- Zone check on both fresh and cached data
-- Clear audit trail via logging
+_See [Appendix: Design Philosophy Details](#appendix-design-philosophy-details) for extended rationale and examples._
 
 ## Integration with Architecture
 
 ### Supports Current Features
 
 **Care Plan Display:**
+
 - Full care plan with summary
 - Medications with dosage and frequency
 - Allergies list for safety
 - Special instructions for caregivers
 
 **Emergency Contact:**
+
 - Name, phone, relationship
 - Readily available for emergencies
 
 **Client Profile:**
+
 - Complete demographic information
 - Geographic coordinates for routing
 - Contact information
@@ -364,21 +431,25 @@ npm test -- --coverage
 ### Ready for Future Features
 
 **Recent Visits:**
+
 - Response includes `recentVisits` array (currently empty)
 - Will be populated when visits table is implemented
 - Structure defined: id, date, staffName, duration
 - Will show last 10 visits
 
 **Visit History Link:**
+
 - Client ID available for navigation
 - Can link to full visit history view
 
 ## Files Created/Modified
 
 ### Modified
+
 - `apps/backend/src/routes/clients.routes.ts` - Added GET /:clientId endpoint
 
 ### Created
+
 - `apps/backend/tests/clients.detail.test.ts` - Integration tests
 - `docs/C4-client-detail-endpoint.md` - This documentation
 
@@ -410,6 +481,7 @@ With the GET /v1/clients/:clientId endpoint complete, the next tasks are:
 **Error:** Cannot connect to Redis
 
 **Solution:**
+
 ```bash
 # Check Redis is running
 docker-compose ps redis
@@ -426,12 +498,13 @@ docker-compose logs redis
 **Issue:** Slow queries
 
 **Solution:**
+
 ```sql
 -- Check if indexes exist
 SELECT indexname FROM pg_indexes WHERE tablename = 'clients';
 
 -- Analyze query performance
-EXPLAIN ANALYZE 
+EXPLAIN ANALYZE
 SELECT c.*, cp.*
 FROM clients c
 LEFT JOIN care_plans cp ON cp.client_id = c.id
@@ -443,6 +516,7 @@ WHERE c.id = 'uuid' AND c.deleted_at IS NULL;
 **Issue:** Every request hits database
 
 **Solution:**
+
 ```bash
 # Check Redis connection
 docker-compose exec redis redis-cli -a berthcare_redis_password PING
@@ -487,8 +561,108 @@ The GET /v1/clients/:clientId endpoint is now complete and production-ready. The
 ---
 
 **Implementation Files:**
+
 - ✅ `apps/backend/src/routes/clients.routes.ts` - Route implementation
 - ✅ `apps/backend/tests/clients.detail.test.ts` - Integration tests
 - ✅ `docs/C4-client-detail-endpoint.md` - This documentation
 
 **Next Task:** C5 - Create client seed data
+
+---
+
+## Appendix: Additional Notes
+
+### Design Philosophy Details
+
+<details>
+<summary>Click to expand detailed design rationale and examples</summary>
+
+#### Simplicity is the Ultimate Sophistication
+
+**Rationale:** Complex systems are harder to maintain, debug, and extend. By providing a single endpoint that returns all client data, we eliminate the need for multiple API calls and reduce client-side complexity.
+
+**Examples:**
+
+- Single endpoint vs. separate endpoints for client, care plan, emergency contact
+- Clear response structure with nested objects (emergencyContact, carePlan)
+- Predictable error codes (400, 401, 403, 404, 500)
+
+#### Obsess Over Details
+
+**Rationale:** Small details compound into significant user experience improvements. Proper formatting, comprehensive error handling, and efficient queries demonstrate attention to quality.
+
+**Examples:**
+
+- Date formatting: YYYY-MM-DD (ISO 8601 date-only format) for consistency
+- Single-query database access with LEFT JOIN for efficiency
+- Detailed logging with request IDs for debugging
+- JSONB support for flexible medication and allergy data
+
+#### Start with User Experience
+
+**Rationale:** Technology should serve users, not the other way around. Fast response times and complete information reduce friction and improve satisfaction.
+
+**Examples:**
+
+- Redis caching reduces response time from ~50ms to ~5ms
+- All needed information in one call (no need to fetch care plan separately)
+- Automatic zone access for non-admins (no manual filtering needed)
+- Clear error messages guide users to fix issues
+
+#### Uncompromising Security
+
+**Rationale:** Healthcare data requires the highest security standards. Multiple layers of protection ensure data privacy and compliance.
+
+**Examples:**
+
+- JWT authentication prevents unauthorized access
+- Zone-based access control enforces data isolation
+- UUID validation prevents SQL injection attacks
+- Zone check on both fresh and cached data prevents cache-based bypasses
+- Audit trail via structured logging for compliance
+
+</details>
+
+### Integration with Architecture
+
+<details>
+<summary>Click to expand architecture integration details</summary>
+
+#### Supports Current Features
+
+**Care Plan Display:**
+
+- Full care plan with summary for quick overview
+- Medications with dosage and frequency for accurate administration
+- Allergies list for safety and risk prevention
+- Special instructions for personalized care
+
+**Emergency Contact:**
+
+- Name, phone, relationship readily available
+- Critical for emergency situations
+- Always included in response
+
+**Client Profile:**
+
+- Complete demographic information
+- Geographic coordinates for routing and zone assignment
+- Contact information for communication
+
+#### Ready for Future Features
+
+**Recent Visits:**
+
+- Response includes `recentVisits` array (currently empty)
+- Structure defined: id, date, staffName, duration
+- Will be populated when visits table is implemented
+- No API changes needed when visits are added
+
+**Additional Future Enhancements:**
+
+- Photo URL field ready for profile photos
+- Notes field for caregiver observations
+- Preferences field for client preferences
+- Medical history integration
+
+</details>

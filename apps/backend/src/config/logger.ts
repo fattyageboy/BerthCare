@@ -9,7 +9,8 @@
  * - Performance metrics
  */
 
-import winston from 'winston';
+import type { Logform } from 'winston';
+import { addColors, createLogger, format, transports } from 'winston';
 
 import { env } from './env';
 import { captureException } from './sentry';
@@ -30,32 +31,30 @@ const colors = {
   debug: 'blue',
 };
 
-winston.addColors(colors);
+addColors(colors);
 
 // Custom format for structured logging
-const structuredFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DDTHH:mm:ss.SSSZ' }),
-  winston.format.errors({ stack: true }),
-  winston.format.json()
+const structuredFormat = format.combine(
+  format.timestamp({ format: 'YYYY-MM-DDTHH:mm:ss.SSSZ' }),
+  format.errors({ stack: true }),
+  format.json()
 );
 
 // Console format for development
-const consoleFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'HH:mm:ss' }),
-  winston.format.colorize(),
-  winston.format.printf(
-    ({ timestamp, level, message, ...meta }: winston.Logform.TransformableInfo) => {
-      let msg = `${timestamp} [${level}] ${message}`;
-      if (Object.keys(meta).length > 0) {
-        msg += ` ${JSON.stringify(meta)}`;
-      }
-      return msg;
+const consoleFormat = format.combine(
+  format.timestamp({ format: 'HH:mm:ss' }),
+  format.colorize(),
+  format.printf(({ timestamp, level, message, ...meta }: Logform.TransformableInfo) => {
+    let msg = `${timestamp} [${level}] ${message}`;
+    if (Object.keys(meta).length > 0) {
+      msg += ` ${JSON.stringify(meta)}`;
     }
-  )
+    return msg;
+  })
 );
 
 // Create logger instance
-const logger = winston.createLogger({
+const logger = createLogger({
   levels,
   level: env.app.logLevel,
   format: structuredFormat,
@@ -65,7 +64,7 @@ const logger = winston.createLogger({
   },
   transports: [
     // Console transport (always enabled)
-    new winston.transports.Console({
+    new transports.Console({
       format: env.app.nodeEnv === 'production' ? structuredFormat : consoleFormat,
     }),
   ],

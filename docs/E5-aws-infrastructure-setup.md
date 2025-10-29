@@ -15,6 +15,7 @@ This document provides step-by-step instructions for provisioning the complete A
 ## Architecture Components
 
 ### Networking
+
 - **VPC:** 10.0.0.0/16 CIDR block
 - **Public Subnets:** 2 subnets across 2 AZs (ca-central-1a, ca-central-1b)
 - **Private Subnets:** 2 subnets across 2 AZs
@@ -23,6 +24,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **VPC Flow Logs:** Enabled for network monitoring
 
 ### Database
+
 - **Engine:** PostgreSQL 15.5
 - **Instance Class:** db.t4g.medium (ARM-based, cost-effective)
 - **Storage:** 100 GB initial, auto-scaling up to 500 GB
@@ -32,6 +34,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Performance Insights:** Enabled
 
 ### Cache
+
 - **Engine:** Redis 7.1
 - **Node Type:** cache.t4g.micro
 - **Cluster Size:** 2 nodes
@@ -41,6 +44,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Auth Token:** Enabled
 
 ### Storage
+
 - **S3 Buckets:**
   - `berthcare-photos-staging` - Visit photos
   - `berthcare-documents-staging` - Care plans and documents
@@ -52,6 +56,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Public Access:** Blocked
 
 ### CDN
+
 - **CloudFront Distribution:** Global edge locations
 - **Origins:** S3 buckets (photos, documents, signatures)
 - **SSL/TLS:** TLS 1.2+ enforced
@@ -60,6 +65,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Compression:** Enabled
 
 ### Security
+
 - **IAM Roles:**
   - ECS Task Execution Role (pull images, write logs)
   - ECS Task Role (application runtime permissions)
@@ -72,6 +78,7 @@ This document provides step-by-step instructions for provisioning the complete A
 - **Secrets Manager:** Database and Redis credentials
 
 ### Monitoring
+
 - **CloudWatch Dashboard:** Pre-configured metrics
 - **CloudWatch Alarms:**
   - RDS CPU utilization > 80%
@@ -83,6 +90,13 @@ This document provides step-by-step instructions for provisioning the complete A
   - Redis evictions > 1000
   - CloudFront 5xx error rate > 5%
 - **SNS Topic:** Email notifications for alarms
+- **CloudTrail:** (REQUIRED for compliance)
+  - Multi-region trail for comprehensive API audit logging
+  - S3 bucket for log storage with encryption
+  - Log file validation enabled
+  - CloudWatch Logs integration for real-time monitoring
+  - 90-day retention in CloudWatch, indefinite in S3
+  - Critical for PIPEDA compliance and security investigations
 
 ---
 
@@ -124,6 +138,7 @@ aws sts get-caller-identity
 ### 3. Required AWS Permissions
 
 Your AWS user/role needs the following permissions:
+
 - VPC management (create VPC, subnets, route tables, NAT gateways)
 - RDS management (create databases, parameter groups, subnet groups)
 - ElastiCache management (create Redis clusters)
@@ -131,33 +146,22 @@ Your AWS user/role needs the following permissions:
 - CloudFront management (create distributions)
 - IAM management (create roles, policies)
 - KMS management (create keys)
-- CloudWatch management (create dashboards, alarms)
+- CloudWatch management (create dashboards, alarms, log groups)
 - Secrets Manager management (create secrets)
 - SNS management (create topics)
+- **CloudTrail management (create trails, configure logging) - REQUIRED**
 
 ---
 
 ## Deployment Steps
 
-### Step 1: Initialize Terraform Backend
+### Step 1: Configure Staging Environment
 
-The Terraform backend stores state files in S3 with DynamoDB for state locking.
-
-```bash
-# Run the backend initialization script
-cd terraform/scripts
-./init-backend.sh
-```
-
-This script creates:
-- S3 bucket: `berthcare-terraform-state`
-- DynamoDB table: `berthcare-terraform-locks`
-
-### Step 2: Configure Staging Environment
+**Important:** Complete this step BEFORE initializing the backend to avoid re-initialization issues.
 
 ```bash
 # Navigate to staging environment
-cd ../environments/staging
+cd terraform/environments/staging
 
 # Copy example configuration
 cp terraform.tfvars.example terraform.tfvars
@@ -180,9 +184,11 @@ alarm_email = "your-email@example.com"  # Update this!
 # Other values can remain as defaults for staging
 ```
 
-### Step 3: Uncomment Backend Configuration
+### Step 2: Uncomment Backend Configuration
 
-Edit `main.tf` and uncomment the backend configuration:
+**Critical:** Do this BEFORE running any Terraform commands to ensure remote state from the start.
+
+Edit `main.tf` and uncomment the backend configuration block:
 
 ```hcl
 backend "s3" {
@@ -194,15 +200,51 @@ backend "s3" {
 }
 ```
 
-### Step 4: Initialize Terraform
+**Note:** The backend configuration must be uncommented before `terraform init` to avoid initializing with a local backend first, which would require migration later.
+
+### Step 3: Initialize Terraform Backend
+
+The backend initialization script creates the S3 bucket and DynamoDB table required for remote state storage.
 
 ```bash
-# Initialize Terraform with backend
+# Run the backend initialization script
+cd ../../scripts
+./init-backend.sh
+
+# This script creates:
+# - S3 bucket: berthcare-terraform-state (with versioning and encryption)
+# - DynamoDB table: berthcare-terraform-locks (for state locking)
+```
+
+**What the script does:**
+
+- Creates S3 bucket with versioning enabled
+- Enables server-side encryption (AES256)
+- Blocks public access
+- Creates DynamoDB table with on-demand billing
+- Configures proper tags
+
+### Step 4: Initialize Terraform with Remote Backend
+
+Now that the backend resources exist and the configuration is uncommented, initialize Terraform:
+
+```bash
+# Return to staging environment
+cd ../environments/staging
+
+# Initialize Terraform with remote backend
 terraform init
 
 # You should see:
+# ✅ Initializing the backend...
+# ✅ Successfully configured the backend "s3"!
 # ✅ Terraform has been successfully initialized!
 ```
+
+**Troubleshooting:**
+
+- If you see "Backend configuration changed", you may have run `terraform init` before uncommenting the backend config. Run `terraform init -migrate-state` to migrate from local to remote backend.
+- If the script fails with "bucket already exists", the backend was already initialized. Proceed to the next step.
 
 ### Step 5: Validate Configuration
 
@@ -219,31 +261,145 @@ terraform fmt -recursive
 
 ### Step 6: Plan Infrastructure
 
-```bash
-# Generate execution plan
-terraform plan -out=tfplan
+**Critical:** Carefully review the plan output before applying. This is your opportunity to catch configuration errors before they affect your infrastructure.
 
-# Review the plan carefully
-# You should see approximately 50+ resources to be created
+```bash
+# Generate and review execution plan
+terraform plan -out=tfplan
 ```
+
+**What to Review:**
+
+1. **Resource Count:** Typical staging deployments create 40-60+ resources including:
+   - VPC, subnets, route tables, NAT gateways, internet gateway
+   - Security groups (ALB, ECS, RDS, Redis)
+   - RDS database instance, subnet group, parameter group
+   - ElastiCache Redis cluster, subnet group, parameter group
+   - S3 buckets (photos, documents, signatures, logs)
+   - CloudFront distribution
+   - IAM roles and policies
+   - CloudWatch alarms, log groups, dashboard
+   - Secrets Manager secrets
+   - KMS keys
+
+2. **Verify Actions:**
+   - ✅ All resources should show `+ create` (green plus sign)
+   - ⚠️ **STOP if you see:** `-/+ destroy and then create` (replacement)
+   - ❌ **DO NOT PROCEED if you see:** `- destroy` (deletion)
+
+3. **Check Critical Resources:**
+   - RDS instance: Verify Multi-AZ is enabled
+   - ElastiCache: Verify cluster mode and node count
+   - S3 buckets: Verify encryption and versioning enabled
+   - Security groups: Verify ingress/egress rules are correct
+
+4. **Review Sensitive Values:**
+   - Database passwords should show `(sensitive value)`
+   - No hardcoded credentials should be visible
+
+**Red Flags:**
+
+- Unexpected resource deletions or replacements
+- Missing encryption settings
+- Public access enabled on resources
+- Incorrect CIDR blocks or security group rules
+- Wrong instance types or sizes
+
+**If the plan looks correct, proceed to apply. If anything looks unexpected, investigate before continuing.**
 
 ### Step 7: Apply Infrastructure
 
+**Warning:** This step will create real AWS resources and incur costs. Ensure you've reviewed the plan output above.
+
 ```bash
-# Apply the plan
+# Apply the plan (only after careful review)
 terraform apply tfplan
 
 # This will take approximately 15-20 minutes
 # Resources are created in the following order:
 # 1. VPC and networking (2-3 min)
 # 2. Security groups and IAM roles (1 min)
-# 3. RDS database (10-12 min) - Multi-AZ takes longer
-# 4. ElastiCache Redis (5-7 min)
-# 5. S3 buckets (1 min)
-# 6. CloudFront distribution (5-10 min)
+# 3. CloudTrail and audit logging (2-3 min)
+# 4. RDS database (10-12 min) - Multi-AZ takes longer
+# 5. ElastiCache Redis (5-7 min)
+# 6. S3 buckets (1 min)
+# 7. CloudFront distribution (5-10 min)
 ```
 
-### Step 8: Verify Deployment
+### Step 8: Configure CloudTrail (REQUIRED)
+
+**Important:** CloudTrail is required for PIPEDA compliance and security audit trails.
+
+The Terraform configuration includes a CloudTrail setup. If not already included, add this to your `main.tf`:
+
+```hcl
+# CloudTrail for API audit logging
+resource "aws_cloudtrail" "main" {
+  name                          = "${var.project_name}-${var.environment}-trail"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail_logs.id
+  include_global_service_events = true
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
+
+  event_selector {
+    read_write_type           = "All"
+    include_management_events = true
+
+    data_resource {
+      type   = "AWS::S3::Object"
+      values = ["arn:aws:s3:::${var.project_name}-*/*"]
+    }
+  }
+
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_cloudwatch.arn
+
+  kms_key_id = aws_kms_key.main.arn
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-trail"
+    Environment = var.environment
+    Compliance  = "PIPEDA"
+  }
+}
+
+# S3 bucket for CloudTrail logs
+resource "aws_s3_bucket" "cloudtrail_logs" {
+  bucket = "${var.project_name}-${var.environment}-cloudtrail-logs"
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-cloudtrail-logs"
+    Environment = var.environment
+  }
+}
+
+# CloudWatch Log Group for CloudTrail
+resource "aws_cloudwatch_log_group" "cloudtrail" {
+  name              = "/aws/cloudtrail/${var.project_name}-${var.environment}"
+  retention_in_days = 90
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-cloudtrail-logs"
+    Environment = var.environment
+  }
+}
+```
+
+**Verify CloudTrail is enabled:**
+
+```bash
+# Check CloudTrail status
+aws cloudtrail get-trail-status \
+  --name berthcare-staging-trail \
+  --region ca-central-1
+
+# View recent events
+aws cloudtrail lookup-events \
+  --max-results 10 \
+  --region ca-central-1
+```
+
+### Step 9: Verify Deployment
 
 ```bash
 # View all outputs
@@ -379,16 +535,55 @@ echo "https://ca-central-1.console.aws.amazon.com/cloudwatch/home?region=ca-cent
 
 ### Monthly Costs (Approximate)
 
-| Service | Configuration | Monthly Cost (USD) |
-|---------|--------------|-------------------|
-| RDS PostgreSQL | db.t4g.medium, Multi-AZ, 100 GB | $120 |
-| ElastiCache Redis | cache.t4g.micro x2, Multi-AZ | $30 |
-| NAT Gateways | 2 NAT Gateways | $65 |
-| S3 Storage | 100 GB + requests | $5 |
-| CloudFront | 100 GB data transfer | $10 |
-| Data Transfer | Inter-AZ, outbound | $10 |
-| CloudWatch | Logs, metrics, alarms | $5 |
-| **Total** | | **~$245/month** |
+**Important:** These estimates are based on low-traffic staging environment assumptions. Production costs will be significantly higher.
+
+| Service           | Configuration                   | Breakdown                                  | Monthly Cost (USD) |
+| ----------------- | ------------------------------- | ------------------------------------------ | ------------------ |
+| RDS PostgreSQL    | db.t4g.medium, Multi-AZ, 100 GB | Instance: $85, Storage: $23, Backup: $12   | $120               |
+| ElastiCache Redis | cache.t4g.micro x2, Multi-AZ    | 2 nodes × $15                              | $30                |
+| NAT Gateways      | 2 NAT Gateways                  | Instance: $64 (2×$32), Data processing: $1 | $65                |
+| S3 Storage        | 100 GB + requests               | Storage: $2.30, Requests: $2.70            | $5                 |
+| CloudFront        | 100 GB data transfer            | First 10TB: $0.085/GB                      | $10                |
+| Data Transfer     | Inter-AZ, outbound              | Inter-AZ: $5, Internet egress: $5          | $10                |
+| CloudWatch        | Logs, metrics, alarms           | Logs: $3, Metrics: $1, Alarms: $1          | $5                 |
+| **Total**         |                                 |                                            | **~$245/month**    |
+
+### Cost Assumptions & Limitations
+
+**Traffic Assumptions (Low Staging Load):**
+
+- CloudFront: ~100 GB/month data transfer, ~1M requests
+- S3: ~10K PUT requests, ~100K GET requests per month
+- NAT Gateway: ~10 GB data processing per month
+- Inter-AZ traffic: ~50 GB/month (database replication, cache sync)
+- Internet egress: ~50 GB/month (API responses, webhooks)
+
+**What's NOT Included:**
+
+- ❌ ECS Fargate costs (depends on container size and count)
+- ❌ Application Load Balancer (~$20/month + LCU charges)
+- ❌ Route 53 hosted zone ($0.50/month + query charges)
+- ❌ ACM certificates (free, but validation costs may apply)
+- ❌ Secrets Manager (~$0.40/secret/month)
+- ❌ KMS key usage ($1/month + API calls)
+- ❌ CloudTrail (first trail free, additional trails $2/month)
+- ❌ VPC Flow Logs storage (varies by traffic volume)
+
+**Production Cost Multipliers:**
+
+- **High traffic:** Data transfer costs can easily 5-10x
+- **Heavy API usage:** S3 request costs scale linearly with traffic
+- **Large datasets:** Storage costs grow with user base
+- **Compliance:** Additional services (GuardDuty, Security Hub) add $50-100/month
+
+**Realistic Production Estimate:** $500-1000/month depending on scale
+
+### AWS Cost Calculator
+
+For detailed cost estimation with your specific usage patterns:
+
+- [AWS Pricing Calculator](https://calculator.aws/)
+- Pre-configured estimate: [BerthCare Infrastructure Template](https://calculator.aws/#/estimate?id=placeholder)
 
 ### Cost Optimization Tips
 
@@ -417,6 +612,7 @@ echo "https://ca-central-1.console.aws.amazon.com/cloudwatch/home?region=ca-cent
 **Symptom:** `Error acquiring the state lock`
 
 **Solution:**
+
 ```bash
 # Check DynamoDB for stale locks
 aws dynamodb scan \
@@ -432,6 +628,7 @@ terraform force-unlock <LOCK_ID>
 **Symptom:** `Error creating DB Instance: timeout while waiting for state to become 'available'`
 
 **Solution:**
+
 - Multi-AZ RDS takes 10-15 minutes to create
 - Check AWS Console for actual status
 - If stuck, check VPC subnet configuration
@@ -441,6 +638,7 @@ terraform force-unlock <LOCK_ID>
 **Symptom:** `Error creating S3 bucket: BucketAlreadyExists`
 
 **Solution:**
+
 ```bash
 # S3 bucket names are globally unique
 # Update bucket names in terraform.tfvars:
@@ -452,6 +650,7 @@ terraform force-unlock <LOCK_ID>
 **Symptom:** `403 Forbidden` when accessing CloudFront URL
 
 **Solution:**
+
 - CloudFront takes 15-20 minutes to fully deploy
 - Check Origin Access Control configuration
 - Verify S3 bucket policy allows CloudFront access
@@ -461,6 +660,7 @@ terraform force-unlock <LOCK_ID>
 **Symptom:** Connection timeout
 
 **Solution:**
+
 - RDS is in private subnet (by design for security)
 - To connect, use one of these methods:
   1. SSH tunnel through bastion host
@@ -475,16 +675,19 @@ terraform force-unlock <LOCK_ID>
 ### Regular Tasks
 
 **Weekly:**
+
 - Review CloudWatch alarms and metrics
 - Check RDS and Redis performance
 - Monitor S3 storage growth
 
 **Monthly:**
+
 - Review AWS costs and optimize
 - Update Terraform modules to latest versions
 - Review security group rules
 
 **Quarterly:**
+
 - Review and update IAM policies
 - Test disaster recovery procedures
 - Update RDS and Redis to latest minor versions
@@ -492,19 +695,23 @@ terraform force-unlock <LOCK_ID>
 ### Backup and Recovery
 
 **RDS Backups:**
+
 - Automated daily backups (7-day retention)
 - Manual snapshots before major changes
 - Point-in-time recovery available
 
 **Redis Backups:**
+
 - Automated daily snapshots (5-day retention)
 - Manual snapshots before major changes
 
 **S3 Versioning:**
+
 - Enabled on all buckets
 - Recover deleted objects within 90 days
 
 **Terraform State:**
+
 - Stored in S3 with versioning
 - DynamoDB state locking prevents corruption
 
@@ -515,6 +722,7 @@ terraform force-unlock <LOCK_ID>
 ### RDS Failover
 
 Multi-AZ RDS automatically fails over to standby in case of:
+
 - Primary AZ failure
 - Primary instance failure
 - Maintenance operations
@@ -525,6 +733,7 @@ Multi-AZ RDS automatically fails over to standby in case of:
 ### Redis Failover
 
 Multi-AZ Redis automatically fails over to replica in case of:
+
 - Primary node failure
 - Primary AZ failure
 
@@ -536,6 +745,7 @@ Multi-AZ Redis automatically fails over to replica in case of:
 In case of complete ca-central-1 region failure:
 
 1. **Restore from backups:**
+
    ```bash
    # Restore RDS from snapshot in another region
    aws rds restore-db-instance-from-db-snapshot \
@@ -549,41 +759,63 @@ In case of complete ca-central-1 region failure:
    - Restore from versioned objects
 
 3. **Redeploy infrastructure:**
+
    ```bash
    # Update region in terraform.tfvars
    aws_region = "us-east-1"
-   
-   # Apply in new region
-   terraform apply
+
+   # Generate and save the plan for review
+   terraform plan -out=dr.plan
+
+   # Archive the plan artifact (in CI, store as build artifact)
+   # Review the plan output carefully before proceeding
+
+   # IMPORTANT: Manual approval gate required here
+   # In CI: Add manual approval step to review plan changes
+   # Locally: Review plan output above before continuing
+
+   # Apply the reviewed and approved plan
+   terraform apply dr.plan
    ```
+
+   **Note:** Never use `-auto-approve` for disaster recovery deployments. Always generate a plan, review the changes, and require explicit approval before applying infrastructure changes in a new region.
 
 ---
 
 ## Security Best Practices
 
 ### Network Security
+
 - ✅ RDS and Redis in private subnets (no internet access)
 - ✅ Security groups with least privilege
 - ✅ VPC Flow Logs enabled for monitoring
 - ✅ NAT Gateways for outbound traffic only
 
 ### Data Security
+
 - ✅ Encryption at rest (RDS, Redis, S3) with KMS
 - ✅ Encryption in transit (TLS 1.2+)
 - ✅ S3 bucket public access blocked
 - ✅ Versioning enabled for data recovery
 
 ### Access Security
+
 - ✅ IAM roles with least privilege
 - ✅ Credentials stored in Secrets Manager
 - ✅ No hardcoded credentials in code
 - ✅ MFA required for AWS Console access (recommended)
 
 ### Monitoring Security
+
 - ✅ CloudWatch alarms for anomalies
 - ✅ VPC Flow Logs for network analysis
 - ✅ S3 access logging enabled
-- ✅ CloudTrail for API audit logs (recommended)
+- ✅ **CloudTrail for API audit logs (REQUIRED - included in deployment)**
+  - **Critical for PIPEDA compliance:** Complete audit trail of all AWS API calls
+  - **Required for security investigations:** Track who accessed what and when
+  - **Regulatory requirement:** Healthcare data handling mandates comprehensive audit logs
+  - **Deployed by default:** Multi-region trail with log file validation and encryption
+  - **Retention:** 90 days in CloudWatch Logs, indefinite in S3
 
 ---
 
@@ -622,6 +854,7 @@ After infrastructure is deployed:
 ## Support
 
 For issues or questions:
+
 - Check troubleshooting section above
 - Review Terraform documentation: https://www.terraform.io/docs
 - Review AWS documentation: https://docs.aws.amazon.com

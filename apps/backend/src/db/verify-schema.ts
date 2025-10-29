@@ -6,7 +6,7 @@
  * Checks for tables, columns, indexes, and constraints.
  *
  * Usage:
- *   npm run db:verify
+ *   pnpm run db:verify
  */
 
 import { Pool } from 'pg';
@@ -37,6 +37,14 @@ async function verifyTableExists(tableName: string): Promise<VerificationResult>
     )`,
     [tableName]
   );
+
+  // Defensive check: validate result structure
+  if (!result.rows || result.rows.length === 0 || typeof result.rows[0]?.exists !== 'boolean') {
+    return {
+      passed: false,
+      message: `❌ Table '${tableName}' verification failed: unexpected query result`,
+    };
+  }
 
   const exists = result.rows[0].exists;
   return {
@@ -88,6 +96,14 @@ async function verifyIndexExists(indexName: string): Promise<VerificationResult>
     )`,
     [indexName]
   );
+
+  // Defensive check: validate result structure
+  if (!result.rows || result.rows.length === 0 || typeof result.rows[0]?.exists !== 'boolean') {
+    return {
+      passed: false,
+      message: `❌ Index '${indexName}' verification failed: unexpected query result`,
+    };
+  }
 
   const exists = result.rows[0].exists;
   return {

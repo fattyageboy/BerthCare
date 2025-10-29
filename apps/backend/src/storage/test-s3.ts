@@ -9,7 +9,7 @@
  * - Download URL generation
  *
  * Usage:
- *   npm run test:s3 --prefix apps/backend
+ *   pnpm --dir apps/backend run test:s3
  */
 
 /* eslint-disable no-console */
@@ -111,5 +111,8 @@ async function testS3Connection() {
 
 // Run tests if executed directly
 if (require.main === module) {
-  testS3Connection();
+  testS3Connection().catch((err) => {
+    console.error('testS3Connection failed', err);
+    process.exit(1);
+  });
 }

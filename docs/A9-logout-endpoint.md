@@ -31,6 +31,7 @@ Implement secure logout functionality that invalidates both access and refresh t
 ### Request Format
 
 **Headers**:
+
 ```
 Authorization: Bearer <access_token>
 ```
@@ -40,6 +41,7 @@ Authorization: Bearer <access_token>
 ### Response Format
 
 **Success Response (200)**:
+
 ```json
 {
   "data": {
@@ -51,6 +53,7 @@ Authorization: Bearer <access_token>
 **Error Responses**:
 
 401 Unauthorized - Missing token:
+
 ```json
 {
   "error": {
@@ -63,6 +66,7 @@ Authorization: Bearer <access_token>
 ```
 
 401 Unauthorized - Invalid token format:
+
 ```json
 {
   "error": {
@@ -75,6 +79,7 @@ Authorization: Bearer <access_token>
 ```
 
 500 Internal Server Error:
+
 ```json
 {
   "error": {
@@ -91,12 +96,19 @@ Authorization: Bearer <access_token>
 ### Token Invalidation Strategy
 
 #### 1. Access Token Blacklisting (Redis)
+
 - Extract access token from Authorization header
+- Decode token to read the `exp` (expiration) claim
+- Calculate TTL: `ttlSeconds = Math.ceil(decoded.exp - Date.now()/1000)`
 - Add token to Redis blacklist with key: `token:blacklist:<token>`
-- Set TTL to 3600 seconds (1 hour) to match access token expiry
+- Set TTL to `max(ttlSeconds, 3600)` - use calculated TTL or 1 hour minimum
+- **Always blacklist the token, even if expired or invalid** (prevents timing attacks)
+- If token decoding fails, blacklist the raw token string with 1 hour TTL
+- Log errors if token decoding fails or TTL calculation is invalid
 - Blacklisted tokens are checked by `authenticateJWT` middleware
 
 #### 2. Refresh Token Revocation (PostgreSQL)
+
 - Decode access token to extract userId
 - Find all active refresh tokens for the user
 - Set `revoked_at` timestamp to current time
@@ -113,20 +125,49 @@ Authorization: Bearer <access_token>
 ### Database Operations
 
 **Query to revoke refresh tokens**:
+
 ```sql
 UPDATE refresh_tokens
 SET revoked_at = CURRENT_TIMESTAMP
 WHERE user_id = $1
   AND revoked_at IS NULL
-  AND expires_at > CURRENT_TIMESTAMP
+  AND expires_at > CURRENT_TIMESTAMP  -- Only revoke non-expired tokens
 ```
+
+**Rationale for excluding expired tokens:**
+
+- Expired tokens are already unusable and cannot be refreshed
+- No security benefit to marking expired tokens as revoked
+- Reduces unnecessary database writes and improves performance
+- Expired tokens are periodically cleaned up by background jobs
+
+**Alternative (if audit trail requires marking all tokens):**
+If your compliance requirements mandate marking every token as revoked for audit purposes, remove the `expires_at` filter:
+
+```sql
+UPDATE refresh_tokens
+SET revoked_at = CURRENT_TIMESTAMP
+WHERE user_id = $1
+  AND revoked_at IS NULL
+```
+
+**Recommended approach:** Use the first query (excluding expired tokens) unless specific audit requirements dictate otherwise.
 
 ### Redis Operations
 
 **Blacklist access token**:
+
 ```typescript
+// Decode token to get expiration claim
+const decoded = verifyToken(token);
+const ttlSeconds = Math.ceil(decoded.exp - Date.now() / 1000);
+
+// Always blacklist the token, even if expired/invalid
+// This prevents timing attacks where an attacker could distinguish
+// between expired and valid tokens based on response timing
 const blacklistKey = `token:blacklist:${token}`;
-await redisClient.setEx(blacklistKey, 3600, '1');
+const ttl = Math.max(ttlSeconds, 3600); // Minimum 1 hour TTL
+await redisClient.setEx(blacklistKey, ttl, '1');
 ```
 
 ## Testing Requirements
@@ -137,12 +178,12 @@ await redisClient.setEx(blacklistKey, 3600, '1');
    - Logout with valid token returns 200
    - Access token is added to Redis blacklist
    - Refresh token is revoked in database
-   - Blacklist TTL is set correctly (3600 seconds)
+   - Blacklist TTL is derived from token's exp claim (matches remaining token lifetime)
 
 2. **Error Cases**:
    - Missing Authorization header returns 401
    - Invalid Authorization format returns 401
-   - Invalid token is still blacklisted (timing attack prevention)
+   - Invalid/expired tokens are still blacklisted (timing attack prevention)
 
 3. **Integration Tests**:
    - Logged-out access token cannot access protected routes
@@ -153,6 +194,7 @@ await redisClient.setEx(blacklistKey, 3600, '1');
 ### Test Data
 
 **Valid Test User**:
+
 ```json
 {
   "userId": "user_123",
@@ -168,7 +210,7 @@ await redisClient.setEx(blacklistKey, 3600, '1');
 2. **Invalid Token Format**: Return 401 with format guidance
 3. **Redis Connection Error**: Log error, return 500 (logout still succeeds partially)
 4. **Database Error**: Log error, return 500 (access token still blacklisted)
-5. **Token Decode Error**: Blacklist token anyway (timing attack prevention)
+5. **Token Decode Error**: Always blacklist the raw token string with 1 hour TTL (timing attack prevention - ensures consistent behavior regardless of token validity)
 
 ## Performance Considerations
 

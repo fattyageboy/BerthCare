@@ -8,12 +8,10 @@ export default {
   },
   moduleFileExtensions: ['ts', 'js', 'html'],
   coverageDirectory: '../../coverage/libs/shared',
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.test.ts',
-    '!src/**/*.spec.ts',
-    '!examples/**',
-  ],
+  moduleNameMapper: {
+    '^bcrypt$': '<rootDir>/../../tools/testing/bcrypt-mock.ts',
+  },
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.test.ts', '!src/**/*.spec.ts', '!examples/**'],
   coverageThreshold: {
     global: {
       branches: 65,
