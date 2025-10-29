@@ -91,8 +91,7 @@ describe('TwilioSMSService', () => {
 
     it('normalises webhook base url and rejects invalid values', () => {
       const service = makeService({ webhookBaseUrl: 'https://example.org/' });
-      const actualBaseUrl = (service as unknown as { webhookBaseUrl: string }).webhookBaseUrl;
-      expect(actualBaseUrl).toBe('https://example.org');
+      expect(service.getWebhookBaseUrl()).toBe('https://example.org');
 
       expect(() =>
         makeService({
@@ -200,9 +199,8 @@ describe('TwilioSMSService', () => {
         from: '+15550001111',
       });
 
-      for (let i = 0; i < 100; i++) {
-        await service.sendSMS(recipient, `msg ${i}`, 'user-1');
-      }
+      // Set count to limit (100) directly instead of looping
+      await service.setSMSCountForTesting('user-1', 100);
 
       await expect(service.sendSMS(recipient, 'over the limit', 'user-1')).rejects.toMatchObject({
         code: 'RATE_LIMIT_EXCEEDED',
@@ -218,14 +216,14 @@ describe('TwilioSMSService', () => {
         from: '+15550001111',
       });
 
-      for (let i = 0; i < 100; i++) {
-        await service.sendSMS(recipient, 'user1 msg', 'user-1');
-      }
+      // Set user-1 to limit directly instead of looping
+      await service.setSMSCountForTesting('user-1', 100);
 
       await expect(service.sendSMS(recipient, 'blocked', 'user-1')).rejects.toMatchObject({
         code: 'RATE_LIMIT_EXCEEDED',
       });
 
+      // user-2 should still be allowed (separate quota)
       await expect(service.sendSMS(recipient, 'allowed', 'user-2')).resolves.toBeDefined();
     });
 

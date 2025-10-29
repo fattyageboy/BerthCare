@@ -319,11 +319,11 @@ describe('TwilioVoiceService', () => {
 
   describe('secrets manager integration', () => {
     it('should load credentials from secrets manager when env not provided', async () => {
-      const originalEnv = { ...env.twilio };
-      env.twilio.accountSid = '';
-      env.twilio.authToken = '';
-      env.twilio.phoneNumber = '';
-      env.twilio.secretId = '';
+      // Spy on env properties instead of mutating them
+      const accountSidSpy = jest.spyOn(env.twilio, 'accountSid', 'get').mockReturnValue('');
+      const authTokenSpy = jest.spyOn(env.twilio, 'authToken', 'get').mockReturnValue('');
+      const phoneNumberSpy = jest.spyOn(env.twilio, 'phoneNumber', 'get').mockReturnValue('');
+      const secretIdSpy = jest.spyOn(env.twilio, 'secretId', 'get').mockReturnValue('');
 
       const secretsLoader = jest.fn().mockResolvedValue({
         account_sid: 'secret_account_sid',
@@ -357,10 +357,11 @@ describe('TwilioVoiceService', () => {
         expect(secretsLoader).toHaveBeenCalledWith('berthcare/staging/twilio', expect.any(Number));
         expect(Twilio).toHaveBeenLastCalledWith('secret_account_sid', 'secret_auth_token');
       } finally {
-        env.twilio.accountSid = originalEnv.accountSid;
-        env.twilio.authToken = originalEnv.authToken;
-        env.twilio.phoneNumber = originalEnv.phoneNumber;
-        env.twilio.secretId = originalEnv.secretId;
+        // Restore spies
+        accountSidSpy.mockRestore();
+        authTokenSpy.mockRestore();
+        phoneNumberSpy.mockRestore();
+        secretIdSpy.mockRestore();
       }
     });
   });

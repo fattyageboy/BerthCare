@@ -123,6 +123,8 @@ libs/shared/
 
 ## Workspace Commands
 
+> **Note:** All `nx` commands use `pnpm exec nx` since Nx is a workspace dependency. Alternatively, install Nx globally (`pnpm add -g nx`) to use `nx` directly.
+
 ### Development
 
 ```bash
@@ -130,8 +132,8 @@ libs/shared/
 pnpm run dev
 
 # Run specific project
-nx dev mobile
-nx dev backend
+pnpm exec nx dev mobile
+pnpm exec nx dev backend
 
 # Run mobile app on device
 cd apps/mobile && pnpm run ios
@@ -145,8 +147,8 @@ cd apps/mobile && pnpm run android
 pnpm run build
 
 # Build specific project
-nx build backend
-nx build shared
+pnpm exec nx build backend
+pnpm exec nx build shared
 ```
 
 ### Testing & Linting
@@ -166,12 +168,12 @@ pnpm run format
 
 ```bash
 # Run tasks across multiple projects
-nx run-many --target=build --all
-nx run-many --target=test --projects=backend,shared
+pnpm exec nx run-many --target=build --all
+pnpm exec nx run-many --target=test --projects=backend,shared
 
 # Run only affected projects (CI optimization)
-nx affected --target=build
-nx affected --target=test
+pnpm exec nx affected --target=build
+pnpm exec nx affected --target=test
 ```
 
 ## Verification Checklist
@@ -195,10 +197,10 @@ nx affected --target=test
 
 ```bash
 # Check Nx version
-npx nx --version
+pnpm exec nx --version
 
 # List all projects
-npx nx show projects
+pnpm exec nx show projects
 ```
 
 **Expected Output:**
@@ -213,7 +215,7 @@ shared
 
 ```bash
 # Build all projects
-nx run-many --target=build --all
+pnpm exec nx run-many --target=build --all
 
 # Should build: shared → backend, mobile (in correct order)
 ```
@@ -242,10 +244,10 @@ console.log(formatPhoneNumber('4165551234'));
 
 ```bash
 # First build (no cache)
-nx build backend
+pnpm exec nx build backend
 
 # Second build (should use cache)
-nx build backend
+pnpm exec nx build backend
 # Should see: "Nx read the output from the cache instead of running the command"
 ```
 
@@ -344,7 +346,7 @@ nx build backend
 
 ```bash
 # Rebuild TypeScript paths
-npx nx reset
+pnpm exec nx reset
 pnpm install
 ```
 
@@ -354,7 +356,7 @@ pnpm install
 
 ```bash
 # Clear Nx cache
-npx nx reset
+pnpm exec nx reset
 
 # Verify cache directory
 ls -la .nx/cache

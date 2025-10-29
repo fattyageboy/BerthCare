@@ -131,8 +131,27 @@ UPDATE refresh_tokens
 SET revoked_at = CURRENT_TIMESTAMP
 WHERE user_id = $1
   AND revoked_at IS NULL
-  AND expires_at > CURRENT_TIMESTAMP
+  AND expires_at > CURRENT_TIMESTAMP  -- Only revoke non-expired tokens
 ```
+
+**Rationale for excluding expired tokens:**
+
+- Expired tokens are already unusable and cannot be refreshed
+- No security benefit to marking expired tokens as revoked
+- Reduces unnecessary database writes and improves performance
+- Expired tokens are periodically cleaned up by background jobs
+
+**Alternative (if audit trail requires marking all tokens):**
+If your compliance requirements mandate marking every token as revoked for audit purposes, remove the `expires_at` filter:
+
+```sql
+UPDATE refresh_tokens
+SET revoked_at = CURRENT_TIMESTAMP
+WHERE user_id = $1
+  AND revoked_at IS NULL
+```
+
+**Recommended approach:** Use the first query (excluding expired tokens) unless specific audit requirements dictate otherwise.
 
 ### Redis Operations
 

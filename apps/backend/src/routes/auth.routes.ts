@@ -33,6 +33,7 @@ import { Pool } from 'pg';
 import { createClient } from 'redis';
 
 import { logAuth, logError } from '../config/logger';
+import { blacklistToken } from '../middleware/auth';
 import {
   createLoginRateLimiter,
   createRegistrationRateLimiter,
@@ -557,43 +558,23 @@ export function createAuthRoutes(
 
       const token = authHeader.split(' ')[1];
 
-      // Decode token to get user ID (for refresh token revocation) and exp claim
-      // We decode without verification to handle timing attacks
+      // Attempt to decode token to get user ID for refresh token revocation
       let userId: string | null = null;
-      let ttlSeconds: number | null = null;
       try {
         const decoded = verifyToken(token);
         userId = decoded.userId;
-
-        // Calculate TTL from token expiration claim
-        if (decoded.exp) {
-          const expiresAt = decoded.exp;
-          const nowInSeconds = Math.floor(Date.now() / 1000);
-          ttlSeconds = Math.ceil(expiresAt - nowInSeconds);
-
-          // Validate TTL is positive
-          if (ttlSeconds <= 0) {
-            logError('Token already expired during logout', new Error(`TTL: ${ttlSeconds}s`));
-            ttlSeconds = null; // Don't blacklist expired tokens
-          }
-        } else {
-          logError('Token missing exp claim', new Error('No exp claim in JWT'));
-        }
       } catch (error) {
-        // Token decode failed - we cannot determine TTL or userId
-        // Timing attack prevention is handled by rate limiting and consistent response times
+        // Token decode failed - we cannot determine userId
+        // Still blacklist the token for security
         logError(
           'Token decode failed during logout',
           error instanceof Error ? error : new Error(String(error))
         );
       }
 
-      // Blacklist the access token in Redis with TTL derived from token expiration
-      // Only blacklist if token is not already expired
-      if (ttlSeconds && ttlSeconds > 0) {
-        const blacklistKey = `token:blacklist:${token}`;
-        await redisClient.setEx(blacklistKey, ttlSeconds, '1');
-      }
+      // Blacklist the access token in Redis
+      // Uses existing blacklistToken function for consistent TTL derivation and 7-day fallback
+      await blacklistToken(redisClient, token);
 
       // Revoke all active refresh tokens for this user in database
       if (userId) {

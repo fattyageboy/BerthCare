@@ -203,10 +203,12 @@ The following checks must pass before merging to `main`:
 
 The CI workflow currently references test database credentials:
 
+**Example (do not use in production):**
+
 - `TEST_DATABASE_URL`: postgresql://test_user:test_password@localhost:5432/berthcare_test
 - `TEST_REDIS_URL`: redis://localhost:6379
 
-**Security Note**: Prefer storing these values in GitHub Actions Secrets so CI jobs inject them at runtime. Hardcoding or committing credentials leaves them in git history and exposes them to anyone with repository access. If you need example defaults for local development, place them in non-committed `.env.local` files and override them in CI via repository secrets.
+**Security Note**: These are example placeholders only. Never use these credentials in production or commit real credentials to the repository. Store actual values in GitHub Actions Secrets so CI jobs inject them at runtime. Hardcoding or committing credentials leaves them in git history and exposes them to anyone with repository access. For local development, place credentials in non-committed `.env.local` files and override them in CI via repository secrets.
 
 ### GitHub Secrets (Optional)
 

@@ -103,14 +103,33 @@ export type TwilioSecretLoader = (
   cacheTtlMs?: number
 ) => Promise<TwilioSMSSecretPayload>;
 
+/**
+ * Configuration options for TwilioSMSService
+ *
+ * Credential Resolution & Caching:
+ * - Credentials are cached indefinitely after first successful fetch
+ * - secretCacheTtlMs controls the secrets loader's cache (NOT service refresh interval)
+ * - To rotate credentials, call forceRefreshClient() explicitly
+ * - Mixed sources (partial secret + env fallback) are allowed
+ *
+ * See TwilioVoiceServiceOptions for detailed credential behavior documentation.
+ */
 export interface TwilioSMSServiceOptions {
+  /** Twilio Account SID (overrides secrets/env) */
   accountSid?: string;
+  /** Twilio Auth Token (overrides secrets/env) */
   authToken?: string;
+  /** Twilio phone number to send from (overrides secrets/env) */
   fromNumber?: string;
+  /** Base URL for webhook callbacks */
   webhookBaseUrl?: string;
+  /** AWS Secrets Manager secret ID */
   secretId?: string;
+  /** Custom secrets loader function */
   secretsLoader?: TwilioSecretLoader;
+  /** TTL for secrets loader cache (NOT service credential refresh interval) */
   secretCacheTtlMs?: number;
+  /** Rate limiter configuration */
   rateLimiter?: SMSRateLimiterOptions;
 }
 
@@ -171,6 +190,14 @@ export class TwilioSMSService {
       };
       this.client = new Twilio(this.accountSid, this.authToken);
     }
+  }
+
+  /**
+   * Get the normalized webhook base URL
+   * Useful for testing and debugging webhook configuration
+   */
+  getWebhookBaseUrl(): string {
+    return this.webhookBaseUrl;
   }
 
   /**
@@ -392,6 +419,19 @@ export class TwilioSMSService {
   }
 
   /**
+   * Set SMS count for user (testing only)
+   * Simulates a user having sent N messages in the current window
+   * 
+   * @internal This method is for testing purposes only
+   */
+  async setSMSCountForTesting(userId: string, count: number): Promise<void> {
+    // Increment to the desired count
+    for (let i = 0; i < count; i++) {
+      await this.rateLimiter.checkAndIncrement(userId);
+    }
+  }
+
+  /**
    * Close rate limiter connections (for graceful shutdown).
    */
   async close(): Promise<void> {
@@ -546,15 +586,22 @@ export class TwilioSMSService {
       return this.credentialsPromise;
     }
 
-    this.credentialsPromise = this.resolveCredentials().finally(() => {
-      this.credentialsPromise = undefined;
-    });
+    const pendingCredentials = this.resolveCredentials();
+    this.credentialsPromise = pendingCredentials;
 
-    const credentials = await this.credentialsPromise;
-    this.authToken = credentials.authToken;
-    this.accountSid = credentials.accountSid;
-    this.fromNumber = credentials.phoneNumber;
-    return credentials;
+    try {
+      const credentials = await pendingCredentials;
+      this.authToken = credentials.authToken;
+      this.accountSid = credentials.accountSid;
+      this.fromNumber = credentials.phoneNumber;
+      return credentials;
+    } finally {
+      // Clear cached promise only if it's still the one we created
+      // This allows retries after failures
+      if (this.credentialsPromise === pendingCredentials) {
+        this.credentialsPromise = undefined;
+      }
+    }
   }
 
   private async resolveCredentials(): Promise<TwilioSMSCredentials> {

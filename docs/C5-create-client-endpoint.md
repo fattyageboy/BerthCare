@@ -110,7 +110,7 @@ Successfully implemented the POST /v1/clients endpoint to create new clients wit
 7. Commit transaction
 8. Return created client with care plan
 
-**Response (201):**
+**Response (201):** <a name="response-format"></a>
 
 ```json
 {
@@ -196,10 +196,14 @@ GOOGLE_MAPS_GEOCODING_CACHE_TTL=86400  # 24 hours
 
 ### 7. Dependencies
 
-**NPM Package Installed:**
+**Package Installed:**
 
 ```bash
+# Using pnpm
 pnpm add @googlemaps/google-maps-services-js
+
+# Or using npm
+npm install @googlemaps/google-maps-services-js
 ```
 
 **Package Details:**
@@ -282,7 +286,7 @@ pnpm add @googlemaps/google-maps-services-js
 
 ### API Response Time
 
-**Target:** < 2 seconds (including geocoding)
+**Target:** ~600ms first request, ~100ms cached (2s ceiling for worst-case scenarios)
 
 **Breakdown:**
 
@@ -292,6 +296,8 @@ pnpm add @googlemaps/google-maps-services-js
 - Zone assignment: < 10ms (cached)
 - Database insert: < 50ms
 - Total: ~300-600ms (first request), ~100ms (cached)
+
+**Note:** The 2-second ceiling accounts for worst-case scenarios including network latency, API slowdowns, and high server load. Under normal conditions with caching, responses are significantly faster (~100ms). The realistic target for first-time geocoding is ~600ms, with subsequent requests benefiting from 24-hour cache TTL.
 
 ## Security Considerations
 
@@ -352,6 +358,18 @@ pnpm add @googlemaps/google-maps-services-js
 - API quota exceeded: 503
 - Invalid address: 400
 - Outside service area: 400
+
+**Error Code Mapping:**
+
+| Internal Error Code       | HTTP Status | Description                                      |
+| ------------------------- | ----------- | ------------------------------------------------ |
+| `CONFIGURATION_ERROR`     | 500         | Google Maps API key not configured               |
+| `ADDRESS_NOT_FOUND`       | 400         | Address could not be geocoded                    |
+| `QUOTA_EXCEEDED`          | 503         | Google Maps API quota limit reached              |
+| `OUTSIDE_SERVICE_AREA`    | 400         | Address is outside Canada (service area)         |
+| `GEOCODING_FAILED`        | 500         | Unexpected geocoding service error               |
+| `INVALID_ZONE`            | 400         | Provided zone ID does not exist                  |
+| `NO_ZONES_AVAILABLE`      | 500         | No zones configured in system                    |
 
 ### Server Errors (500)
 
@@ -512,6 +530,30 @@ pnpm add @googlemaps/google-maps-services-js
    - Redis running
    - Backend server running
 
+**Service Failure Handling:**
+
+- **Redis Unavailable:**
+  - Behavior: Cache fallback to direct Google Maps API calls (no caching)
+  - Verification: Check Redis connection with `redis-cli ping`
+  - Flush cache: `redis-cli FLUSHDB` (development only)
+  - Restart: `brew services restart redis` (macOS) or `sudo systemctl restart redis` (Linux)
+  - Impact: Increased API usage and slower response times without cache
+
+- **PostgreSQL Connection Failures:**
+  - Inspect connection: Check `DATABASE_URL` in `.env` file
+  - Run migrations: `npm run migrate` or `pnpm migrate`
+  - Check DB logs: `tail -f /usr/local/var/log/postgres.log` (macOS) or `sudo journalctl -u postgresql` (Linux)
+  - Restart DB: `brew services restart postgresql` (macOS) or `sudo systemctl restart postgresql` (Linux)
+  - Restart backend: `npm run dev` or `pnpm dev`
+  - Verify connection: `psql $DATABASE_URL -c "SELECT 1"`
+
+- **Backend Server Startup Issues:**
+  - Check logs: `npm run dev` output or application logs
+  - Verify environment variables: Ensure all required vars in `.env` are set
+  - Check port conflicts: `lsof -i :3000` (change port if needed)
+  - Health check: `curl http://localhost:3000/health` (if endpoint exists)
+  - Common issues: Missing `GOOGLE_MAPS_API_KEY`, incorrect `DATABASE_URL`, Redis connection failure
+
 ### Create Client
 
 **Request:**
@@ -532,36 +574,7 @@ curl -X POST http://localhost:3000/v1/clients \
   }'
 ```
 
-**Response:**
-
-```json
-{
-  "data": {
-    "id": "uuid",
-    "firstName": "John",
-    "lastName": "Doe",
-    "dateOfBirth": "1950-01-01",
-    "address": "100 Queen St W, Toronto, ON M5H 2N2",
-    "latitude": 43.6532,
-    "longitude": -79.3832,
-    "phone": "416-555-0100",
-    "emergencyContact": {
-      "name": "Jane Doe",
-      "phone": "416-555-0200",
-      "relationship": "Spouse"
-    },
-    "zoneId": "uuid",
-    "carePlan": {
-      "id": "uuid",
-      "summary": "Care plan for John Doe...",
-      "medications": [],
-      "allergies": [],
-      "specialInstructions": ""
-    },
-    "createdAt": "2025-10-10T12:00:00Z"
-  }
-}
-```
+**Response:** See [Response Format](#response-format) section above for the complete response structure.
 
 ### Manual Zone Override
 

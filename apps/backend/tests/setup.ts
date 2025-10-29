@@ -20,7 +20,8 @@ process.env.NODE_ENV = 'test';
 const isCi = ['true', '1'].includes((process.env.CI || '').toLowerCase());
 
 const ensureTestEnvUrl = (key: 'TEST_DATABASE_URL' | 'TEST_REDIS_URL', fallback: string) => {
-  if (process.env[key]) {
+  // Check for explicit presence (not undefined), so empty string is treated as "set"
+  if (process.env[key] !== undefined) {
     return;
   }
 

@@ -13,14 +13,14 @@ import { TwilioVoiceService } from '../src/services/twilio-voice.service';
 // Mock dependencies
 jest.mock('../src/config/logger');
 jest.mock('../src/middleware/webhook-rate-limit');
-jest.mock('../src/services/twilio-voice.service');
-jest.mock('../src/services/twilio-sms.service');
 
 describe('Webhook Routes', () => {
   let app: Express;
   let mockPool: {
     query: jest.Mock;
   };
+  let mockTwilioVoiceService: jest.Mocked<TwilioVoiceService>;
+  let mockTwilioSMSService: jest.Mocked<TwilioSMSService>;
 
   beforeEach(async () => {
     // Create mock pool
@@ -28,11 +28,16 @@ describe('Webhook Routes', () => {
       query: jest.fn(),
     };
 
-    // Setup mock methods on prototypes before creating routes
-    TwilioVoiceService.prototype.validateWebhookSignature = jest.fn();
-    TwilioVoiceService.prototype.processCallStatusWebhook = jest.fn();
-    TwilioSMSService.prototype.validateWebhookSignature = jest.fn();
-    TwilioSMSService.prototype.processSMSStatusWebhook = jest.fn();
+    // Create mock service instances
+    mockTwilioVoiceService = {
+      validateWebhookSignature: jest.fn(),
+      processCallStatusWebhook: jest.fn(),
+    } as unknown as jest.Mocked<TwilioVoiceService>;
+
+    mockTwilioSMSService = {
+      validateWebhookSignature: jest.fn(),
+      processSMSStatusWebhook: jest.fn(),
+    } as unknown as jest.Mocked<TwilioSMSService>;
 
     // Setup express app
     app = express();
@@ -46,9 +51,12 @@ describe('Webhook Routes', () => {
       next()
     );
 
-    // Create routes
+    // Create routes with injected mock services
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const webhookRoutes = await createWebhookRoutes(mockPool as any);
+    const webhookRoutes = await createWebhookRoutes(mockPool as any, {
+      twilioVoiceService: mockTwilioVoiceService,
+      twilioSMSService: mockTwilioSMSService,
+    });
     app.use('/webhooks', webhookRoutes);
   });
 
@@ -83,7 +91,7 @@ describe('Webhook Routes', () => {
     });
 
     it('should reject webhook with invalid signature', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(false);
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(false);
 
       const response = await request(app)
         .post('/webhooks/twilio/voice/status')
@@ -95,12 +103,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should process valid ringing status webhook', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'ringing',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });
@@ -112,6 +121,9 @@ describe('Webhook Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.text).toBe('OK');
+      expect(mockTwilioVoiceService.processCallStatusWebhook).toHaveBeenCalledWith(
+        expect.objectContaining({ CallStatus: 'ringing' })
+      );
       expect(mockPool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE care_alerts'), [
         'ringing',
         'CA123456',
@@ -119,12 +131,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should process valid in-progress status webhook', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'in-progress',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });
@@ -135,6 +148,9 @@ describe('Webhook Routes', () => {
         .send({ ...validWebhookBody, CallStatus: 'in-progress' });
 
       expect(response.status).toBe(200);
+      expect(mockTwilioVoiceService.processCallStatusWebhook).toHaveBeenCalledWith(
+        expect.objectContaining({ CallStatus: 'in-progress' })
+      );
       expect(mockPool.query).toHaveBeenCalledWith(expect.stringContaining('answered_at'), [
         'answered',
         'CA123456',
@@ -142,12 +158,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should process valid completed status webhook', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'completed',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });
@@ -158,6 +175,9 @@ describe('Webhook Routes', () => {
         .send(validWebhookBody);
 
       expect(response.status).toBe(200);
+      expect(mockTwilioVoiceService.processCallStatusWebhook).toHaveBeenCalledWith(
+        expect.objectContaining({ CallStatus: 'completed' })
+      );
       expect(mockPool.query).toHaveBeenCalledWith(expect.stringContaining('resolved_at'), [
         'resolved',
         'CA123456',
@@ -165,12 +185,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should process no-answer status webhook', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'no-answer',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });
@@ -188,12 +209,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should process busy status webhook', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'busy',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });
@@ -211,12 +233,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should process failed status webhook', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'failed',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });
@@ -234,12 +257,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should process canceled status webhook', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'canceled',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });
@@ -257,12 +281,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should handle webhook for non-existent alert', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'completed',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockResolvedValue({ rowCount: 0, rows: [] });
@@ -277,12 +302,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should handle database errors gracefully', async () => {
-      (TwilioVoiceService.prototype.validateWebhookSignature as jest.Mock).mockResolvedValue(true);
-      (TwilioVoiceService.prototype.processCallStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioVoiceService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioVoiceService.processCallStatusWebhook.mockReturnValue({
         callSid: 'CA123456',
         status: 'completed',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       mockPool.query.mockRejectedValue(new Error('Database error'));
@@ -315,7 +341,7 @@ describe('Webhook Routes', () => {
     });
 
     it('should reject SMS webhook with invalid signature', async () => {
-      (TwilioSMSService.prototype.validateWebhookSignature as jest.Mock).mockReturnValue(false);
+      mockTwilioSMSService.validateWebhookSignature.mockResolvedValue(false);
 
       const response = await request(app)
         .post('/webhooks/twilio/sms/status')
@@ -327,12 +353,13 @@ describe('Webhook Routes', () => {
     });
 
     it('should process valid SMS delivered webhook', async () => {
-      (TwilioSMSService.prototype.validateWebhookSignature as jest.Mock).mockReturnValue(true);
-      (TwilioSMSService.prototype.processSMSStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioSMSService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioSMSService.processSMSStatusWebhook.mockReturnValue({
         messageSid: 'SM123456',
         status: 'delivered',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       const response = await request(app)
@@ -342,18 +369,19 @@ describe('Webhook Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.text).toBe('OK');
-      expect(TwilioSMSService.prototype.processSMSStatusWebhook).toHaveBeenCalledWith(
+      expect(mockTwilioSMSService.processSMSStatusWebhook).toHaveBeenCalledWith(
         validSMSWebhookBody
       );
     });
 
     it('should process valid SMS sent webhook', async () => {
-      (TwilioSMSService.prototype.validateWebhookSignature as jest.Mock).mockReturnValue(true);
-      (TwilioSMSService.prototype.processSMSStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioSMSService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioSMSService.processSMSStatusWebhook.mockReturnValue({
         messageSid: 'SM123456',
         status: 'sent',
         from: '+15551234567',
         to: '+15559876543',
+        timestamp: new Date(),
       });
 
       const response = await request(app)
@@ -366,14 +394,15 @@ describe('Webhook Routes', () => {
     });
 
     it('should process valid SMS failed webhook', async () => {
-      (TwilioSMSService.prototype.validateWebhookSignature as jest.Mock).mockReturnValue(true);
-      (TwilioSMSService.prototype.processSMSStatusWebhook as jest.Mock).mockReturnValue({
+      mockTwilioSMSService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioSMSService.processSMSStatusWebhook.mockReturnValue({
         messageSid: 'SM123456',
         status: 'failed',
         from: '+15551234567',
         to: '+15559876543',
         errorCode: '30003',
         errorMessage: 'Unreachable destination',
+        timestamp: new Date(),
       });
 
       const response = await request(app)
@@ -391,8 +420,8 @@ describe('Webhook Routes', () => {
     });
 
     it('should handle SMS webhook processing errors gracefully', async () => {
-      (TwilioSMSService.prototype.validateWebhookSignature as jest.Mock).mockReturnValue(true);
-      (TwilioSMSService.prototype.processSMSStatusWebhook as jest.Mock).mockImplementation(() => {
+      mockTwilioSMSService.validateWebhookSignature.mockResolvedValue(true);
+      mockTwilioSMSService.processSMSStatusWebhook.mockImplementation(() => {
         throw new Error('Processing error');
       });
 

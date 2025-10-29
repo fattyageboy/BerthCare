@@ -1,11 +1,14 @@
 {
   "extends": ["../../.eslintrc.json"],
-  "ignorePatterns": ["!**/*", ".expo/**/*"],
+  "ignorePatterns": [".expo/**/*"],
   "overrides": [
     {
       "files": ["*.ts", "*.tsx", "*.js", "*.jsx"],
       "rules": {
-        "no-console": "off"
+        // Allow console statements in mobile app for debugging, but warn to encourage cleanup
+        // React Native apps often need console.log for development and debugging
+        // Warnings will be visible in lint output for review before production releases
+        "no-console": "warn"
       }
     }
   ]

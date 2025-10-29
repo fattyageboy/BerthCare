@@ -197,8 +197,8 @@ curl http://localhost:3000/health
 ```
 apps/backend/
 ├── src/
-│   ├── main.ts                    # Main application entry
-│   ├── main-with-monitoring.ts    # Alternative with full monitoring
+│   ├── main.ts                    # Main application entry (standard)
+│   ├── main-with-monitoring.ts    # Alternative entry with Sentry, CloudWatch, and enhanced logging
 │   ├── test-connection.ts         # Connection testing utility
 │   └── config/
 │       ├── logger.ts              # Winston logger configuration
@@ -208,6 +208,16 @@ apps/backend/
 ├── project.json                   # Nx project configuration
 └── README.md                      # Backend documentation
 ```
+
+**Entry Point Selection:**
+
+- **main.ts**: Standard entry point for development and basic deployments
+- **main-with-monitoring.ts**: Use for staging/production when full observability is required
+  - Enables Sentry error tracking and performance monitoring
+  - Adds structured request/response logging
+  - Includes CloudWatch integration
+  - Provides detailed health checks with service status
+  - Requires: `SENTRY_DSN` environment variable (optional but recommended)
 
 ## Dependencies Added
 

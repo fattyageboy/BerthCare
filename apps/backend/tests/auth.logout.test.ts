@@ -12,7 +12,7 @@
 
 import crypto from 'crypto';
 
-import express, { Express, json } from 'express';
+import express, { Express } from 'express';
 import { Pool } from 'pg';
 import { createClient } from 'redis';
 import request from 'supertest';
@@ -39,7 +39,7 @@ describe('POST /v1/auth/logout', () => {
 
     // Create Express app
     app = express();
-    app.use(json());
+    app.use(express.json());
 
     // Mount auth routes
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -73,10 +73,29 @@ berthcare/
 
 ### Prerequisites
 
-- Node.js 20 LTS
+- Node.js 20 LTS (20.11.0 or higher)
+- pnpm 10.19.0 or higher (see installation below)
 - Docker & Docker Compose
 - Git
 - AWS CLI (for deployment)
+
+**Installing pnpm:**
+
+```bash
+# Using npm (if you have Node.js installed)
+npm install -g pnpm@10.19.0
+
+# Using Homebrew (macOS)
+brew install pnpm
+
+# Using standalone script (Linux/macOS)
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+
+# Verify installation
+pnpm --version  # Should show 10.19.0 or higher
+```
+
+**Note:** This project uses `.tool-versions` for version management. If you use [asdf](https://asdf-vm.com/), run `asdf install` to automatically install the correct versions.
 
 ### Local Development
 

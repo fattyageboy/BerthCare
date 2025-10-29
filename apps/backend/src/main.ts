@@ -6,7 +6,7 @@ import { Pool } from 'pg';
 import { createClient, type RedisClientType } from 'redis';
 
 import { env, getPostgresPoolConfig, getRedisClientConfig } from './config/env';
-import { logError, logInfo } from './config/logger';
+import { logError, logInfo, logWarn } from './config/logger';
 import { closeWebhookRateLimiter } from './middleware/webhook-rate-limit';
 import { createAlertRoutes } from './routes/alerts.routes';
 import { createAuthRoutes } from './routes/auth.routes';
@@ -14,6 +14,8 @@ import { createCarePlanRoutes } from './routes/care-plans.routes';
 import { createClientRoutes } from './routes/clients.routes';
 import { createWebhookRoutes } from './routes/webhooks.routes';
 import { AlertEscalationService } from './services/alert-escalation.service';
+import { TwilioSMSService } from './services/twilio-sms.service';
+import { TwilioVoiceService } from './services/twilio-voice.service';
 import { startSecretCacheCleanup, stopSecretCacheCleanup } from './utils/aws-secrets-manager';
 
 const app: Application = express();
@@ -49,6 +51,14 @@ app.get('/health', async (_req, res) => {
     await pgPool.query('SELECT 1');
     health.services.postgres = 'connected';
   } catch (error) {
+    logError(
+      'Health check PostgreSQL error',
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        service: 'postgres',
+        healthCheck: true,
+      }
+    );
     health.services.postgres = 'disconnected';
     health.status = 'degraded';
   }
@@ -58,6 +68,14 @@ app.get('/health', async (_req, res) => {
     await redisClient.ping();
     health.services.redis = 'connected';
   } catch (error) {
+    logError(
+      'Health check Redis error',
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        service: 'redis',
+        healthCheck: true,
+      }
+    );
     health.services.redis = 'disconnected';
     health.status = 'degraded';
   }
@@ -124,7 +142,10 @@ async function startServer() {
     alertRoutes = createAlertRoutes(pgPool, redisClient);
     app.use('/api/v1/alerts', alertRoutes);
 
-    webhookRoutes = await createWebhookRoutes(pgPool);
+    webhookRoutes = await createWebhookRoutes(pgPool, {
+      twilioVoiceService: new TwilioVoiceService(),
+      twilioSMSService: new TwilioSMSService(),
+    });
     app.use('/webhooks', webhookRoutes);
 
     if (env.app.nodeEnv !== 'test') {
@@ -155,9 +176,26 @@ async function shutdown(signal: NodeJS.Signals) {
 
   let encounteredErrors = false;
 
-  const cleanupTasks: Array<{ name: string; action: () => Promise<unknown> }> = [
+  // Global shutdown timeout (30 seconds)
+  const globalTimeout = setTimeout(() => {
+    logError('Shutdown grace period exceeded, forcing exit', new Error('Shutdown timeout'));
+    process.exit(1);
+  }, 30000);
+
+  // Helper to wrap actions with timeout
+  const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, taskName: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`${taskName} timeout after ${timeoutMs}ms`)), timeoutMs)
+      ),
+    ]);
+  };
+
+  const cleanupTasks: Array<{ name: string; action: () => Promise<unknown>; timeout: number }> = [
     {
       name: 'HTTP server',
+      timeout: 5000,
       action: () =>
         new Promise<void>((resolve, reject) => {
           if (!httpServer) {
@@ -166,7 +204,17 @@ async function shutdown(signal: NodeJS.Signals) {
             return;
           }
 
+          // Force-close timeout for HTTP server
+          const forceCloseTimeout = setTimeout(() => {
+            logWarn('HTTP server graceful close timeout, forcing connection termination');
+            // Destroy all active connections
+            httpServer?.closeAllConnections?.();
+            httpServer = null;
+            resolve();
+          }, 5000);
+
           httpServer.close((err) => {
+            clearTimeout(forceCloseTimeout);
             if (err) {
               reject(err);
             } else {
@@ -178,6 +226,7 @@ async function shutdown(signal: NodeJS.Signals) {
     },
     {
       name: 'webhook rate limiter',
+      timeout: 3000,
       action: () => closeWebhookRateLimiter(),
     },
   ];
@@ -185,6 +234,7 @@ async function shutdown(signal: NodeJS.Signals) {
   if (alertEscalationService) {
     cleanupTasks.push({
       name: 'alert escalation service',
+      timeout: 10000,
       action: () => alertEscalationService!.stop(),
     });
   }
@@ -192,18 +242,25 @@ async function shutdown(signal: NodeJS.Signals) {
   cleanupTasks.push(
     {
       name: 'PostgreSQL pool',
+      timeout: 5000,
       action: () => pgPool.end(),
     },
     {
       name: 'Redis client',
+      timeout: 3000,
       action: () => redisClient.quit(),
+    },
+    {
+      name: 'secret cache cleanup',
+      timeout: 1000,
+      action: () => Promise.resolve(stopSecretCacheCleanup()),
     }
   );
 
   await Promise.allSettled(
-    cleanupTasks.map(async ({ name, action }) => {
+    cleanupTasks.map(async ({ name, action, timeout }) => {
       try {
-        await action();
+        await withTimeout(action(), timeout, name);
         logInfo(`${name} shutdown complete`);
       } catch (error) {
         encounteredErrors = true;
@@ -213,13 +270,8 @@ async function shutdown(signal: NodeJS.Signals) {
     })
   );
 
-  try {
-    stopSecretCacheCleanup();
-  } catch (error) {
-    encounteredErrors = true;
-    const err = error instanceof Error ? error : new Error(String(error));
-    logError('Error stopping secret cache cleanup', err);
-  }
+  // Clear global timeout since we completed successfully
+  clearTimeout(globalTimeout);
 
   if (encounteredErrors) {
     logError('Shutdown completed with errors');

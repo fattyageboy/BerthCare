@@ -14,12 +14,22 @@ import { TwilioSMSService } from '../services/twilio-sms.service';
 import { TwilioVoiceService } from '../services/twilio-voice.service';
 
 /**
+ * Services container for webhook routes
+ */
+export interface WebhookServices {
+  twilioVoiceService: TwilioVoiceService;
+  twilioSMSService: TwilioSMSService;
+}
+
+/**
  * Create webhook routes
  */
-export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
+export async function createWebhookRoutes(
+  pgPool: Pool,
+  services: WebhookServices
+): Promise<Router> {
   const router = Router();
-  const twilioVoiceService = new TwilioVoiceService();
-  const twilioSMSService = new TwilioSMSService();
+  const { twilioVoiceService, twilioSMSService } = services;
 
   // Apply rate limiting to all webhook routes
   router.use(await getWebhookRateLimiter());
@@ -46,16 +56,46 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
   };
 
   const sanitizeWebhookBody = (body: Record<string, unknown>): Record<string, unknown> => {
-    const redactedFields = ['From', 'To', 'Called', 'Caller', 'PhoneNumber'];
-    const sanitized: Record<string, unknown> = { ...body };
+    const redactedFields = ['from', 'to', 'called', 'caller', 'phonenumber'];
+    const visited = new WeakSet<object>();
 
-    for (const field of redactedFields) {
-      if (sanitized[field] !== undefined) {
-        sanitized[field] = '[REDACTED]';
+    const sanitizeValue = (value: unknown): unknown => {
+      // Handle primitives
+      if (value === null || value === undefined) {
+        return value;
       }
-    }
 
-    return sanitized;
+      if (typeof value !== 'object') {
+        return value;
+      }
+
+      // Guard against circular references
+      if (visited.has(value as object)) {
+        return '[CIRCULAR]';
+      }
+
+      visited.add(value as object);
+
+      // Handle arrays
+      if (Array.isArray(value)) {
+        return value.map((item) => sanitizeValue(item));
+      }
+
+      // Handle objects
+      const sanitized: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+        const lowerKey = key.toLowerCase();
+        if (redactedFields.includes(lowerKey)) {
+          sanitized[key] = '[REDACTED]';
+        } else {
+          sanitized[key] = sanitizeValue(val);
+        }
+      }
+
+      return sanitized;
+    };
+
+    return sanitizeValue(body) as Record<string, unknown>;
   };
 
   const sanitizePhone = (phone: string | undefined): string => {

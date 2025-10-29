@@ -18,18 +18,21 @@
 
 /**
  * E.164 phone number regex
- * Pattern: +[1-9][0-9]{0,14}
+ * Pattern: +[1-9][0-9]{1,14}
  * - ^ and $ ensure full string match
  * - \+ matches the plus sign
  * - [1-9] ensures first digit is 1-9 (no leading zeros)
- * - [0-9]{0,14} allows 0-14 more digits (total 1-15 digits)
+ * - [0-9]{1,14} requires 1-14 more digits (total 2-15 digits)
  */
-const E164_REGEX = /^\+[1-9][0-9]{0,14}$/;
+const E164_REGEX = /^\+[1-9][0-9]{1,14}$/;
 
 /**
  * Validate if a phone number is in E.164 format
  *
- * @param phoneNumber - Phone number to validate
+ * Note: This function trims whitespace before validation. For pre-trimmed values,
+ * consider using E164_REGEX.test() directly to avoid redundant trimming.
+ *
+ * @param phoneNumber - Phone number to validate (will be trimmed)
  * @returns true if valid E.164 format, false otherwise
  *
  * @example
@@ -64,7 +67,8 @@ export function validateE164PhoneNumber(phoneNumber: string | null | undefined):
 
   const trimmed = phoneNumber.trim();
 
-  if (!isValidE164PhoneNumber(trimmed)) {
+  // Test against regex directly to avoid redundant trimming
+  if (!E164_REGEX.test(trimmed)) {
     return null;
   }
 
@@ -75,7 +79,11 @@ export function validateE164PhoneNumber(phoneNumber: string | null | undefined):
  * Get a descriptive error message for invalid phone numbers
  *
  * @param phoneNumber - The invalid phone number
- * @returns Error message describing the issue
+ * @returns Error message describing the issue, or empty string if valid
+ *
+ * @example
+ * getPhoneValidationError('+15551234567') // '' (valid, no error)
+ * getPhoneValidationError('invalid') // 'Phone number must start with + (E.164 format)'
  */
 export function getPhoneValidationError(phoneNumber: string | null | undefined): string {
   if (!phoneNumber || phoneNumber.trim().length === 0) {
@@ -84,7 +92,8 @@ export function getPhoneValidationError(phoneNumber: string | null | undefined):
 
   const trimmed = phoneNumber.trim();
 
-  if (isValidE164PhoneNumber(trimmed)) {
+  // Test against regex directly to avoid redundant trimming
+  if (E164_REGEX.test(trimmed)) {
     return '';
   }
 

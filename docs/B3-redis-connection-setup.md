@@ -7,7 +7,7 @@
 
 ## Overview
 
-Successfully configured Redis connection using the `redis` library (v4.6.12) with health checks, graceful shutdown, and session management support. The implementation provides a solid foundation for caching and session storage with production-ready error handling.
+Successfully configured Redis connection using the `redis` library (v5.x) with health checks, graceful shutdown, and session management support. The implementation provides a solid foundation for caching and session storage with production-ready error handling.
 
 ## Deliverables
 
@@ -24,11 +24,16 @@ import { createClient } from 'redis';
 const redisClient = createClient({
   url: process.env.REDIS_URL,
 });
+
+// Important: Must explicitly connect before issuing commands
+await redisClient.connect();
 ```
+
+**Note:** Redis v5.x requires an explicit `await redisClient.connect()` call before you can issue any commands. The client will not automatically connect.
 
 **Configuration:**
 
-- **Library:** `redis` v4.6.12 (modern Redis client for Node.js)
+- **Library:** `redis` v5.8.2 (modern Redis client for Node.js)
 - **Connection URL:** From `REDIS_URL` environment variable
 - **Default URL:** `redis://localhost:6379`
 - **Connection Mode:** Single client instance (shared across application)
@@ -79,7 +84,7 @@ async function startServer() {
 
 **Built-in Retry Behavior:**
 
-The `redis` v4.x library includes automatic retry logic by default:
+The `redis` v5.x library includes automatic retry logic by default:
 
 ```typescript
 // Default retry strategy (built into redis library)
@@ -190,6 +195,7 @@ app.get('/health', async (_req, res) => {
 
 ```typescript
 // Future implementation for session management
+// Requires: pnpm add express-session connect-redis@7.x
 import session from 'express-session';
 import RedisStore from 'connect-redis';
 
@@ -207,6 +213,8 @@ app.use(
   })
 );
 ```
+
+**Note:** Session management requires the `connect-redis` peer dependency. For Redis v5.x compatibility, use `connect-redis@7.x` which supports the updated Redis client API.
 
 **Session Use Cases:**
 
@@ -262,10 +270,13 @@ async function getUserById(userId: string) {
 // Invalidate single key
 await redisClient.del('user:123');
 
-// Invalidate pattern
-const keys = await redisClient.keys('user:*');
-if (keys.length > 0) {
-  await redisClient.del(keys);
+// Invalidate pattern (use SCAN instead of KEYS in production)
+const keysToDelete: string[] = [];
+for await (const key of redisClient.scanIterator({ MATCH: 'user:*', COUNT: 100 })) {
+  keysToDelete.push(key);
+}
+if (keysToDelete.length > 0) {
+  await redisClient.del(keysToDelete);
 }
 ```
 
@@ -287,17 +298,45 @@ if (keys.length > 0) {
 // Graceful shutdown on SIGTERM
 process.on('SIGTERM', async () => {
   logInfo('SIGTERM received, shutting down gracefully...');
-  await pgPool.end();
-  await redisClient.quit();
-  process.exit(0);
+
+  // Set timeout to force exit if shutdown hangs
+  const shutdownTimeout = setTimeout(() => {
+    logError('Shutdown timeout exceeded, forcing exit');
+    process.exit(1);
+  }, 10000); // 10 second timeout
+
+  try {
+    await pgPool.end();
+    await redisClient.quit();
+    clearTimeout(shutdownTimeout);
+    process.exit(0);
+  } catch (error) {
+    logError('Error during shutdown', error);
+    clearTimeout(shutdownTimeout);
+    process.exit(1);
+  }
 });
 
 // Graceful shutdown on SIGINT (Ctrl+C)
 process.on('SIGINT', async () => {
   logInfo('SIGINT received, shutting down gracefully...');
-  await pgPool.end();
-  await redisClient.quit();
-  process.exit(0);
+
+  // Set timeout to force exit if shutdown hangs
+  const shutdownTimeout = setTimeout(() => {
+    logError('Shutdown timeout exceeded, forcing exit');
+    process.exit(1);
+  }, 10000); // 10 second timeout
+
+  try {
+    await pgPool.end();
+    await redisClient.quit();
+    clearTimeout(shutdownTimeout);
+    process.exit(0);
+  } catch (error) {
+    logError('Error during shutdown', error);
+    clearTimeout(shutdownTimeout);
+    process.exit(1);
+  }
 });
 ```
 
@@ -305,6 +344,8 @@ process.on('SIGINT', async () => {
 
 - Clean connection closure
 - Prevents data loss
+- **Timeout protection:** Forces exit after 10 seconds if shutdown hangs
+- **Error handling:** Catches and logs shutdown errors
 - Kubernetes-friendly (responds to SIGTERM)
 - Development-friendly (responds to Ctrl+C)
 - Logs shutdown event for debugging
@@ -487,7 +528,7 @@ REDIS_TLS=true
 
 ### 1. Redis Library Choice
 
-**Decision:** Use `redis` v4.x (not `ioredis`)  
+**Decision:** Use `redis` v5.x (not `ioredis`)  
 **Rationale:**
 
 - Official Redis client for Node.js
@@ -496,15 +537,16 @@ REDIS_TLS=true
 - Active maintenance and updates
 - Simpler API than ioredis
 - Built-in retry logic with exponential backoff
+- v5.x includes performance improvements and better type safety
 
 **Trade-offs:**
 
 - ioredis has more features (cluster support, sentinel)
 - ioredis has better performance benchmarks
-- redis v4 is simpler and easier to use
-- redis v4 sufficient for current requirements
+- redis v5 is simpler and easier to use
+- redis v5 sufficient for current requirements
 
-**Note:** Task specification mentioned `ioredis`, but `redis` v4.x provides equivalent functionality with simpler API.
+**Note:** Task specification mentioned `ioredis`, but `redis` v5.x provides equivalent functionality with simpler API. v5.x includes breaking changes from v4.x (improved command return types, updated SCAN API).
 
 ### 2. Connection Strategy
 
@@ -556,15 +598,30 @@ REDIS_TLS=true
 
 ## Performance Characteristics
 
+**Important:** The metrics below are approximate benchmarks for **local development (localhost Redis)**. Production performance will vary significantly based on:
+
+- Network latency (same-AZ vs cross-region)
+- Redis server load and available memory
+- Payload size and data structure complexity
+- Concurrent connection count
+- Network bandwidth and packet loss
+
 ### Connection Performance
 
-**Metrics:**
+**Metrics (Local Development):**
 
 - Connection establishment: ~10ms (cold start)
 - PING command: <1ms
 - SET operation: ~1ms
 - GET operation: ~1ms
 - Reconnection: ~50-5000ms (exponential backoff)
+
+**Production Considerations:**
+
+- AWS ElastiCache (same-AZ): Add 1-3ms network latency
+- Cross-AZ: Add 3-10ms network latency
+- Large payloads (>1MB): Can add 10-100ms+ depending on bandwidth
+- High server load: Commands may queue, adding variable latency
 
 **Optimization:**
 
@@ -574,11 +631,17 @@ REDIS_TLS=true
 
 ### Caching Performance
 
-**Expected Performance:**
+**Expected Performance (Local Development):**
 
 - Cache hit: ~1-2ms (Redis GET)
 - Cache miss: ~50-100ms (database query + Redis SET)
 - Cache invalidation: ~1ms (Redis DEL)
+
+**Production Performance:**
+
+- Cache hit: ~3-10ms (including network latency)
+- Cache miss: ~100-300ms (database + network + Redis write)
+- Under load: Can increase 2-5x during peak traffic
 
 **Optimization Strategies:**
 
@@ -586,6 +649,19 @@ REDIS_TLS=true
 - Implement cache warming for hot data
 - Use Redis pipelining for batch operations
 - Monitor cache hit rates
+
+**Production Monitoring Recommendations:**
+
+⚠️ **Always measure actual production performance** - these benchmarks are guidelines only.
+
+- **APM Tools:** Use New Relic, Datadog, or CloudWatch to track Redis latency
+- **Metrics to Monitor:**
+  - P50, P95, P99 latency for Redis operations
+  - Cache hit/miss ratio
+  - Connection pool utilization
+  - Network throughput to Redis
+- **Alerting:** Set alerts for P95 latency > 50ms or cache hit rate < 80%
+- **Load Testing:** Perform realistic load tests before production deployment
 
 ## Security Considerations
 
@@ -615,10 +691,149 @@ REDIS_TLS=true
 
 🔒 **Production Requirements:**
 
-- Encrypt sensitive data before storing in Redis
-- Use short TTL for sensitive data
-- Implement key namespacing for multi-tenancy
-- Monitor for suspicious access patterns
+#### Client-Side Encryption
+
+**Recommended Libraries:**
+
+- **Node.js crypto (built-in):** For standard encryption needs
+- **libsodium (sodium-native):** For high-security applications
+- **tweetnacl:** Lightweight, audited crypto library
+
+**Recommended Algorithms (AEAD):**
+
+- **AES-256-GCM:** Industry standard, hardware-accelerated
+- **ChaCha20-Poly1305:** Fast on systems without AES hardware support
+
+**Example Pattern:**
+
+```typescript
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+
+// Encrypt sensitive data before storing in Redis
+function encryptValue(plaintext: string, key: Buffer): string {
+  const iv = randomBytes(12); // GCM recommended IV size
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  // Store IV + authTag + ciphertext
+  return Buffer.concat([iv, authTag, encrypted]).toString('base64');
+}
+```
+
+#### Envelope Encryption with KMS
+
+**Architecture:**
+
+1. **Master Key:** Stored in AWS KMS (never leaves KMS)
+2. **Data Encryption Keys (DEKs):** Generated per-session or per-data-class
+3. **Encrypted DEKs:** Stored in AWS Secrets Manager
+4. **Data:** Encrypted with DEKs before Redis storage
+
+**Implementation Pattern:**
+
+```typescript
+// 1. Generate data encryption key
+const dek = randomBytes(32); // 256-bit key
+
+// 2. Encrypt DEK with KMS master key
+const encryptedDEK = await kmsClient.encrypt({
+  KeyId: 'alias/redis-master-key',
+  Plaintext: dek,
+});
+
+// 3. Store encrypted DEK in Secrets Manager
+await secretsManager.putSecretValue({
+  SecretId: 'redis-dek-current',
+  SecretString: encryptedDEK.CiphertextBlob.toString('base64'),
+});
+
+// 4. Use DEK to encrypt data before Redis
+const encryptedData = encryptValue(sensitiveData, dek);
+await redisClient.set(key, encryptedData, { EX: 3600 });
+```
+
+#### Key Rotation Policy
+
+**Data Encryption Keys (DEKs):**
+
+- **Rotation Frequency:** Every 90 days
+- **Strategy:** Generate new DEK, mark old as deprecated
+- **Re-encryption:** Lazy re-wrap on access or batch job
+- **Versioning:** Include key version in Redis key or value metadata
+
+**Master Keys (KMS):**
+
+- **Rotation:** Enable AWS KMS automatic key rotation (yearly)
+- **Backward Compatibility:** KMS handles old ciphertext automatically
+- **Audit:** CloudTrail logs all KMS operations
+
+**Implementation Checklist:**
+
+- [ ] Maintain key version registry in Secrets Manager
+- [ ] Tag Redis keys with encryption key version
+- [ ] Implement lazy re-encryption on cache read
+- [ ] Schedule batch re-encryption job for long-lived data
+- [ ] Monitor key age and alert on keys > 90 days old
+
+#### AWS Managed Services Authentication
+
+**For AWS ElastiCache:**
+
+- **IAM Authentication:** Use IAM roles instead of Redis AUTH when possible
+- **Secrets Manager:** Store Redis passwords, rotate automatically
+- **KMS Integration:** Encrypt Secrets Manager secrets with KMS
+- **Security Groups:** Restrict access to specific VPC/subnets
+- **VPC Endpoints:** Use PrivateLink to avoid internet exposure
+
+**Authentication Flow:**
+
+```typescript
+// 1. Application uses IAM role (no hardcoded credentials)
+// 2. Fetch Redis password from Secrets Manager
+const secret = await secretsManager.getSecretValue({
+  SecretId: 'prod/redis/auth-token',
+});
+
+// 3. Connect to Redis with retrieved password
+const redisClient = createClient({
+  url: `rediss://${REDIS_HOST}:6379`,
+  password: JSON.parse(secret.SecretString).password,
+  tls: { rejectUnauthorized: true },
+});
+```
+
+#### Additional Security Measures
+
+**Short TTLs for Sensitive Data:**
+
+- Session tokens: 15-60 minutes
+- OTP codes: 5-10 minutes
+- Temporary credentials: 1 hour maximum
+- PII data: Avoid caching or use 5-minute TTL
+
+**Audit Logging:**
+
+- Enable Redis SLOWLOG for performance monitoring
+- Log all encryption/decryption operations
+- Track key access patterns via application logs
+- Use CloudWatch Logs for centralized logging
+- Set up alerts for unusual access patterns
+
+**Access Monitoring:**
+
+- Monitor failed authentication attempts
+- Alert on unusual key access patterns (frequency, time, source)
+- Track cache miss rates (potential enumeration attacks)
+- Monitor memory usage spikes (potential DoS)
+- Set up CloudWatch alarms for anomalies
+
+**Key Namespacing:**
+
+- Use prefixes to isolate data: `tenant:{id}:user:{id}:session`
+- Implement access control checks before key operations
+- Validate key patterns to prevent traversal attacks
+- Use separate Redis databases for different security zones
 
 ## Monitoring and Observability
 
@@ -732,6 +947,13 @@ if (count === 1) {
 if (count > 100) {
   throw new Error('Rate limit exceeded');
 }
+
+// Check if key exists (v5.x returns number: 1 if exists, 0 if not)
+const exists = await redisClient.exists(`ratelimit:${userId}:${endpoint}`);
+if (exists === 0) {
+  // Key doesn't exist, initialize counter
+  await redisClient.set(`ratelimit:${userId}:${endpoint}`, '0', { EX: 60 });
+}
 ```
 
 ### 4. Temporary Tokens ✅
@@ -766,7 +988,7 @@ apps/backend/src/
 
 | Criteria                                     | Status | Evidence                                |
 | -------------------------------------------- | ------ | --------------------------------------- |
-| Redis client using `redis` library           | ✅     | redis v4.6.12 installed and configured  |
+| Redis client using `redis` library           | ✅     | redis v5.8.2 installed and configured   |
 | Connection retry logic (exponential backoff) | ✅     | Built-in retry with exponential backoff |
 | Redis health check                           | ✅     | PING command in health endpoint         |
 | Session management configuration             | ✅     | Client ready for session storage        |
@@ -776,7 +998,7 @@ apps/backend/src/
 
 **All acceptance criteria met. B3 is complete and production-ready.**
 
-**Note:** Task specification mentioned `ioredis`, but we used `redis` v4.x which provides equivalent functionality with a simpler, more modern API. The built-in retry logic includes exponential backoff as required.
+**Note:** Task specification mentioned `ioredis`, but we used `redis` v5.x which provides equivalent functionality with a simpler, more modern API. The built-in retry logic includes exponential backoff as required. v5.x includes breaking changes from v4.x including improved type safety for command responses (e.g., EXISTS returns number, SCAN uses async iterator).
 
 ## Next Steps
 

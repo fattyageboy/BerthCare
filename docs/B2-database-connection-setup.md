@@ -5,6 +5,27 @@
 **Date:** October 10, 2025  
 **Dependencies:** B1 (Express.js backend)
 
+---
+
+## ⚠️ REQUIRED BEFORE PRODUCTION — BLOCKERS
+
+**🚨 CRITICAL: The following items MUST be implemented before production deployment. Failure to address these blockers will result in security vulnerabilities and compliance violations.**
+
+| Blocker | Description | Status |
+|---------|-------------|--------|
+| **SSL/TLS Encryption** | Enable SSL/TLS for all database connections (add `?sslmode=require` to DATABASE_URL) | 🚫 Not Implemented |
+| **RDS IAM Authentication** | Use AWS RDS IAM authentication instead of password-based auth | 🚫 Not Implemented |
+| **Credential Rotation** | Implement automated database credential rotation (AWS Secrets Manager) | 🚫 Not Implemented |
+| **IP Restrictions** | Restrict database access by IP using VPC security groups | 🚫 Not Implemented |
+| **Backup Strategy** | Configure automated backups and test restoration procedures | 🚫 Not Implemented |
+| **Migration Windows** | Establish maintenance windows and migration rollback procedures | 🚫 Not Implemented |
+
+**📋 Detailed implementation guidance:** See [Security Considerations](#security-considerations) section below (lines 509-530) for complete requirements and implementation steps.
+
+**⚠️ Reviewers:** Do not approve production deployment until all blockers above are marked as ✅ Implemented.
+
+---
+
 ## Overview
 
 Successfully configured PostgreSQL database connection with connection pooling, migration framework, health checks, and read replica support placeholder. The implementation uses the `pg` library with optimized pool settings for production workloads.
@@ -380,6 +401,28 @@ POSTGRES_PASSWORD=berthcare_password
 
 **⚠️ Security Note:** These example credentials are for local development only and must never be used in production environments.
 
+**🔒 CI/CD and Shared Development Environments:**
+
+For CI/CD pipelines and shared development environments, **never hardcode credentials**. Use one of these secure alternatives:
+
+- **Environment Variables:** Store credentials in `.env` files (gitignored) and reference them:
+  ```bash
+  DATABASE_URL=${DB_CONNECTION_STRING}  # Reference from .env or CI secrets
+  ```
+- **Docker Secrets:** Use Docker secrets for containerized environments:
+  ```yaml
+  secrets:
+    db_password:
+      external: true
+  ```
+- **CI Secret Managers:** Use GitHub Actions secrets, GitLab CI/CD variables, or similar:
+  ```yaml
+  env:
+    DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  ```
+
+**⚠️ Critical Reminder:** Never commit real credentials to version control or shared configuration files. Always use secret management tools.
+
 **Docker Compose Configuration:**
 
 ```yaml
@@ -388,12 +431,27 @@ postgres:
   environment:
     POSTGRES_DB: berthcare
     POSTGRES_USER: berthcare
-    POSTGRES_PASSWORD: berthcare_password
+    POSTGRES_PASSWORD: berthcare_password  # For local dev only - use ${DB_PASSWORD} for shared envs
   ports:
     - '5432:5432'
   volumes:
     - postgres_data:/var/lib/postgresql/data
     - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+```
+
+**🔒 Secure Docker Compose Example (Shared/CI Environments):**
+
+```yaml
+postgres:
+  image: postgres:15-alpine
+  environment:
+    POSTGRES_DB: ${POSTGRES_DB:-berthcare}
+    POSTGRES_USER: ${POSTGRES_USER:-berthcare}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # Must be set in .env file
+  ports:
+    - '5432:5432'
+  volumes:
+    - postgres_data:/var/lib/postgresql/data
 ```
 
 ## Architecture Decisions
@@ -593,10 +651,11 @@ apps/backend/src/db/
 | Read replica support (placeholder)       | ✅     | Architecture ready, documented             |
 | Backend connects to local PostgreSQL     | ✅     | Verified in testing                        |
 | Migrations run successfully              | ✅     | Migration 001 tested and verified          |
+| **Production blockers addressed**        | 🚫     | **See [REQUIRED BEFORE PRODUCTION](#️-required-before-production--blockers) banner above** |
 
-**All acceptance criteria met. B2 is complete and MVP-ready.**
+**All MVP acceptance criteria met. B2 is complete and MVP-ready.**
 
-**⚠️ Production Blockers:** See Security Considerations section - SSL/TLS, RDS IAM auth, credential rotation, and IP restrictions must be implemented before production deployment.
+**🚨 PRODUCTION DEPLOYMENT BLOCKED:** See [REQUIRED BEFORE PRODUCTION — BLOCKERS](#️-required-before-production--blockers) section at the top of this document. All 6 blockers must be resolved before production deployment. Reviewers must verify blocker resolution before approval.
 
 ## Next Steps
 

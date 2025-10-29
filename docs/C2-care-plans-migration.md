@@ -111,7 +111,7 @@ Safely removes all objects created by the forward migration including triggers, 
 - **Purpose:** Fast care plan retrieval by client
 - **Query Pattern:** "Get care plan for client X"
 - **Partial Index:** WHERE deleted_at IS NULL
-- **Performance:** < 1ms for client lookups
+- **Performance:** < 1ms for client lookups (design target on typical data volumes)
 
 **3. Medications Search Index** (`idx_care_plans_medications`)
 
@@ -119,7 +119,7 @@ Safely removes all objects created by the forward migration including triggers, 
 - **Purpose:** Search within JSONB medication data
 - **Query Pattern:** "Find all clients taking medication X"
 - **Partial Index:** WHERE deleted_at IS NULL
-- **Performance:** < 50ms for medication searches
+- **Performance:** < 50ms for medication searches (design target on typical data volumes)
 
 **4. Allergies Search Index** (`idx_care_plans_allergies`)
 
@@ -127,7 +127,7 @@ Safely removes all objects created by the forward migration including triggers, 
 - **Purpose:** Search within JSONB allergy data
 - **Query Pattern:** "Find all clients with allergy X"
 - **Partial Index:** WHERE deleted_at IS NULL
-- **Performance:** < 50ms for allergy searches
+- **Performance:** < 50ms for allergy searches (design target on typical data volumes)
 
 **5. Version Tracking Index** (`idx_care_plans_version`)
 
@@ -135,7 +135,7 @@ Safely removes all objects created by the forward migration including triggers, 
 - **Purpose:** Conflict detection and change tracking
 - **Query Pattern:** "Check if care plan updated since last read"
 - **Partial Index:** WHERE deleted_at IS NULL
-- **Performance:** < 5ms for version checks
+- **Performance:** < 5ms for version checks (design target on typical data volumes)
 
 ### Constraints
 
@@ -498,6 +498,9 @@ WHERE client_id = 'client-uuid-here'
 ### Search by Medication
 
 ```sql
+-- The @> operator checks JSONB containment (left contains right)
+-- This performs a partial match: objects with additional fields (dosage, frequency, etc.)
+-- will still match as long as they include {"name": "Aspirin"}
 SELECT c.first_name, c.last_name, cp.medications
 FROM care_plans cp
 JOIN clients c ON c.id = cp.client_id

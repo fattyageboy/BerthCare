@@ -29,8 +29,8 @@ describe('Phone Validation Utilities', () => {
         expect(isValidE164PhoneNumber('+61212345678')).toBe(true);
       });
 
-      it('should accept minimum length (country code 1 + 1 digit)', () => {
-        expect(isValidE164PhoneNumber('+12')).toBe(true);
+      it('should accept North American number', () => {
+        expect(isValidE164PhoneNumber('+12125550000')).toBe(true);
       });
 
       it('should accept maximum length (15 digits)', () => {
@@ -85,6 +85,14 @@ describe('Phone Validation Utilities', () => {
 
       it('should reject + with non-digit', () => {
         expect(isValidE164PhoneNumber('+A')).toBe(false);
+      });
+
+      it('should reject single digit after +', () => {
+        expect(isValidE164PhoneNumber('+1')).toBe(false);
+      });
+
+      it('should reject multiple leading zeros', () => {
+        expect(isValidE164PhoneNumber('+00')).toBe(false);
       });
     });
   });

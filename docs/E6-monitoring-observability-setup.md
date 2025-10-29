@@ -67,7 +67,51 @@ Access: https://console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashb
 
 - `LOG_WEBHOOK_CLIENT_IP` (default: `false`) keeps full client IPs out of logs unless explicitly required for a security incident investigation. Leave disabled for routine operations.
 - `WEBHOOK_IP_HASH_SECRET` enables deterministic SHA-256 hashing when PII logging is off, allowing correlation without storing the raw address. When unset, the logger redacts the final octet (`/24`) for IPv4 and truncates IPv6 to `/64`.
-- Update the privacy policy/retention register whenever the flag is enabled so data residency and deletion expectations remain accurate.
+
+**Compliance & Privacy Considerations:**
+
+When enabling `LOG_WEBHOOK_CLIENT_IP`:
+
+1. **GDPR/CCPA Implications:**
+   - IP addresses are personal data under GDPR and may be personal information under CCPA
+   - Legal basis: Legitimate interest (security/fraud prevention) or legal obligation (incident response)
+   - Lawful purpose: Security monitoring, abuse prevention, incident investigation
+   - Data minimization: Only enable when necessary; use hashing/redaction when full IPs not required
+   - Retention limits: Align with security incident retention policy (typically 90 days max)
+   - Cross-border transfers: Ensure CloudWatch region complies with data residency requirements
+   - DPIA required: If processing high volumes or sensitive user data, conduct Data Protection Impact Assessment
+
+2. **Privacy Policy & Retention Register Updates:**
+   - **Who updates:** Data Protection Officer (DPO) or Privacy Officer must approve and document
+   - **Required fields:**
+     - Purpose: "Security monitoring and abuse prevention for webhook endpoints"
+     - Legal basis: "Legitimate interest" or "Legal obligation"
+     - Retention period: "90 days" (or per security policy)
+     - Access controls: "Security team, incident response team"
+     - Review cadence: "Quarterly review of necessity and retention"
+   - Update privacy policy section on "Data We Collect" and "How We Use Your Data"
+   - Add entry to data retention register with above fields
+
+3. **Data Deletion & Retention Workflow:**
+   - **Identification:** Query CloudWatch Logs for IP addresses using Insights queries
+   - **Deletion on request:** Use `aws logs delete-log-events` or filter-pattern exclusions
+   - **Automated expiry:** Set CloudWatch log retention to match retention policy (90 days)
+   - **Archival:** Export to S3 with lifecycle policies if long-term retention needed
+   - **Audit logging:** Enable CloudTrail to log all log deletion operations
+   - **Process:** Document deletion requests in incident tracking system
+
+4. **Approval Requirements:**
+   - **Required approvals before enabling flag:**
+     - Privacy Officer / Data Protection Officer (DPO)
+     - Security Lead
+     - Legal Counsel
+     - Service Owner / Engineering Manager
+   - **Documentation:** Record approval in change management system with:
+     - Justification for enabling
+     - Expected duration
+     - Review date
+     - Approver names and dates
+     - Link to DPIA if conducted
 
 ### Metric Alarms
 
@@ -198,10 +242,21 @@ All logs use JSON format for easy parsing:
 
 ### CloudWatch Insights Queries
 
+**Time Window Filtering:**
+
+All queries can be scoped to a specific time window by adding a filter at the beginning:
+- `| filter @timestamp > ago(1h)` - Last hour
+- `| filter @timestamp > ago(15m)` - Last 15 minutes
+- `| filter @timestamp > ago(24h)` - Last 24 hours
+- `| filter @timestamp > ago(7d)` - Last 7 days
+
+Insert the time filter as the first filter line after the `fields` statement for more precise results.
+
 **Top 10 Errors (Last Hour):**
 
 ```
 fields @timestamp, @message
+| filter @timestamp > ago(1h)
 | filter level = "error"
 | stats count() as error_count by @message
 | sort error_count desc
@@ -212,6 +267,7 @@ fields @timestamp, @message
 
 ```
 fields @timestamp, context.path, context.duration
+| filter @timestamp > ago(1h)
 | filter context.duration > 2000
 | sort context.duration desc
 | limit 20
@@ -221,6 +277,7 @@ fields @timestamp, context.path, context.duration
 
 ```
 fields @timestamp, context.userId, context.action
+| filter @timestamp > ago(24h)
 | filter context.userId = "user_123"
 | sort @timestamp desc
 ```
@@ -297,6 +354,22 @@ terraform apply
      --organization berthcare
    ```
 
+   **Extracting the DSN:**
+   
+   Option 1: Manually copy the DSN from the CLI output (look for the "DSN" or "Public DSN" field)
+   
+   Option 2: Use JSON output and parse with jq:
+   ```bash
+   # Extract DSN using jq
+   sentry-cli projects info berthcare-backend-staging \
+     --organization berthcare \
+     --format json | jq -r '.dsn.public'
+   ```
+   
+   The DSN format is: `https://[public-key]@[org-id].ingest.sentry.io/[project-id]`
+   
+   Use the `dsn.public` field (or `keys[0].dsn.public` depending on CLI version) from the JSON output.
+
 4. **Store in AWS Secrets Manager:**
 
    ```bash
@@ -310,6 +383,43 @@ terraform apply
      --secret-string "https://[key]@[org].ingest.sentry.io/[project]" \
      --region ca-central-1
    ```
+
+   **Security Best Practices:**
+
+   - **Secret Rotation:**
+     - Configure automatic rotation policies where supported by Sentry
+     - Rotate DSNs periodically (recommended: every 90 days)
+     - Update application configuration after rotation
+     - Test new DSN before revoking old one
+
+   - **IAM Least Privilege:**
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [
+         {
+           "Effect": "Allow",
+           "Action": "secretsmanager:GetSecretValue",
+           "Resource": "arn:aws:secretsmanager:ca-central-1:ACCOUNT_ID:secret:berthcare/staging/sentry-*",
+           "Condition": {
+             "StringEquals": {
+               "aws:PrincipalTag/Environment": "staging"
+             }
+           }
+         }
+       ]
+     }
+     ```
+     - Restrict `GetSecretValue` to specific ECS task roles or Lambda execution roles
+     - Use resource ARNs with wildcards for secret families
+     - Add conditions for environment tags or VPC endpoints
+     - Deny access from outside VPC using `aws:SourceVpc` condition
+
+   - **Audit Logging:**
+     - Enable CloudTrail logging for Secrets Manager API calls
+     - Monitor `GetSecretValue` calls for unusual patterns
+     - Set up CloudWatch alarms for unauthorized access attempts
+     - Review access logs quarterly
 
 ## Testing
 
@@ -334,8 +444,35 @@ aws cloudwatch describe-alarm-history \
 **Backend Test:**
 
 ```typescript
-// Add to backend test endpoint
-app.get('/test/sentry', (req, res) => {
+// Add to backend test endpoint (DEVELOPMENT/STAGING ONLY)
+// ⚠️ SECURITY: This endpoint must be disabled in production or require authentication
+
+// Option 1: Environment-gated (recommended)
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/test/sentry', (req, res) => {
+    try {
+      throw new Error('Test error for Sentry');
+    } catch (error) {
+      Sentry.captureException(error);
+      res.status(500).json({ error: 'Test error sent to Sentry' });
+    }
+  });
+}
+
+// Option 2: Feature flag-gated
+if (process.env.ENABLE_TEST_ENDPOINTS === 'true') {
+  app.get('/test/sentry', (req, res) => {
+    try {
+      throw new Error('Test error for Sentry');
+    } catch (error) {
+      Sentry.captureException(error);
+      res.status(500).json({ error: 'Test error sent to Sentry' });
+    }
+  });
+}
+
+// Option 3: Authentication-protected (if test endpoint needed in production)
+app.get('/test/sentry', requireAuth, requireRole('admin'), (req, res) => {
   try {
     throw new Error('Test error for Sentry');
   } catch (error) {
@@ -344,6 +481,11 @@ app.get('/test/sentry', (req, res) => {
   }
 });
 ```
+
+**Configuration:**
+- Set `ENABLE_TEST_ENDPOINTS=false` in production environment variables
+- Document in README: "Test endpoints are disabled by default. Set `ENABLE_TEST_ENDPOINTS=true` in non-production environments only."
+- Remove test endpoints entirely before production deployment (preferred)
 
 **Mobile Test:**
 

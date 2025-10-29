@@ -16,7 +16,8 @@
     "migrate:down": "tsx src/db/migrate.ts down",
     "db:reset": "tsx src/db/migrate.ts down 001 && tsx src/db/migrate.ts up 001",
     "db:verify": "tsx src/db/verify-schema.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "load-test:alerts": "tsx tests/load-test-alert-writes.ts"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.907.0",

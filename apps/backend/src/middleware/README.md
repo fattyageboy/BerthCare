@@ -40,6 +40,36 @@ router.get(
 - User context attachment to request
 - Role-based authorization
 
+**User Context Attachment:**
+
+The `authenticateJWT` middleware attaches user information to the request object synchronously before route handlers execute. After successful JWT verification, the middleware sets `req.user` with the authenticated user's details:
+
+```typescript
+// User object shape attached to req.user
+req.user = {
+  userId: string;      // UUID from JWT payload
+  role: UserRole;      // 'admin' | 'coordinator' | 'caregiver'
+  zoneId: string;      // UUID of user's assigned zone
+  email?: string;      // Optional email address
+};
+```
+
+For unauthenticated requests or failed verification, `req.user` remains `undefined`. Route handlers can check `req.user` to determine authentication status.
+
+**TypeScript Support:**
+
+The middleware exports an `AuthenticatedRequest` interface that extends Express's `Request` type:
+
+```typescript
+import { AuthenticatedRequest } from './middleware/auth';
+
+router.get('/profile', authenticateJWT(redisClient), (req: AuthenticatedRequest, res) => {
+  // TypeScript knows req.user exists and its shape
+  const { userId, role, zoneId } = req.user!;
+  res.json({ userId, role, zoneId });
+});
+```
+
 **See:** `docs/A7-jwt-auth-middleware.md` for complete documentation
 
 ---

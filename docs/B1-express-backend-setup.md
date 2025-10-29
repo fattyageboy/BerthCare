@@ -318,15 +318,15 @@ $ kill -SIGTERM <pid>
 ```
 apps/backend/
 ├── src/
-│   ├── main.ts# Main application entry point
-│   ├── main-with-monitoring.ts      # Alternative with full monitoring
-│   ├── test-connection.ts# Connection testing utility
+│   ├── main.ts # Main application entry point
+│   ├── main-with-monitoring.ts # Alternative with full monitoring
+│   ├── test-connection.ts # Connection testing utility
 │   └── config/
-│       ├── logger.ts     # Winston logger configuration
-│       └── sentry.ts     # Sentry error tracking setup
-├── package.json  # Dependencies and scripts
+│       ├── logger.ts # Winston logger configuration
+│       └── sentry.ts # Sentry error tracking setup
+├── package.json # Dependencies and scripts
 ├── tsconfig.json # TypeScript configuration
-└── project.json  # Nx project configuration
+└── project.json # Nx project configuration
 ```
 
 ## Environment Configuration

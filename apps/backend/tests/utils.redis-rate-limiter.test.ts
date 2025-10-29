@@ -105,6 +105,50 @@ describe('RedisRateLimiter', () => {
 
       await limiter.close();
     });
+
+    it('should handle concurrent increments atomically', async () => {
+      // Mock Redis eval to return successive counts for concurrent calls
+      mockRedisClient.eval
+        .mockResolvedValueOnce([1, 3600000])
+        .mockResolvedValueOnce([2, 3600000])
+        .mockResolvedValueOnce([3, 3600000])
+        .mockResolvedValueOnce([4, 3600000])
+        .mockResolvedValueOnce([5, 3600000]);
+
+      const limiter = new RedisRateLimiter({
+        keyPrefix: 'test',
+        limit: 10,
+        windowMs: 3600000,
+        useRedis: true,
+      });
+
+      await limiter.waitForReady();
+
+      // Issue 5 concurrent checkAndIncrement calls for the same key
+      const results = await Promise.all([
+        limiter.checkAndIncrement('concurrent-user'),
+        limiter.checkAndIncrement('concurrent-user'),
+        limiter.checkAndIncrement('concurrent-user'),
+        limiter.checkAndIncrement('concurrent-user'),
+        limiter.checkAndIncrement('concurrent-user'),
+      ]);
+
+      // All requests should be allowed (under limit of 10)
+      results.forEach((result) => {
+        expect(result.allowed).toBe(true);
+      });
+
+      // Extract current counts from all responses
+      const counts = results.map((r) => r.current).sort((a, b) => (a ?? 0) - (b ?? 0));
+
+      // Verify we got the expected sequence (1, 2, 3, 4, 5)
+      expect(counts).toEqual([1, 2, 3, 4, 5]);
+
+      // Verify Redis eval was called 5 times (once per concurrent request)
+      expect(mockRedisClient.eval).toHaveBeenCalledTimes(5);
+
+      await limiter.close();
+    });
   });
 
   describe('TTL Behavior', () => {
@@ -338,6 +382,64 @@ describe('RedisRateLimiter', () => {
       expect(mockRedisClient.del).toHaveBeenCalledWith('test:user11');
 
       await limiter.close();
+    });
+
+    it('should get current count in in-memory mode', async () => {
+      const limiter = new RedisRateLimiter({
+        keyPrefix: 'test',
+        limit: 10,
+        windowMs: 3600000,
+        useRedis: false,
+      });
+
+      try {
+        // Make multiple increments to set up state
+        await limiter.checkAndIncrement('user12');
+        await limiter.checkAndIncrement('user12');
+        await limiter.checkAndIncrement('user12');
+
+        // Get the current count
+        const count = await limiter.getCount('user12');
+
+        // Should return the count after 3 increments
+        expect(count).toBe(3);
+      } finally {
+        await limiter.close();
+      }
+    });
+
+    it('should reset counter in in-memory mode', async () => {
+      const limiter = new RedisRateLimiter({
+        keyPrefix: 'test',
+        limit: 10,
+        windowMs: 3600000,
+        useRedis: false,
+      });
+
+      try {
+        // Make multiple increments to set up state
+        await limiter.checkAndIncrement('user13');
+        await limiter.checkAndIncrement('user13');
+        await limiter.checkAndIncrement('user13');
+
+        // Verify count is 3
+        const countBefore = await limiter.getCount('user13');
+        expect(countBefore).toBe(3);
+
+        // Reset the counter
+        await limiter.reset('user13');
+
+        // Next increment should return current === 1
+        const result = await limiter.checkAndIncrement('user13');
+        expect(result.current).toBe(1);
+        expect(result.allowed).toBe(true);
+
+        // Verify count is now 1
+        const countAfter = await limiter.getCount('user13');
+        expect(countAfter).toBe(1);
+      } finally {
+        await limiter.close();
+      }
     });
   });
 });

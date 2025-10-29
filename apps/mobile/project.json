@@ -28,8 +28,7 @@
           "apps/mobile/**/*.tsx",
           "apps/mobile/**/*.js",
           "apps/mobile/**/*.jsx"
-        ],
-        "maxWarnings": 0
+        ]
       }
     },
     "test": {

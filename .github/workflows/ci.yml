@@ -19,6 +19,10 @@ jobs:
     timeout-minutes: 20
 
     services:
+      # Note: GitHub Actions always pulls images if not cached. For guaranteed
+      # reproducibility and to avoid stale cached images, consider using image
+      # digests instead of tags (e.g., postgres@sha256:...).
+      # To get digest: docker pull postgres:15 && docker inspect postgres:15 | grep -A1 RepoDigests
       postgres:
         image: postgres:15
         env:

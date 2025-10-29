@@ -49,7 +49,7 @@ fi
 
 # Run migrations on test database
 echo "🔄 Running migrations on test database..."
-pnpm run migrate:up > /dev/null 2>&1
+pnpm run migrate:up > /dev/null
 echo "✅ Migrations complete"
 
 # Clear test Redis database

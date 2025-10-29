@@ -204,7 +204,16 @@ async function shutdown(signal: string) {
     await redisClient.quit();
     logInfo('Redis connection closed');
 
-    stopSecretCacheCleanup();
+    logInfo('Stopping secret cache cleanup');
+    try {
+      stopSecretCacheCleanup();
+      logInfo('Secret cache cleanup stopped');
+    } catch (error) {
+      logError('Error stopping secret cache cleanup', error as Error, {
+        context: 'graceful-shutdown',
+      });
+      // Continue shutdown even if cache cleanup fails
+    }
 
     logInfo('Shutdown complete');
     process.exit(0);

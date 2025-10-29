@@ -46,6 +46,12 @@ interface VoiceAlertRequest {
 }
 
 /**
+ * UUID validation regex pattern
+ * Validates standard UUID v4 format (8-4-4-4-12 hex digits)
+ */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
  * Maximum length for alert outcome text
  * Reasonable limit to prevent abuse while allowing detailed documentation
  */
@@ -146,20 +152,8 @@ export function createAlertRoutes(
       let transactionActive = false;
 
       try {
-        // Extract authenticated user
-        const user = (req as AuthenticatedRequest).user;
-
-        if (!user) {
-          res.status(401).json({
-            error: {
-              code: 'UNAUTHORIZED',
-              message: 'Authentication required',
-              timestamp: new Date().toISOString(),
-              requestId: req.headers['x-request-id'] || 'unknown',
-            },
-          });
-          return;
-        }
+        // Extract authenticated user (guaranteed by authenticateJWT middleware)
+        const user = (req as AuthenticatedRequest).user!;
 
         // Validate request body
         const { clientId, voiceMessageUrl, alertType = 'other' } = req.body as VoiceAlertRequest;
@@ -189,8 +183,7 @@ export function createAlertRoutes(
         }
 
         // Validate UUID format
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(clientId)) {
+        if (!UUID_REGEX.test(clientId)) {
           res.status(400).json({
             error: {
               code: 'INVALID_CLIENT_ID',
@@ -275,7 +268,7 @@ export function createAlertRoutes(
             AND c.is_active = true
             AND c.deleted_at IS NULL
             AND u.deleted_at IS NULL
-          ORDER BY c.created_at ASC
+          ORDER BY c.last_assigned_at ASC NULLS FIRST, c.created_at ASC
           LIMIT 1
         `;
 
@@ -327,6 +320,12 @@ export function createAlertRoutes(
           alertType,
           voiceMessageUrl,
         ]);
+
+        // Update coordinator's last_assigned_at for round-robin distribution
+        await client.query(
+          'UPDATE coordinators SET last_assigned_at = NOW(), updated_at = NOW() WHERE id = $1',
+          [coordinator.id]
+        );
 
         // Initiate Twilio voice call
         let callResult;
@@ -473,23 +472,13 @@ export function createAlertRoutes(
     requireRole(['coordinator']),
     async (req: Request, res: Response) => {
       const client = await pgPool.connect();
+      let transactionActive = false;
 
       try {
-        const user = (req as AuthenticatedRequest).user;
+        // Extract authenticated user (guaranteed by authenticateJWT middleware)
+        const user = (req as AuthenticatedRequest).user!;
         const { alertId } = req.params;
         const { outcome } = req.body;
-
-        if (!user) {
-          res.status(401).json({
-            error: {
-              code: 'UNAUTHORIZED',
-              message: 'Authentication required',
-              timestamp: new Date().toISOString(),
-              requestId: req.headers['x-request-id'] || 'unknown',
-            },
-          });
-          return;
-        }
 
         // Validate outcome
         if (!outcome || typeof outcome !== 'string' || outcome.trim().length === 0) {
@@ -522,8 +511,7 @@ export function createAlertRoutes(
         }
 
         // Validate UUID format
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(alertId)) {
+        if (!UUID_REGEX.test(alertId)) {
           res.status(400).json({
             error: {
               code: 'INVALID_ALERT_ID',
@@ -538,7 +526,7 @@ export function createAlertRoutes(
         const outcomeTrimmed = outcome.trim();
 
         await client.query('BEGIN');
-        let transactionActive = true;
+        transactionActive = true;
 
         let alert;
         let updatedAlert;
@@ -692,6 +680,11 @@ export function createAlertRoutes(
           },
         });
       } catch (error) {
+        // Rollback transaction if active
+        if (transactionActive) {
+          await client.query('ROLLBACK').catch(() => undefined);
+        }
+
         const authRequest = req as AuthenticatedRequest;
         const requestIdHeader = req.headers['x-request-id'];
         const outcomeValue = typeof req.body?.outcome === 'string' ? req.body.outcome : undefined;

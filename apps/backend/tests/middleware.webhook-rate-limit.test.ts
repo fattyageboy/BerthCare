@@ -52,7 +52,6 @@ describe('Webhook Rate Limiter', () => {
 
   afterAll(async () => {
     await closeWebhookRateLimiter();
-    jest.useRealTimers();
   });
 
   it('should initialize rate limiter', async () => {
@@ -239,7 +238,8 @@ describe('Webhook Rate Limiter', () => {
     it('should handle Redis command errors gracefully during rate limiting', async () => {
       // Simulate Redis command failure
       mockSendCommand.mockImplementationOnce(
-        () => Promise.reject(new Error('Redis command failed')) as Promise<string[]>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        () => Promise.reject(new Error('Redis command failed')) as any
       );
 
       const limiter = await getWebhookRateLimiter();
@@ -259,7 +259,7 @@ describe('Webhook Rate Limiter', () => {
       let callCount = 0;
       const originalImpl = mockSendCommand.getMockImplementation();
 
-      (mockSendCommand.mockImplementation as jest.Mock).mockImplementation((args: string[]) => {
+      (mockSendCommand as jest.Mock).mockImplementation((args: string[]) => {
         callCount++;
         // Fail every other call
         if (callCount % 2 === 0) {
@@ -287,7 +287,7 @@ describe('Webhook Rate Limiter', () => {
 
       // Restore original implementation
       if (originalImpl) {
-        mockSendCommand.mockImplementation(originalImpl);
+        (mockSendCommand as jest.Mock).mockImplementation(originalImpl);
       }
     });
   });

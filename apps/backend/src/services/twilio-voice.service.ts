@@ -92,13 +92,52 @@ type TwilioSecretLoader = (
   cacheTtlMs?: number
 ) => Promise<TwilioVoiceSecretPayload>;
 
+/**
+ * Configuration options for TwilioVoiceService
+ *
+ * Credential Resolution Strategy:
+ * 1. Direct credentials (accountSid, authToken, fromNumber) - used if all provided
+ * 2. AWS Secrets Manager (secretId) - fetched on first use if direct credentials incomplete
+ * 3. Environment variables - fallback for missing secret fields
+ *
+ * Credential Caching Behavior:
+ * - Credentials are cached indefinitely after first successful fetch
+ * - secretCacheTtlMs controls the secrets loader's cache duration (default: 5 minutes)
+ * - Service-level credentials do NOT auto-refresh based on secretCacheTtlMs
+ * - To rotate credentials, call forceRefreshClient() explicitly
+ * - Mixed sources (partial secret + env fallback) are allowed for flexibility
+ *
+ * @example
+ * // Direct credentials (no rotation)
+ * new TwilioVoiceService({
+ *   accountSid: 'AC...',
+ *   authToken: 'token',
+ *   fromNumber: '+1234567890'
+ * });
+ *
+ * @example
+ * // Secrets Manager with custom TTL
+ * const service = new TwilioVoiceService({
+ *   secretId: 'prod/twilio',
+ *   secretCacheTtlMs: 10 * 60 * 1000 // 10 minutes
+ * });
+ * // Later, to rotate credentials:
+ * service.forceRefreshClient();
+ */
 export interface TwilioVoiceServiceOptions {
+  /** Twilio Account SID (overrides secrets/env) */
   accountSid?: string;
+  /** Twilio Auth Token (overrides secrets/env) */
   authToken?: string;
+  /** Twilio phone number to call from (overrides secrets/env) */
   fromNumber?: string;
+  /** Base URL for webhook callbacks */
   webhookBaseUrl?: string;
+  /** AWS Secrets Manager secret ID for credential fetching */
   secretId?: string;
+  /** Custom secrets loader function (for testing or alternative secret stores) */
   secretsLoader?: TwilioSecretLoader;
+  /** TTL for secrets loader cache (NOT service credential refresh interval) */
   secretCacheTtlMs?: number;
 }
 
@@ -148,9 +187,27 @@ export class TwilioVoiceService {
   }
 
   /**
-   * Force refresh the Twilio client and credentials.
-   * Clears cached client and credentials so the next call will recreate them.
-   * Useful for forcing credential rotation without waiting for automatic detection.
+   * Force refresh the Twilio client and credentials
+   *
+   * Clears all cached credentials and client instances. The next API call
+   * will trigger a fresh credential fetch from the configured source.
+   *
+   * Use cases:
+   * - Manual credential rotation after updating secrets in AWS Secrets Manager
+   * - Recovering from authentication errors
+   * - Testing credential refresh behavior
+   *
+   * Important notes:
+   * - This is the ONLY way to trigger credential refresh in this service
+   * - secretCacheTtlMs does NOT automatically refresh service credentials
+   * - Credentials are cached indefinitely until this method is called
+   * - In-flight credential fetches are also cleared
+   *
+   * @example
+   * // After rotating credentials in AWS Secrets Manager
+   * twilioVoiceService.forceRefreshClient();
+   * // Next call will use new credentials
+   * await twilioVoiceService.initiateCall(...);
    */
   forceRefreshClient(): void {
     this.client = null;
@@ -233,6 +290,8 @@ export class TwilioVoiceService {
         from: fromNumber,
         twiml,
         statusCallback: this.buildStatusCallbackUrl(options.alertId),
+        // Note: statusCallbackEvent values are event names, not status values
+        // When 'initiated' event fires, the CallStatus field will be 'queued'
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         statusCallbackMethod: 'POST',
         timeout: 30,
@@ -306,12 +365,22 @@ export class TwilioVoiceService {
     const statusRaw = String(webhookData.CallStatus || '');
     const status = this.normalizeStatus(statusRaw, callSid);
 
+    // Parse and validate CallDuration to avoid NaN
+    let duration: number | undefined;
+    if (webhookData.CallDuration !== undefined && webhookData.CallDuration !== null) {
+      const durationStr = String(webhookData.CallDuration).trim();
+      const parsedDuration = Number(durationStr);
+      if (Number.isFinite(parsedDuration) && parsedDuration >= 0) {
+        duration = parsedDuration;
+      }
+    }
+
     const event: CallEvent = {
       callSid,
       status,
       to: String(webhookData.To || ''),
       from: String(webhookData.From || ''),
-      duration: webhookData.CallDuration ? Number(webhookData.CallDuration) : undefined,
+      duration,
       timestamp: new Date(),
       errorCode: webhookData.ErrorCode ? String(webhookData.ErrorCode) : undefined,
       errorMessage: webhookData.ErrorMessage ? String(webhookData.ErrorMessage) : undefined,
@@ -414,14 +483,37 @@ export class TwilioVoiceService {
     const pendingCredentials = this.resolveCredentials();
     this.credentialsPromise = pendingCredentials;
 
-    const credentials = await pendingCredentials;
-    this.authToken = credentials.authToken;
-    this.accountSid = credentials.accountSid;
-    this.fromNumber = credentials.phoneNumber;
-    this.credentialsPromise = undefined;
-    return credentials;
+    try {
+      const credentials = await pendingCredentials;
+      this.authToken = credentials.authToken;
+      this.accountSid = credentials.accountSid;
+      this.fromNumber = credentials.phoneNumber;
+      return credentials;
+    } finally {
+      // Clear cached promise only if it's still the one we created
+      // This allows retries after failures
+      if (this.credentialsPromise === pendingCredentials) {
+        this.credentialsPromise = undefined;
+      }
+    }
   }
 
+  /**
+   * Resolve Twilio credentials from available sources
+   *
+   * Resolution order:
+   * 1. Instance properties (if all three are set)
+   * 2. AWS Secrets Manager (if secretId configured)
+   * 3. Environment variables (fallback for missing secret fields)
+   *
+   * Note: This method allows mixing sources - if a secret is incomplete,
+   * missing fields will fall back to environment variables. This provides
+   * flexibility for partial configuration but means credentials may come
+   * from multiple sources.
+   *
+   * @throws {TwilioVoiceError} If credentials cannot be resolved from any source
+   * @private
+   */
   private async resolveCredentials(): Promise<TwilioVoiceCredentials> {
     if (this.accountSid && this.authToken && this.fromNumber) {
       return {
@@ -441,6 +533,8 @@ export class TwilioVoiceService {
     }
 
     const secret = await this.secretsLoader(this.secretId, this.secretCacheTtlMs);
+    // Allow fallback to environment variables for missing secret fields
+    // This enables partial configuration and gradual migration to secrets
     const accountSid =
       secret.account_sid ?? secret.accountSid ?? (env.twilio.accountSid || undefined);
     const authToken = secret.auth_token ?? secret.authToken ?? (env.twilio.authToken || undefined);

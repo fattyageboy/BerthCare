@@ -133,6 +133,8 @@ Quick checklist for completing Twilio account configuration.
 - [ ] Test outbound SMS successful
 - [ ] Webhooks configured (will test after backend deployment)
 
+**Note:** Webhook and callback verification (inbound voice/SMS, status callbacks) will be performed after the production backend deployment is complete. The Backend Team will validate webhook signature verification, event processing, and delivery status callbacks as part of the post-deployment smoke tests.
+
 ---
 
 ## Local Development
@@ -206,10 +208,10 @@ After completing this checklist:
 
 ## Sign-Off
 
-**Completed By:** **\*\*\*\***\_\_\_**\*\*\*\***  
-**Date:** **\*\*\*\***\_\_\_**\*\*\*\***  
-**Verified By:** **\*\*\*\***\_\_\_**\*\*\*\***  
-**Date:** **\*\*\*\***\_\_\_**\*\*\*\***
+**Completed By:** ______________________  
+**Date:** ______________________  
+**Verified By:** ______________________  
+**Date:** ______________________
 
 ---
 

@@ -122,7 +122,7 @@ describe('AlertEscalationService (integration)', () => {
     id = crypto.randomUUID(),
   }: {
     userId: string;
-    phone: string;
+    phone: string | null;
     backupCoordinatorId?: string | null;
     id?: string;
   }): Promise<string> {
@@ -370,10 +370,23 @@ describe('AlertEscalationService (integration)', () => {
       initiatedAt: baseNow,
     });
 
+    smsMock.sendSMS.mockResolvedValueOnce({
+      messageSid: 'SM-caregiver-notify',
+      status: 'queued',
+      to: '+15550007777',
+      from: '+15550000000',
+      sentAt: baseNow,
+    });
+
     await service().run();
 
     expect(voiceMock.initiateCall).toHaveBeenCalledTimes(1);
-    expect(smsMock.sendSMS).not.toHaveBeenCalled();
+    expect(smsMock.sendSMS).toHaveBeenCalledTimes(1);
+    expect(smsMock.sendSMS).toHaveBeenCalledWith(
+      '+15550007777',
+      expect.stringContaining('Escalated alert for Phil Nash'),
+      backupCoordinatorUserId
+    );
 
     const alertResult = await pgPool.query(
       'SELECT status, escalated_at, coordinator_id, call_sid FROM care_alerts WHERE id = $1',
@@ -384,5 +397,501 @@ describe('AlertEscalationService (integration)', () => {
     expect(alertResult.rows[0].escalated_at).not.toBeNull();
     expect(alertResult.rows[0].coordinator_id).toBe(backupCoordinatorUserId);
     expect(alertResult.rows[0].call_sid).toBeNull();
+  });
+
+  describe('Error Handling', () => {
+    it('should handle SMS send failure gracefully', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-sms-fail'),
+        role: 'caregiver',
+        phone: '+15550001111',
+        firstName: 'SMS',
+        lastName: 'Fail',
+      });
+
+      const coordinatorUserId = await insertUser({
+        email: generateTestEmail('coordinator-sms-fail'),
+        role: 'coordinator',
+        phone: '+15550002222',
+        firstName: 'Coord',
+        lastName: 'Test',
+      });
+
+      await insertCoordinator({
+        userId: coordinatorUserId,
+        phone: '+15550002222',
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'SMS' });
+
+      const alertId = await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId,
+        status: 'initiated',
+        initiatedAt: new Date(baseNow.getTime() - 6 * 60 * 1000),
+      });
+
+      // Mock SMS to fail
+      smsMock.sendSMS.mockRejectedValueOnce(new Error('SMS service unavailable'));
+
+      await service().run();
+
+      // Alert should still be updated to no_answer despite SMS failure
+      const alertResult = await pgPool.query('SELECT status FROM care_alerts WHERE id = $1', [
+        alertId,
+      ]);
+      expect(alertResult.rows[0].status).toBe('no_answer');
+      expect(smsMock.sendSMS).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle voice call initiation failure gracefully', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-voice-fail'),
+        role: 'caregiver',
+        phone: '+15550003333',
+        firstName: 'Voice',
+        lastName: 'Fail',
+      });
+
+      const primaryCoordinatorUserId = await insertUser({
+        email: generateTestEmail('primary-voice-fail'),
+        role: 'coordinator',
+        phone: '+15550004444',
+        firstName: 'Primary',
+        lastName: 'Coord',
+      });
+
+      const backupCoordinatorUserId = await insertUser({
+        email: generateTestEmail('backup-voice-fail'),
+        role: 'coordinator',
+        phone: '+15550005555',
+        firstName: 'Backup',
+        lastName: 'Coord',
+      });
+
+      const backupCoordinatorId = await insertCoordinator({
+        userId: backupCoordinatorUserId,
+        phone: '+15550005555',
+      });
+
+      await insertCoordinator({
+        userId: primaryCoordinatorUserId,
+        phone: '+15550004444',
+        backupCoordinatorId,
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'Voice' });
+
+      const alertId = await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId: primaryCoordinatorUserId,
+        status: 'no_answer',
+        initiatedAt: new Date(baseNow.getTime() - 11 * 60 * 1000),
+      });
+
+      // Mock voice call to fail
+      voiceMock.initiateCall.mockRejectedValueOnce(new Error('Voice service unavailable'));
+
+      await service().run();
+
+      // Alert should not be escalated if voice call fails
+      const alertResult = await pgPool.query(
+        'SELECT status, escalated_at FROM care_alerts WHERE id = $1',
+        [alertId]
+      );
+      expect(alertResult.rows[0].status).toBe('no_answer');
+      expect(alertResult.rows[0].escalated_at).toBeNull();
+      expect(voiceMock.initiateCall).toHaveBeenCalledTimes(1);
+      expect(smsMock.sendSMS).not.toHaveBeenCalled();
+    });
+
+    it('should skip escalation when backup coordinator has no phone', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-no-backup-phone'),
+        role: 'caregiver',
+        phone: '+15550006666',
+        firstName: 'Care',
+        lastName: 'Giver',
+      });
+
+      const primaryCoordinatorUserId = await insertUser({
+        email: generateTestEmail('primary-no-backup-phone'),
+        role: 'coordinator',
+        phone: '+15550007777',
+        firstName: 'Primary',
+        lastName: 'Coord',
+      });
+
+      const backupCoordinatorUserId = await insertUser({
+        email: generateTestEmail('backup-no-phone'),
+        role: 'coordinator',
+        phone: null,
+        firstName: 'Backup',
+        lastName: 'NoPhone',
+      });
+
+      const backupCoordinatorId = await insertCoordinator({
+        userId: backupCoordinatorUserId,
+        phone: null,
+      });
+
+      await insertCoordinator({
+        userId: primaryCoordinatorUserId,
+        phone: '+15550007777',
+        backupCoordinatorId,
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'NoBackup' });
+
+      const alertId = await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId: primaryCoordinatorUserId,
+        status: 'no_answer',
+        initiatedAt: new Date(baseNow.getTime() - 11 * 60 * 1000),
+      });
+
+      await service().run();
+
+      // Alert should remain in no_answer status
+      const alertResult = await pgPool.query(
+        'SELECT status, escalated_at FROM care_alerts WHERE id = $1',
+        [alertId]
+      );
+      expect(alertResult.rows[0].status).toBe('no_answer');
+      expect(alertResult.rows[0].escalated_at).toBeNull();
+      expect(voiceMock.initiateCall).not.toHaveBeenCalled();
+      expect(smsMock.sendSMS).not.toHaveBeenCalled();
+    });
+
+    it('should skip escalation when no backup coordinator configured', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-no-backup'),
+        role: 'caregiver',
+        phone: '+15550008888',
+        firstName: 'Care',
+        lastName: 'Giver',
+      });
+
+      const coordinatorUserId = await insertUser({
+        email: generateTestEmail('coordinator-no-backup'),
+        role: 'coordinator',
+        phone: '+15550009999',
+        firstName: 'Coord',
+        lastName: 'NoBackup',
+      });
+
+      // Create coordinator without backup
+      await insertCoordinator({
+        userId: coordinatorUserId,
+        phone: '+15550009999',
+        backupCoordinatorId: null,
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'NoBackup' });
+
+      const alertId = await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId,
+        status: 'no_answer',
+        initiatedAt: new Date(baseNow.getTime() - 11 * 60 * 1000),
+      });
+
+      await service().run();
+
+      // Alert should remain in no_answer status
+      const alertResult = await pgPool.query(
+        'SELECT status, escalated_at FROM care_alerts WHERE id = $1',
+        [alertId]
+      );
+      expect(alertResult.rows[0].status).toBe('no_answer');
+      expect(alertResult.rows[0].escalated_at).toBeNull();
+      expect(voiceMock.initiateCall).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Boundary Conditions', () => {
+    it('should not send reminder at exactly 5 minutes (boundary)', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-5min'),
+        role: 'caregiver',
+        phone: '+15550010000',
+        firstName: 'Five',
+        lastName: 'Min',
+      });
+
+      const coordinatorUserId = await insertUser({
+        email: generateTestEmail('coordinator-5min'),
+        role: 'coordinator',
+        phone: '+15550011111',
+        firstName: 'Coord',
+        lastName: 'Five',
+      });
+
+      await insertCoordinator({
+        userId: coordinatorUserId,
+        phone: '+15550011111',
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'Five' });
+
+      await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId,
+        status: 'initiated',
+        initiatedAt: new Date(baseNow.getTime() - 5 * 60 * 1000), // Exactly 5 minutes
+      });
+
+      await service().run();
+
+      // Should send reminder (threshold is <=)
+      expect(smsMock.sendSMS).toHaveBeenCalledTimes(1);
+    });
+
+    it('should send reminder just after 5 minutes', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-6min'),
+        role: 'caregiver',
+        phone: '+15550012222',
+        firstName: 'Six',
+        lastName: 'Min',
+      });
+
+      const coordinatorUserId = await insertUser({
+        email: generateTestEmail('coordinator-6min'),
+        role: 'coordinator',
+        phone: '+15550013333',
+        firstName: 'Coord',
+        lastName: 'Six',
+      });
+
+      await insertCoordinator({
+        userId: coordinatorUserId,
+        phone: '+15550013333',
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'Six' });
+
+      await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId,
+        status: 'initiated',
+        initiatedAt: new Date(baseNow.getTime() - 6 * 60 * 1000),
+      });
+
+      await service().run();
+
+      expect(smsMock.sendSMS).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not escalate at exactly 10 minutes (boundary)', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-10min'),
+        role: 'caregiver',
+        phone: '+15550014444',
+        firstName: 'Ten',
+        lastName: 'Min',
+      });
+
+      const primaryCoordinatorUserId = await insertUser({
+        email: generateTestEmail('primary-10min'),
+        role: 'coordinator',
+        phone: '+15550015555',
+        firstName: 'Primary',
+        lastName: 'Ten',
+      });
+
+      const backupCoordinatorUserId = await insertUser({
+        email: generateTestEmail('backup-10min'),
+        role: 'coordinator',
+        phone: '+15550016666',
+        firstName: 'Backup',
+        lastName: 'Ten',
+      });
+
+      const backupCoordinatorId = await insertCoordinator({
+        userId: backupCoordinatorUserId,
+        phone: '+15550016666',
+      });
+
+      await insertCoordinator({
+        userId: primaryCoordinatorUserId,
+        phone: '+15550015555',
+        backupCoordinatorId,
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'Ten' });
+
+      await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId: primaryCoordinatorUserId,
+        status: 'no_answer',
+        initiatedAt: new Date(baseNow.getTime() - 10 * 60 * 1000), // Exactly 10 minutes
+      });
+
+      await service().run();
+
+      // Should escalate (threshold is <=)
+      expect(voiceMock.initiateCall).toHaveBeenCalledTimes(1);
+    });
+
+    it('should escalate just after 10 minutes', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-11min'),
+        role: 'caregiver',
+        phone: '+15550017777',
+        firstName: 'Eleven',
+        lastName: 'Min',
+      });
+
+      const primaryCoordinatorUserId = await insertUser({
+        email: generateTestEmail('primary-11min'),
+        role: 'coordinator',
+        phone: '+15550018888',
+        firstName: 'Primary',
+        lastName: 'Eleven',
+      });
+
+      const backupCoordinatorUserId = await insertUser({
+        email: generateTestEmail('backup-11min'),
+        role: 'coordinator',
+        phone: '+15550019999',
+        firstName: 'Backup',
+        lastName: 'Eleven',
+      });
+
+      const backupCoordinatorId = await insertCoordinator({
+        userId: backupCoordinatorUserId,
+        phone: '+15550019999',
+      });
+
+      await insertCoordinator({
+        userId: primaryCoordinatorUserId,
+        phone: '+15550018888',
+        backupCoordinatorId,
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'Eleven' });
+
+      await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId: primaryCoordinatorUserId,
+        status: 'no_answer',
+        initiatedAt: new Date(baseNow.getTime() - 11 * 60 * 1000),
+      });
+
+      await service().run();
+
+      expect(voiceMock.initiateCall).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Invalid Phone Numbers', () => {
+    it('should skip reminder when coordinator has no phone', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-no-coord-phone'),
+        role: 'caregiver',
+        phone: '+15550020000',
+        firstName: 'Care',
+        lastName: 'Giver',
+      });
+
+      const coordinatorUserId = await insertUser({
+        email: generateTestEmail('coordinator-no-phone'),
+        role: 'coordinator',
+        phone: null,
+        firstName: 'Coord',
+        lastName: 'NoPhone',
+      });
+
+      await insertCoordinator({
+        userId: coordinatorUserId,
+        phone: null,
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'NoPhone' });
+
+      await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId,
+        status: 'initiated',
+        initiatedAt: new Date(baseNow.getTime() - 6 * 60 * 1000),
+      });
+
+      await service().run();
+
+      // Should not send SMS
+      expect(smsMock.sendSMS).not.toHaveBeenCalled();
+
+      // Alert should remain in initiated status
+      const alertResult = await pgPool.query(
+        'SELECT status FROM care_alerts WHERE coordinator_id = $1',
+        [coordinatorUserId]
+      );
+      expect(alertResult.rows[0].status).toBe('initiated');
+    });
+
+    it('should skip caregiver notification when caregiver has no phone', async () => {
+      const caregiverId = await insertUser({
+        email: generateTestEmail('caregiver-no-phone-escalate'),
+        role: 'caregiver',
+        phone: null,
+        firstName: 'Care',
+        lastName: 'NoPhone',
+      });
+
+      const primaryCoordinatorUserId = await insertUser({
+        email: generateTestEmail('primary-caregiver-no-phone'),
+        role: 'coordinator',
+        phone: '+15550021111',
+        firstName: 'Primary',
+        lastName: 'Coord',
+      });
+
+      const backupCoordinatorUserId = await insertUser({
+        email: generateTestEmail('backup-caregiver-no-phone'),
+        role: 'coordinator',
+        phone: '+15550022222',
+        firstName: 'Backup',
+        lastName: 'Coord',
+      });
+
+      const backupCoordinatorId = await insertCoordinator({
+        userId: backupCoordinatorUserId,
+        phone: '+15550022222',
+      });
+
+      await insertCoordinator({
+        userId: primaryCoordinatorUserId,
+        phone: '+15550021111',
+        backupCoordinatorId,
+      });
+
+      const clientId = await insertClient({ firstName: 'Client', lastName: 'NoCaregiver' });
+
+      await insertAlert({
+        clientId,
+        caregiverId,
+        coordinatorUserId: primaryCoordinatorUserId,
+        status: 'no_answer',
+        initiatedAt: new Date(baseNow.getTime() - 11 * 60 * 1000),
+      });
+
+      await service().run();
+
+      // Voice call should be made
+      expect(voiceMock.initiateCall).toHaveBeenCalledTimes(1);
+
+      // SMS should not be sent to caregiver
+      expect(smsMock.sendSMS).not.toHaveBeenCalled();
+    });
   });
 });

@@ -149,12 +149,12 @@ export const env = {
     profilesSampleRate: toNumber(process.env.SENTRY_PROFILES_SAMPLE_RATE, 0.1),
   },
   twilio: {
-    accountSid: process.env.TWILIO_ACCOUNT_SID || '',
-    authToken: process.env.TWILIO_AUTH_TOKEN || '',
-    phoneNumber: process.env.TWILIO_PHONE_NUMBER || '',
+    accountSid: process.env.TWILIO_ACCOUNT_SID || undefined,
+    authToken: process.env.TWILIO_AUTH_TOKEN || undefined,
+    phoneNumber: process.env.TWILIO_PHONE_NUMBER || undefined,
     // Default to http://localhost for local development, but production must use https
     webhookBaseUrl: process.env.TWILIO_WEBHOOK_BASE_URL || 'http://localhost:3000',
-    secretId: process.env.TWILIO_SECRET_ID || '',
+    secretId: process.env.TWILIO_SECRET_ID || undefined,
     // SMS rate limiter fail-open behavior
     // When true: Allow SMS when Redis is unavailable (prioritizes availability)
     // When false: Block SMS when Redis is unavailable (prioritizes security/rate limiting)
@@ -234,14 +234,14 @@ function validateTwilioConfig(): void {
         console.log('✅ Twilio integration configured:', {
           accountSid: maskSensitive(accountSid, { showStart: 4, showEnd: 2, minLength: 10 }),
           phoneNumber: maskSensitive(phoneNumber, { showEnd: 4, minLength: 8 }),
-          webhookBaseUrlConfigured: Boolean(webhookBaseUrl),
+          webhookBaseUrl: isDefaultWebhook ? 'localhost (default)' : webhookBaseUrl,
         });
       }
     } else if (env.app.nodeEnv === 'development') {
       // eslint-disable-next-line no-console
       console.log('✅ Twilio integration configured via AWS Secrets Manager:', {
         secretId,
-        webhookBaseUrlConfigured: Boolean(webhookBaseUrl),
+        webhookBaseUrl: isDefaultWebhook ? 'localhost (default)' : webhookBaseUrl,
       });
     }
 

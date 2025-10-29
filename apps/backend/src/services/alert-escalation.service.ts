@@ -21,6 +21,8 @@ interface AlertEscalationDependencies {
   smsService?: SmsServiceLike;
   voiceService?: VoiceServiceLike;
   now?: () => Date;
+  reminderThresholdMinutes?: number;
+  escalationThresholdMinutes?: number;
 }
 
 interface CoordinatorReminderRow {
@@ -49,13 +51,15 @@ interface BackupEscalationRow extends CoordinatorReminderRow {
  * Alert Escalation Service
  *
  * Runs every minute to:
- * 1. Remind coordinators via SMS when alerts remain unanswered for 5 minutes
- * 2. Escalate to backup coordinators after 10 minutes (voice call + caregiver SMS)
+ * 1. Remind coordinators via SMS when alerts remain unanswered (default: 5 minutes)
+ * 2. Escalate to backup coordinators after threshold (default: 10 minutes) with voice call + caregiver SMS
  */
 export class AlertEscalationService {
   private smsService?: SmsServiceLike;
   private voiceService?: VoiceServiceLike;
   private readonly now: () => Date;
+  private readonly reminderThresholdMinutes: number;
+  private readonly escalationThresholdMinutes: number;
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
 
@@ -66,6 +70,8 @@ export class AlertEscalationService {
     this.smsService = dependencies.smsService;
     this.voiceService = dependencies.voiceService;
     this.now = dependencies.now ?? (() => new Date());
+    this.reminderThresholdMinutes = dependencies.reminderThresholdMinutes ?? 5;
+    this.escalationThresholdMinutes = dependencies.escalationThresholdMinutes ?? 10;
   }
 
   /**
@@ -136,7 +142,9 @@ export class AlertEscalationService {
   }
 
   private async processCoordinatorReminders(): Promise<void> {
-    const reminderThreshold = new Date(this.now().getTime() - 5 * 60 * 1000);
+    const reminderThreshold = new Date(
+      this.now().getTime() - this.reminderThresholdMinutes * 60 * 1000
+    );
 
     const query = `
       SELECT
@@ -236,7 +244,9 @@ export class AlertEscalationService {
   }
 
   private async processBackupEscalations(): Promise<void> {
-    const escalationThreshold = new Date(this.now().getTime() - 10 * 60 * 1000);
+    const escalationThreshold = new Date(
+      this.now().getTime() - this.escalationThresholdMinutes * 60 * 1000
+    );
 
     const query = `
       SELECT
@@ -302,6 +312,8 @@ export class AlertEscalationService {
           continue;
         }
 
+        let callResult: Awaited<ReturnType<VoiceServiceLike['initiateCall']>> | undefined;
+
         try {
           await client.query('BEGIN');
 
@@ -329,34 +341,37 @@ export class AlertEscalationService {
               continue;
             }
 
-            // Initiate voice call before committing transaction
-            const callResult = await this.getVoiceService().initiateCall(
-              alert.backup_coordinator_phone,
-              alert.voice_message_url,
-              { alertId: alert.id }
-            );
+            // Initiate voice call before committing transaction (with 30s timeout)
+            callResult = await Promise.race([
+              this.getVoiceService().initiateCall(
+                alert.backup_coordinator_phone,
+                alert.voice_message_url,
+                { alertId: alert.id }
+              ),
+              new Promise<CallResult>((_, reject) =>
+                setTimeout(() => reject(new Error('Voice call initiation timeout (30s)')), 30000)
+              ),
+            ]);
 
-            if (!callResult?.callSid) {
-              await client.query('ROLLBACK');
-              logError('Voice service did not return a call SID for escalated alert', undefined, {
+            // Update alert with call SID (or null if call failed)
+            if (callResult?.callSid) {
+              await client.query(
+                `
+                  UPDATE care_alerts
+                  SET call_sid = $2,
+                      updated_at = NOW()
+                  WHERE id = $1
+                `,
+                [alert.id, callResult.callSid]
+              );
+            } else {
+              logWarn('Voice service did not return a call SID for escalated alert', {
                 alertId: alert.id,
                 backupCoordinatorId: alert.backup_coordinator_user_id,
               });
-              continue;
             }
 
-            // Update alert with call SID
-            await client.query(
-              `
-                UPDATE care_alerts
-                SET call_sid = $2,
-                    updated_at = NOW()
-                WHERE id = $1
-              `,
-              [alert.id, callResult.callSid]
-            );
-
-            // Only commit after successful call initiation
+            // Commit transaction regardless of call SID status
             await client.query('COMMIT');
           } catch (error) {
             await client.query('ROLLBACK').catch(() => undefined);
@@ -367,17 +382,10 @@ export class AlertEscalationService {
             continue;
           }
 
-          // Retrieve the call SID for logging
-          const callSidResult = await client.query(
-            'SELECT call_sid FROM care_alerts WHERE id = $1',
-            [alert.id]
-          );
-          const callSid = callSidResult.rows[0]?.call_sid;
-
           logInfo('Alert escalated to backup coordinator', {
             alertId: alert.id,
             backupCoordinatorId: alert.backup_coordinator_user_id,
-            callSid,
+            callSid: callResult?.callSid || null,
           });
 
           if (alert.caregiver_phone) {

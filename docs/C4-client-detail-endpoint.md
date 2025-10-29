@@ -7,6 +7,25 @@
 **Developer:** Backend Engineer  
 **Estimated Time:** 1.5d
 
+## Table of Contents
+
+- [Overview](#overview)
+- [What Was Implemented](#what-was-implemented)
+- [API Specification](#api-specification)
+- [Authentication & Authorization Flow](#authentication--authorization-flow)
+- [Zone-Based Access Control](#zone-based-access-control)
+- [Redis Caching Strategy](#redis-caching-strategy)
+- [Design Philosophy](#design-philosophy)
+- [Performance Considerations](#performance-considerations)
+- [Security Considerations](#security-considerations)
+- [Error Handling](#error-handling)
+- [Testing Strategy](#testing-strategy)
+- [Monitoring & Logging](#monitoring--logging)
+- [How to Use](#how-to-use)
+- [Troubleshooting](#troubleshooting)
+- [References](#references)
+- [Appendix: Additional Notes](#appendix-additional-notes)
+
 ## Overview
 
 Successfully implemented the GET /v1/clients/:clientId endpoint with full client details including care plan, emergency contact, recent visits, Redis caching (15 min TTL), and zone-based authorization according to the architecture specifications.
@@ -174,6 +193,26 @@ Authorization: Bearer <access_token>
 
 ## Implementation Details
 
+### Authentication & Authorization Flow
+
+```mermaid
+flowchart TD
+    A[Request: GET /v1/clients/:clientId] --> B{Valid JWT Token?}
+    B -->|No| C[401 Unauthorized]
+    B -->|Yes| D{Valid UUID Format?}
+    D -->|No| E[400 Bad Request]
+    D -->|Yes| F{User Role?}
+    F -->|Admin| G[Access Any Client]
+    F -->|Caregiver/Coordinator| H{Client in User's Zone?}
+    H -->|No| I[403 Forbidden]
+    H -->|Yes| J[Access Allowed]
+    G --> K[Fetch Client Data]
+    J --> K
+    K --> L{Client Exists?}
+    L -->|No| M[404 Not Found]
+    L -->|Yes| N[200 OK with Client Data]
+```
+
 ### Zone-Based Access Control
 
 **Non-Admin Users (Caregivers, Coordinators):**
@@ -227,7 +266,24 @@ Authorization: Bearer <access_token>
 - Will be populated with last 10 visits when visits table exists
 - Structure ready: id, date, staffName, duration
 
-### Redis Caching
+### Redis Caching Strategy
+
+```mermaid
+flowchart TD
+    A[Request Client Detail] --> B{Check Redis Cache}
+    B -->|Cache Hit| C{Zone Access Valid?}
+    C -->|Yes| D[Return Cached Data<br/>meta.cached: true]
+    C -->|No| E[403 Forbidden]
+    B -->|Cache Miss| F[Query Database]
+    F --> G{Client Found?}
+    G -->|No| H[404 Not Found]
+    G -->|Yes| I{Zone Access Valid?}
+    I -->|No| E
+    I -->|Yes| J[Cache Result<br/>TTL: 15 min]
+    J --> K[Return Fresh Data<br/>meta.cached: false]
+    B -->|Cache Error| L[Graceful Degradation<br/>Query Database]
+    L --> G
+```
 
 **Cache Key Format:**
 
@@ -339,37 +395,16 @@ pnpm run test -- clients.detail
 pnpm run test -- --coverage
 ```
 
-## Design Philosophy Applied
+## Design Philosophy
 
-### Simplicity is the Ultimate Sophistication
+This implementation embodies the project's core design principles:
 
-- Single endpoint returns all client data
-- No need for multiple requests
-- Clear, predictable response structure
-- Simple error messages
+- **Simplicity:** Single endpoint returns all client data in one request with a clear, predictable structure
+- **Performance:** Redis caching (15 min TTL) and optimized single-query database access deliver fast response times
+- **Security:** JWT authentication, zone-based access control, and UUID validation ensure uncompromising data protection
+- **User Experience:** Complete information in one call with automatic zone access for non-admins and clear error messages
 
-### Obsess Over Details
-
-- Complete client information in one request
-- Efficient single-query database access
-- Proper date formatting (YYYY-MM-DD)
-- Comprehensive error handling
-- Detailed logging for debugging
-
-### Start with User Experience
-
-- Fast response times via caching
-- All needed information in one call
-- Clear error messages
-- Zone access automatic for non-admins
-
-### Uncompromising Security
-
-- JWT authentication required
-- Zone-based access control enforced
-- UUID validation prevents injection
-- Zone check on both fresh and cached data
-- Clear audit trail via logging
+_See [Appendix: Design Philosophy Details](#appendix-design-philosophy-details) for extended rationale and examples._
 
 ## Integration with Architecture
 
@@ -532,3 +567,102 @@ The GET /v1/clients/:clientId endpoint is now complete and production-ready. The
 - ✅ `docs/C4-client-detail-endpoint.md` - This documentation
 
 **Next Task:** C5 - Create client seed data
+
+---
+
+## Appendix: Additional Notes
+
+### Design Philosophy Details
+
+<details>
+<summary>Click to expand detailed design rationale and examples</summary>
+
+#### Simplicity is the Ultimate Sophistication
+
+**Rationale:** Complex systems are harder to maintain, debug, and extend. By providing a single endpoint that returns all client data, we eliminate the need for multiple API calls and reduce client-side complexity.
+
+**Examples:**
+
+- Single endpoint vs. separate endpoints for client, care plan, emergency contact
+- Clear response structure with nested objects (emergencyContact, carePlan)
+- Predictable error codes (400, 401, 403, 404, 500)
+
+#### Obsess Over Details
+
+**Rationale:** Small details compound into significant user experience improvements. Proper formatting, comprehensive error handling, and efficient queries demonstrate attention to quality.
+
+**Examples:**
+
+- Date formatting: YYYY-MM-DD (ISO 8601 date-only format) for consistency
+- Single-query database access with LEFT JOIN for efficiency
+- Detailed logging with request IDs for debugging
+- JSONB support for flexible medication and allergy data
+
+#### Start with User Experience
+
+**Rationale:** Technology should serve users, not the other way around. Fast response times and complete information reduce friction and improve satisfaction.
+
+**Examples:**
+
+- Redis caching reduces response time from ~50ms to ~5ms
+- All needed information in one call (no need to fetch care plan separately)
+- Automatic zone access for non-admins (no manual filtering needed)
+- Clear error messages guide users to fix issues
+
+#### Uncompromising Security
+
+**Rationale:** Healthcare data requires the highest security standards. Multiple layers of protection ensure data privacy and compliance.
+
+**Examples:**
+
+- JWT authentication prevents unauthorized access
+- Zone-based access control enforces data isolation
+- UUID validation prevents SQL injection attacks
+- Zone check on both fresh and cached data prevents cache-based bypasses
+- Audit trail via structured logging for compliance
+
+</details>
+
+### Integration with Architecture
+
+<details>
+<summary>Click to expand architecture integration details</summary>
+
+#### Supports Current Features
+
+**Care Plan Display:**
+
+- Full care plan with summary for quick overview
+- Medications with dosage and frequency for accurate administration
+- Allergies list for safety and risk prevention
+- Special instructions for personalized care
+
+**Emergency Contact:**
+
+- Name, phone, relationship readily available
+- Critical for emergency situations
+- Always included in response
+
+**Client Profile:**
+
+- Complete demographic information
+- Geographic coordinates for routing and zone assignment
+- Contact information for communication
+
+#### Ready for Future Features
+
+**Recent Visits:**
+
+- Response includes `recentVisits` array (currently empty)
+- Structure defined: id, date, staffName, duration
+- Will be populated when visits table is implemented
+- No API changes needed when visits are added
+
+**Additional Future Enhancements:**
+
+- Photo URL field ready for profile photos
+- Notes field for caregiver observations
+- Preferences field for client preferences
+- Medical history integration
+
+</details>

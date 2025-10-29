@@ -44,7 +44,7 @@ Successfully completed all pre-merge requirements for the backend scaffold PR. A
 **S3 Tests:**
 
 ```bash
-$ pnpm --dir apps/backend run test:s3
+$ pnpm --filter ./apps/backend run test:s3
 
 ✅ S3 connection verified
 ✅ Photo upload URL generation working
@@ -57,7 +57,7 @@ All tests passed successfully!
 **Database Tests:**
 
 ```bash
-$ pnpm --dir apps/backend run db:verify
+$ pnpm --filter ./apps/backend run db:verify
 
 ✅ Table 'users' exists
 ✅ Table 'refresh_tokens' exists
@@ -70,7 +70,7 @@ Schema verification passed!
 **Connection Tests:**
 
 ```bash
-$ pnpm --dir apps/backend run test:connection
+$ pnpm --filter ./apps/backend run test:connection
 
 ✅ Connected to PostgreSQL (version 15.14)
 ✅ Connected to Redis (version 7.4.6)

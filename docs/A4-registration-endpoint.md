@@ -287,8 +287,8 @@ pnpm run test:coverage
 # Run in watch mode
 pnpm run test:watch
 
-# Use test runner script
-./tests/run-tests.sh
+# Use test runner script (run from repository root)
+apps/backend/tests/run-tests.sh
 ```
 
 ### Test Environment
@@ -555,6 +555,9 @@ Response (429):
 - **Database Migration:** `apps/backend/src/db/migrations/001_create_users_auth.sql`
 - **Auth Utils:** `libs/shared/src/auth-utils.ts`
 - **JWT Utils:** `libs/shared/src/jwt-utils.ts`
+
+**Last Verified:** October 10, 2025  
+**Maintenance:** References should be reviewed quarterly by the Backend Team or when major refactoring occurs.
 
 ---
 

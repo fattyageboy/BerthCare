@@ -342,13 +342,28 @@ async function apiRequest(url, options) {
 
 async function refreshAccessToken() {
   try {
+    // Retrieve refresh token from secure storage
+    // (stored during login/registration from response.data.refreshToken)
+    const refreshToken = await getStoredRefreshToken();
+    
+    // If no refresh token exists, user must log in again
+    if (!refreshToken) {
+      console.warn('No refresh token found, redirecting to login');
+      navigateToLogin();
+      return null;
+    }
+
     const response = await fetch('/v1/auth/refresh', {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ refreshToken }),
     });
 
     if (response.ok) {
       const { data } = await response.json();
+      // Store new access token in memory/secure storage
       await saveAccessToken(data.accessToken);
       return data.accessToken;
     }
@@ -357,6 +372,20 @@ async function refreshAccessToken() {
   }
 
   return null;
+}
+
+// Example secure storage implementation (platform-specific)
+// iOS: Use Keychain, Android: Use EncryptedSharedPreferences, Web: Use httpOnly cookies
+async function getStoredRefreshToken(): Promise<string | null> {
+  // Example: return await SecureStore.getItemAsync('refreshToken');
+  // Replace with your platform's secure storage mechanism
+  return await secureStorage.get('refreshToken');
+}
+
+async function saveAccessToken(token: string): Promise<void> {
+  // Store in memory for immediate use, optionally in secure storage
+  // Example: await SecureStore.setItemAsync('accessToken', token);
+  accessToken = token;
 }
 ```
 

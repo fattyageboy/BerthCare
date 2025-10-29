@@ -6,6 +6,7 @@
  */
 
 import { createHash } from 'crypto';
+
 import { Request, Response, NextFunction } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
@@ -56,7 +57,10 @@ function maskIp(ip: string): string {
 function anonymizeIp(ip: string): string {
   const secret = env.logging.webhookIpHashSecret;
   if (secret) {
-    return createHash('sha256').update(`${secret}:${normalizeIp(ip)}`).digest('hex').slice(0, 32);
+    return createHash('sha256')
+      .update(`${secret}:${normalizeIp(ip)}`)
+      .digest('hex')
+      .slice(0, 32);
   }
   return maskIp(ip);
 }
@@ -274,9 +278,6 @@ export async function getWebhookRateLimiter(): Promise<ReturnType<typeof rateLim
       });
 
       return webhookRateLimiterInstance;
-    } catch (error) {
-      webhookRateLimiterInitPromise = null;
-      throw error;
     } finally {
       webhookRateLimiterInitPromise = null;
     }

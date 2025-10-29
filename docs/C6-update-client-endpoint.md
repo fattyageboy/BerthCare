@@ -248,6 +248,53 @@ Successfully implemented the PATCH /v1/clients/:clientId endpoint to update exis
 - Let next GET request populate cache
 - Reduces update latency
 
+**Redis KEYS Performance Trade-off:**
+
+⚠️ **Current Implementation:** Uses `KEYS` command for pattern matching (e.g., `clients:list:zone=*:*`)
+
+**Trade-offs:**
+
+- **Pros:** Simple implementation, works well for small-to-medium deployments
+- **Cons:** O(N) operation that blocks Redis event loop, can cause latency spikes with large key counts
+
+**Acceptable for:**
+
+- MVP and early production (<1,000 cached keys)
+- Expected cache size: ~100-500 keys (4 zones × ~25 list cache variations + detail caches)
+- Typical KEYS execution: <5ms
+
+**Migration Recommendation:**
+When cache grows beyond 10,000 keys or Redis p99 latency exceeds 10ms:
+
+1. Replace `KEYS` with `SCAN` for non-blocking iteration
+2. Use cursor-based iteration: `SCAN 0 MATCH clients:list:zone=*:* COUNT 100`
+3. Process results in batches to avoid blocking
+4. Monitor Redis slow log and latency metrics
+
+**Example SCAN Implementation:**
+
+```typescript
+async function invalidatePattern(pattern: string) {
+  let cursor = '0';
+  do {
+    const [newCursor, keys] = await redisClient.scan(cursor, {
+      MATCH: pattern,
+      COUNT: 100,
+    });
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
+    cursor = newCursor;
+  } while (cursor !== '0');
+}
+```
+
+**Monitoring:**
+
+- Track Redis command latency in CloudWatch
+- Set alert for KEYS command p99 > 10ms
+- Monitor total key count with `DBSIZE` command
+
 ### Database Optimization
 
 **Dynamic Query Building:**

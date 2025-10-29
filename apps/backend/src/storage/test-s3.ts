@@ -111,5 +111,8 @@ async function testS3Connection() {
 
 // Run tests if executed directly
 if (require.main === module) {
-  testS3Connection();
+  testS3Connection().catch((err) => {
+    console.error('testS3Connection failed', err);
+    process.exit(1);
+  });
 }

@@ -798,6 +798,11 @@ export function createClientRoutes(
         const updatedClient = updateResult.rows[0];
 
         // Invalidate caches
+        // PERFORMANCE NOTE: Using KEYS for pattern matching is O(N) and blocks Redis.
+        // For large deployments (>10k cached keys), consider migrating to SCAN for
+        // non-blocking iteration. Current approach is acceptable for MVP with expected
+        // cache size <1000 keys. Monitor Redis latency and migrate to SCAN if p99 > 10ms.
+        // See: https://redis.io/commands/scan/
         try {
           // Clear client detail cache
           await redisClient.del(`client:detail:${clientId}`);

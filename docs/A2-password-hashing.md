@@ -117,9 +117,21 @@ Created a production-ready authentication utility module in `/libs/shared/auth-u
 ### Hashing Performance
 
 - **Target:** ~200ms per hash
-- **Actual:** 100-500ms (system variance acceptable)
+- **Actual:** 100-500ms (system-dependent variance)
 - **Cost Factor:** 12 (2^12 iterations)
 - **Meets Requirement:** ✅ Yes
+
+**Performance Variance Explanation:**
+
+The 100-500ms range around the 200ms target reflects expected system-dependent variance, not a defect. Factors affecting performance include:
+
+- CPU load and available cores
+- Memory pressure and available RAM
+- Hardware differences (CPU generation, clock speed)
+- Operating system scheduling
+- Concurrent operations
+
+This variance is normal and expected behavior for bcrypt operations. When choosing cost factors for your deployment, measure hashing time on representative hardware under representative load conditions to ensure the performance meets your requirements.
 
 ### Verification Performance
 
@@ -173,15 +185,44 @@ libs/shared/
 ```typescript
 import { hashPassword } from '@berthcare/shared';
 
-// Hash password before storing in database
-const userPassword = 'mySecurePassword123';
-const hashedPassword = await hashPassword(userPassword);
+async function registerUser(email: string, password: string) {
+  try {
+    // Validate input before hashing
+    if (!password || password.length < 8) {
+      throw new ValidationError('Password must be at least 8 characters');
+    }
 
-// Store hashedPassword in database
-await db.users.create({
-  email: 'user@example.com',
-  passwordHash: hashedPassword,
-});
+    // Hash password before storing in database
+    const hashedPassword = await hashPassword(password);
+
+    // Store hashedPassword in database
+    await db.users.create({
+      email,
+      passwordHash: hashedPassword,
+    });
+
+    return { success: true };
+  } catch (error) {
+    // Handle hashing failures
+    if (error instanceof ValidationError) {
+      // Input validation failed - return actionable error to user
+      throw error;
+    }
+
+    // Log hashing error with context for debugging
+    logger.error('Password hashing failed during registration', {
+      email,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    // Recommended actions:
+    // 1. Implement retry logic (transient failures)
+    // 2. Surface actionable error to user (e.g., "Registration failed, please try again")
+    // 3. Alert monitoring system if failures persist
+    throw new InternalServerError('Unable to complete registration. Please try again.');
+  }
+}
 ```
 
 ### User Login
@@ -189,20 +230,72 @@ await db.users.create({
 ```typescript
 import { verifyPassword } from '@berthcare/shared';
 
-// Retrieve stored hash from database
-const user = await db.users.findByEmail('user@example.com');
+async function loginUser(email: string, password: string) {
+  try {
+    // Retrieve stored hash from database
+    const user = await db.users.findByEmail(email);
+    if (!user) {
+      // User not found - use same error as invalid password (prevent user enumeration)
+      throw new UnauthorizedError('Invalid credentials');
+    }
 
-// Verify provided password
-const isValid = await verifyPassword(loginPassword, user.passwordHash);
+    // Verify provided password
+    let isValid: boolean;
+    try {
+      isValid = await verifyPassword(password, user.passwordHash);
+    } catch (verificationError) {
+      // Handle verification errors (malformed hash, bcrypt failure, etc.)
+      logger.error('Password verification failed', {
+        userId: user.id,
+        email: user.email,
+        error: verificationError.message,
+        stack: verificationError.stack,
+      });
 
-if (isValid) {
-  // Password correct, proceed with authentication
-  return generateJWT(user);
-} else {
-  // Password incorrect, deny access
-  throw new UnauthorizedError('Invalid credentials');
+      // Return 5xx error for verification failures (not authentication failures)
+      // This indicates a system problem, not incorrect credentials
+      throw new InternalServerError(
+        'Authentication service temporarily unavailable. Please try again.'
+      );
+    }
+
+    if (isValid) {
+      // Password correct, proceed with authentication
+      return generateJWT(user);
+    } else {
+      // Password incorrect (authentication failure, not verification error)
+      // Log failed attempt for security monitoring
+      logger.warn('Failed login attempt', {
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
+
+      throw new UnauthorizedError('Invalid credentials');
+    }
+  } catch (error) {
+    // Re-throw known errors
+    if (error instanceof UnauthorizedError || error instanceof InternalServerError) {
+      throw error;
+    }
+
+    // Log unexpected errors
+    logger.error('Unexpected error during login', {
+      email,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    throw new InternalServerError('Login failed. Please try again.');
+  }
 }
 ```
+
+**Error Handling Summary:**
+
+- **Authentication Failure (incorrect password):** `verifyPassword` returns `false` → throw `UnauthorizedError` (401)
+- **Verification Error (system failure):** `verifyPassword` throws → log error, throw `InternalServerError` (500)
+- **Hashing Error (registration):** `hashPassword` throws → log error, implement retry logic, throw actionable error
+- **Security:** Use same error message for "user not found" and "incorrect password" to prevent user enumeration
 
 ## Next Steps
 

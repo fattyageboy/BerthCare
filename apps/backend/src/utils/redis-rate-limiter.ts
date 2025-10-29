@@ -214,6 +214,14 @@ export class RedisRateLimiter {
     ) {
       throw new Error('Invalid rate limiter config: windowMs must be a positive number');
     }
+
+    if (typeof config.keyPrefix !== 'string') {
+      throw new Error('Invalid rate limiter config: keyPrefix must be a non-empty string');
+    }
+
+    if (config.keyPrefix.trim() === '') {
+      throw new Error('Invalid rate limiter config: keyPrefix must be a non-empty string');
+    }
   }
 
   /**
@@ -501,6 +509,9 @@ export class RedisRateLimiter {
 
   /**
    * Close Redis connection
+   *
+   * This is a final shutdown operation. The instance cannot be reused after calling close().
+   * If you need to reconnect, create a new RedisRateLimiter instance.
    */
   async close(): Promise<void> {
     // Clear cleanup timer
@@ -527,11 +538,5 @@ export class RedisRateLimiter {
         logError('Error closing Redis rate limiter', error instanceof Error ? error : undefined);
       }
     }
-
-    // Allow reuse after shutdown cleanup if needed
-    setImmediate(() => {
-      this.isShuttingDown = false;
-      this.reconnectAttempts = 0;
-    });
   }
 }

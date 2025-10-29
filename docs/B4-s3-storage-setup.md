@@ -274,12 +274,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "photos" {
   bucket = aws_s3_bucket.photos.id
 
   rule {
-    id= "archive-old-photos"
+    id = "archive-old-photos"
     status = "Enabled"
 
     # Transition to Glacier after 1 year
     transition {
- days= 365
+ days = 365
  storage_class = "GLACIER"
     }
 
@@ -444,9 +444,9 @@ $ aws --endpoint-url=http://localhost:4566 \
 ```bash
 # AWS Configuration
 AWS_REGION=ca-central-1
-AWS_ACCESS_KEY_ID=test# LocalStack: 'test'
+AWS_ACCESS_KEY_ID=test # LocalStack: 'test'
 AWS_SECRET_ACCESS_KEY=test # LocalStack: 'test'
-AWS_ENDPOINT=http://localhost:4566# LocalStack endpoint
+AWS_ENDPOINT=http://localhost:4566 # LocalStack endpoint
 
 # S3 Buckets
 S3_BUCKET_PHOTOS=berthcare-photos-dev
@@ -454,7 +454,7 @@ S3_BUCKET_DOCUMENTS=berthcare-documents-dev
 S3_BUCKET_SIGNATURES=berthcare-signatures-dev
 
 # S3 Configuration
-S3_FORCE_PATH_STYLE=true# Required for LocalStack
+S3_FORCE_PATH_STYLE=true # Required for LocalStack
 S3_SIGNATURE_VERSION=v4
 ```
 

@@ -77,6 +77,37 @@ jest.mock('../src/services/twilio-sms.service', () => {
   };
 });
 
+// Helper function to create a client in a specific zone
+async function createClientInZone(
+  pgPool: Pool,
+  zoneId: string,
+  firstName = 'Test',
+  lastName = 'Client'
+): Promise<string> {
+  const clientId = crypto.randomUUID();
+  await pgPool.query(
+    `INSERT INTO clients (
+      id, first_name, last_name, date_of_birth, address,
+      latitude, longitude, zone_id,
+      emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [
+      clientId,
+      firstName,
+      lastName,
+      '1950-01-01',
+      '123 Test St',
+      45.5017,
+      -73.5673,
+      zoneId,
+      'Emergency Contact',
+      '+15559876543',
+      'Daughter',
+    ]
+  );
+  return clientId;
+}
+
 describe('Alert Routes', () => {
   let app: Express;
   let pgPool: Pool;
@@ -205,27 +236,7 @@ describe('Alert Routes', () => {
     );
 
     // Create test client
-    clientId = crypto.randomUUID();
-    await pgPool.query(
-      `INSERT INTO clients (
-        id, first_name, last_name, date_of_birth, address,
-        latitude, longitude, zone_id,
-        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [
-        clientId,
-        'Test',
-        'Client',
-        '1950-01-01',
-        '123 Test St',
-        45.5017,
-        -73.5673,
-        zoneId,
-        'Emergency Contact',
-        '+15559876543',
-        'Daughter',
-      ]
-    );
+    clientId = await createClientInZone(pgPool, zoneId, 'Test', 'Client');
   });
 
   afterAll(async () => {
@@ -337,28 +348,7 @@ describe('Alert Routes', () => {
     it('should enforce zone access control', async () => {
       // Create client in different zone
       const otherZoneId = '550e8400-e29b-41d4-a716-446655440002';
-      const otherClientId = crypto.randomUUID();
-
-      await pgPool.query(
-        `INSERT INTO clients (
-          id, first_name, last_name, date_of_birth, address,
-          latitude, longitude, zone_id,
-          emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [
-          otherClientId,
-          'Other',
-          'Client',
-          '1950-01-01',
-          '456 Other St',
-          43.6532,
-          -79.3832,
-          otherZoneId,
-          'Emergency Contact',
-          '+15559876543',
-          'Son',
-        ]
-      );
+      const otherClientId = await createClientInZone(pgPool, otherZoneId, 'Other', 'Client');
 
       const response = await request(app)
         .post('/api/v1/alerts/voice')
@@ -454,6 +444,34 @@ describe('Alert Routes', () => {
 
       expect(response.status).toBe(404);
       expect(response.body.error.code).toBe('NO_COORDINATOR_AVAILABLE');
+    });
+
+    it('should return 503 when Twilio call initiation fails', async () => {
+      // Mock call initiation to fail for this test only
+      mockInitiateCall.mockRejectedValueOnce(new Error('Twilio service unavailable'));
+
+      const response = await request(app)
+        .post('/api/v1/alerts/voice')
+        .set('Authorization', `Bearer ${caregiverToken}`)
+        .send({
+          clientId,
+          voiceMessageUrl: 'https://s3.amazonaws.com/bucket/voice-message.mp3',
+          alertType: 'medical_concern',
+        });
+
+      expect(response.status).toBe(503);
+      expect(response.body.error.code).toBe('CALL_INITIATION_FAILED');
+      expect(response.body.error.message).toContain('call');
+
+      // Verify mock was called
+      expect(mockInitiateCall).toHaveBeenCalledTimes(1);
+
+      // Verify no alert was created in database (transaction should rollback)
+      const alertResult = await pgPool.query(
+        'SELECT * FROM care_alerts WHERE client_id = $1 AND status = $2',
+        [clientId, 'initiated']
+      );
+      expect(alertResult.rows.length).toBe(0);
     });
   });
 
@@ -618,28 +636,7 @@ describe('Alert Routes', () => {
       it('should enforce zone access control', async () => {
         // Create alert in different zone
         const otherZoneId = '550e8400-e29b-41d4-a716-446655440002';
-        const otherClientId = crypto.randomUUID();
-
-        await pgPool.query(
-          `INSERT INTO clients (
-            id, first_name, last_name, date_of_birth, address,
-            latitude, longitude, zone_id,
-            emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-          [
-            otherClientId,
-            'Other',
-            'Client',
-            '1950-01-01',
-            '456 Other St',
-            43.6532,
-            -79.3832,
-            otherZoneId,
-            'Emergency Contact',
-            '+15559876543',
-            'Son',
-          ]
-        );
+        const otherClientId = await createClientInZone(pgPool, otherZoneId, 'Other', 'Client');
 
         const otherAlertId = crypto.randomUUID();
         await pgPool.query(
@@ -752,6 +749,75 @@ describe('Alert Routes', () => {
 
         expect(response.status).toBe(409);
         expect(response.body.error.code).toBe('ALERT_ALREADY_RESOLVED');
+      });
+
+      it('should handle concurrent resolution attempts', async () => {
+        // Create a second coordinator in the same zone
+        const coordinator2Email = generateTestEmail('coordinator2');
+        const coordinator2Password = 'TestPassword123!';
+
+        const coordinator2RegisterResponse = await request(app).post('/api/v1/auth/register').send({
+          email: coordinator2Email,
+          password: coordinator2Password,
+          firstName: 'Second',
+          lastName: 'Coordinator',
+          role: 'coordinator',
+          zoneId,
+        });
+
+        const coordinator2UserId = coordinator2RegisterResponse.body.data.user.id;
+
+        const coordinator2LoginResponse = await request(app).post('/api/v1/auth/login').send({
+          email: coordinator2Email,
+          password: coordinator2Password,
+          deviceId: 'test-device-id-coordinator2',
+        });
+
+        const coordinator2Token = coordinator2LoginResponse.body.data.accessToken;
+
+        const coordinator2Id = crypto.randomUUID();
+        await pgPool.query(
+          `INSERT INTO coordinators (id, user_id, zone_id, phone_number, is_active)
+           VALUES ($1, $2, $3, $4, true)`,
+          [coordinator2Id, coordinator2UserId, zoneId, '+15551234568']
+        );
+
+        // Attempt to resolve the same alert concurrently
+        const [response1, response2] = await Promise.all([
+          request(app)
+            .patch(`/api/v1/alerts/${alertId}`)
+            .set('Authorization', `Bearer ${coordinatorToken}`)
+            .send({ outcome: 'Resolved by coordinator 1' }),
+          request(app)
+            .patch(`/api/v1/alerts/${alertId}`)
+            .set('Authorization', `Bearer ${coordinator2Token}`)
+            .send({ outcome: 'Resolved by coordinator 2' }),
+        ]);
+
+        // One should succeed (200), one should fail with conflict (409)
+        const statuses = [response1.status, response2.status].sort();
+        expect(statuses).toEqual([200, 409]);
+
+        // The successful response should have resolved status
+        const successResponse = response1.status === 200 ? response1 : response2;
+        expect(successResponse.body.data.status).toBe('resolved');
+
+        // The failed response should indicate alert already resolved
+        const failedResponse = response1.status === 409 ? response1 : response2;
+        expect(failedResponse.body.error.code).toBe('ALERT_ALREADY_RESOLVED');
+
+        // Verify only one outcome was saved in the database
+        const alertResult = await pgPool.query(
+          'SELECT status, outcome, resolved_at FROM care_alerts WHERE id = $1',
+          [alertId]
+        );
+
+        expect(alertResult.rows[0].status).toBe('resolved');
+        expect(alertResult.rows[0].resolved_at).toBeTruthy();
+        // Outcome should be from one of the coordinators
+        expect(['Resolved by coordinator 1', 'Resolved by coordinator 2']).toContain(
+          alertResult.rows[0].outcome
+        );
       });
     });
 

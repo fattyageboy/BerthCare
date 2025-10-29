@@ -53,6 +53,17 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 - [ ] Implement webhook event logging
 - [ ] Create webhook testing utilities
 
+#### Acceptance Criteria & Verification
+
+- [ ] Voice alerts: Successfully initiate call and receive callback with call status
+- [ ] SMS notifications: Send message and receive delivery confirmation within 5 seconds
+- [ ] Webhooks: Verify signature validation rejects tampered requests (test with invalid signature)
+- [ ] API responses: Confirm all endpoints return correct status codes and error messages
+- [ ] Edge cases: Test with invalid phone numbers, network failures, Twilio API errors
+- [ ] Feature toggles: Verify voice/SMS can be independently enabled/disabled via config
+- [ ] Rate limiting: Confirm per-user limits enforced (test exceeding limit returns 429)
+- [ ] Retry logic: Verify failed calls/SMS retry with exponential backoff (check logs)
+
 ---
 
 ### 🏗️ Infrastructure
@@ -75,6 +86,18 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 - [ ] Create database migration scripts with version control
 - [ ] Document rollback procedures for schema changes
 - [ ] Test migration on staging database before production deployment
+- [ ] Test rollback procedures on staging database before production deployment
+
+#### Acceptance Criteria & Verification
+
+- [ ] IaC applied: Terraform/CloudFormation changes applied successfully to staging
+- [ ] Resources tagged: All AWS resources have required tags (Environment, Service, Owner)
+- [ ] Monitoring enabled: CloudWatch dashboards show Twilio metrics (API calls, errors, latency)
+- [ ] Health checks: `/health` endpoint reports Twilio connectivity status
+- [ ] Database migrations: Run migrations on staging, verify schema matches expected structure
+- [ ] Rollback tested: Execute rollback migration, verify data integrity maintained
+- [ ] Connection pooling: Verify Twilio client reuses connections (check connection count)
+- [ ] Secrets Manager: Confirm credentials loaded from Secrets Manager (check startup logs)
 
 ---
 
@@ -150,6 +173,17 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 - [ ] Load testing for high-volume scenarios
 - [ ] End-to-end testing with real phone numbers (sandbox)
 
+#### Acceptance Criteria & Verification
+
+- [ ] Unit coverage: Verify test coverage meets threshold (≥80% for services, ≥90% for critical paths)
+- [ ] Integration tests: Confirm Twilio test credentials work and mock responses match real API behavior
+- [ ] CI passing: All tests pass in CI pipeline without flakiness (3 consecutive green builds)
+- [ ] Edge cases: Verify tests cover invalid inputs, network timeouts, API rate limits, malformed webhooks
+- [ ] Load testing: Confirm system handles 100 concurrent SMS/voice requests without degradation
+- [ ] Mocks validated: Compare mock responses against Twilio API documentation for accuracy
+- [ ] Error handling: Verify all error scenarios have corresponding test cases (API errors, retries, fallbacks)
+- [ ] E2E tests: Successfully send test SMS and voice call to sandbox numbers, receive callbacks
+
 ---
 
 ### 📝 Documentation
@@ -174,6 +208,17 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 - [ ] Verify production connectivity
 - [ ] Monitor initial production usage
 
+#### Acceptance Criteria & Verification
+
+- [ ] Rollback tested: Execute deployment rollback procedure and verify service restores to previous version
+- [ ] Post-deploy smoke tests: Send test SMS and voice call in production, confirm delivery within SLA
+- [ ] Zero-downtime: Verify deployment completes without service interruption (monitor error rates)
+- [ ] Configuration validated: Confirm all environment variables loaded correctly (check startup logs)
+- [ ] Webhook connectivity: Test production webhook endpoints receive and process Twilio callbacks
+- [ ] Monitoring active: Verify dashboards show live metrics post-deployment (API calls, latency, errors)
+- [ ] Alerts functional: Trigger test alert and confirm notification channels fire correctly
+- [ ] Gradual rollout: Verify canary deployment serves 10% traffic before full rollout (if applicable)
+
 ---
 
 ## Technical Notes
@@ -195,11 +240,22 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 
 ### Environment Variables
 
+> **🔒 Security Note: Credential Handling**
+>
+> **DO NOT** commit Twilio credentials to version control:
+>
+> - Load values from **AWS Secrets Manager** (production/staging)
+> - Use **GitHub Actions secrets** for CI/CD pipelines
+> - Store in local `.env` files (ensure `.env` is in `.gitignore`)
+> - Use environment secret managers (Vault, Parameter Store, etc.)
+> - **Rotate keys regularly** and restrict IAM/access permissions
+> - Never paste real credentials in PR descriptions or comments
+
 ```
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_PHONE_NUMBER=
-TWILIO_WEBHOOK_BASE_URL=
+TWILIO_ACCOUNT_SID=          # Load from secure secret store
+TWILIO_AUTH_TOKEN=           # Load from secure secret store
+TWILIO_PHONE_NUMBER=         # Load from secure secret store
+TWILIO_WEBHOOK_BASE_URL=     # Public URL, safe to commit
 ```
 
 ---
@@ -233,9 +289,25 @@ TWILIO_WEBHOOK_BASE_URL=
 
 ---
 
-**Status**: 🚧 Draft - Work in Progress
+## PR Information (Fill in for this PR)
 
-**Estimated Completion**: 10-15 days (2-3 weeks)
+<!-- ⚠️ CONTRIBUTORS: Update the fields below for your specific PR -->
+
+**Status**: [REPLACE: e.g., 🚧 Draft, ✅ Ready for Review, 🔄 In Review]
+
+**Estimated Completion**: [REPLACE: e.g., 10-15 days, 2-3 weeks, or specific date]
+
+**Related Tickets**: [REPLACE: e.g., #6, #123, or "N/A"]
+
+**Assignee**: [REPLACE: e.g., @username, Backend Dev Team]
+
+---
+
+## Estimated Effort Breakdown (Reference)
+
+<!-- This is template guidance - use as reference for planning -->
+
+**Total Estimated Time**: 10-15 days (2-3 weeks)
 
 **Breakdown by Deliverable**:
 
@@ -247,7 +319,3 @@ TWILIO_WEBHOOK_BASE_URL=
 - Testing: 2-3 days (unit, integration, load testing, end-to-end validation)
 - Documentation: 1 day (API docs, configuration guides, troubleshooting)
 - Deployment & Monitoring: 1-2 days (staging/production setup, observability, rollout)
-
-**Related Tickets**: #6
-
-**Assignee**: Backend Dev Team

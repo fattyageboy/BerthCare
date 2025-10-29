@@ -170,6 +170,9 @@ This documentation file.
 
 ## Database Interactions
 
+> **Database System:** PostgreSQL  
+> All queries use PostgreSQL parameterized queries with `$N` placeholders (e.g., `$1`, `$2`) to prevent SQL injection. Implementers must use PostgreSQL-compatible clients/drivers (e.g., `pg` for Node.js) with proper parameter binding.
+
 ### Queries Used
 
 1. **User Lookup:**
