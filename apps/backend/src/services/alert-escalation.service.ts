@@ -53,8 +53,8 @@ interface BackupEscalationRow extends CoordinatorReminderRow {
  * 2. Escalate to backup coordinators after 10 minutes (voice call + caregiver SMS)
  */
 export class AlertEscalationService {
-  private readonly smsService?: SmsServiceLike;
-  private readonly voiceService?: VoiceServiceLike;
+  private smsService?: SmsServiceLike;
+  private voiceService?: VoiceServiceLike;
   private readonly now: () => Date;
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
@@ -457,13 +457,15 @@ export class AlertEscalationService {
     if (this.smsService) {
       return this.smsService;
     }
-    return new TwilioSMSService();
+    this.smsService = new TwilioSMSService();
+    return this.smsService;
   }
 
   private getVoiceService(): VoiceServiceLike {
     if (this.voiceService) {
       return this.voiceService;
     }
-    return new TwilioVoiceService();
+    this.voiceService = new TwilioVoiceService();
+    return this.voiceService;
   }
 }
