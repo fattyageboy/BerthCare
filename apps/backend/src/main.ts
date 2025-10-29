@@ -170,11 +170,10 @@ async function shutdown(signal: NodeJS.Signals) {
             if (err) {
               reject(err);
             } else {
+              httpServer = null;
               resolve();
             }
           });
-
-          httpServer = null;
         }),
     },
     {

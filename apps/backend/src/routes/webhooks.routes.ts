@@ -222,13 +222,30 @@ export async function createWebhookRoutes(pgPool: Pool): Promise<Router> {
           return res.status(200).send('OK');
         }
 
-        const updateQuery = timestampField
-          ? `UPDATE care_alerts 
-             SET status = $1, ${timestampField} = NOW(), updated_at = NOW()
-             WHERE call_sid = $2 AND status = $3 AND deleted_at IS NULL`
-          : `UPDATE care_alerts 
+        // Use explicit prebuilt queries to avoid SQL injection risk
+        let updateQuery: string;
+        if (timestampField === 'answered_at') {
+          updateQuery = `UPDATE care_alerts 
+             SET status = $1, answered_at = COALESCE(answered_at, NOW()), updated_at = NOW()
+             WHERE call_sid = $2 AND status = $3 AND deleted_at IS NULL`;
+        } else if (timestampField === 'resolved_at') {
+          updateQuery = `UPDATE care_alerts 
+             SET status = $1, resolved_at = COALESCE(resolved_at, NOW()), updated_at = NOW()
+             WHERE call_sid = $2 AND status = $3 AND deleted_at IS NULL`;
+        } else if (timestampField === null) {
+          updateQuery = `UPDATE care_alerts 
              SET status = $1, updated_at = NOW()
              WHERE call_sid = $2 AND status = $3 AND deleted_at IS NULL`;
+        } else {
+          // Invalid timestampField - log error and skip update
+          logError('Invalid timestamp field in webhook processing', undefined, {
+            callSid,
+            alertId,
+            timestampField,
+            message: 'Unexpected timestamp field value',
+          });
+          return res.status(200).send('OK');
+        }
 
         const result = await pgPool.query(updateQuery, [alertStatus, callSid, currentStatus]);
 

@@ -42,7 +42,7 @@ function maskIp(ip: string): string {
   if (ipv4Match) {
     const parts = normalized.split('.');
     parts[3] = '0';
-    return `${parts.join('.')}\/24`;
+    return `${parts.join('.')}/24`;
   }
 
   if (normalized.includes(':')) {

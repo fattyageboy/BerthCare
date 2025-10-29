@@ -11,7 +11,7 @@
 -- Enforces E.164 format: +[country code][number] (e.g., +15551234567)
 
 ALTER TABLE users
-ADD COLUMN phone_number VARCHAR(20);
+ADD COLUMN phone_number VARCHAR(30);
 
 -- ============================================================================
 -- ADD CHECK CONSTRAINT

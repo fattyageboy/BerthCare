@@ -150,7 +150,7 @@ libs/shared/
 ├── src/
 │   └── auth-utils.ts          # Implementation (170 lines)
 ├── tests/
-│   └── auth-utils.test.ts     # Test suite (31 tests)
+│   └── auth-utils.test.ts     # Test suite (28 tests)
 └── tsconfig.spec.json         # Updated to include tests/ directory
 ```
 
@@ -232,7 +232,7 @@ This implementation is ready for integration with:
 ## Verification Checklist
 
 - ✅ Implementation complete
-- ✅ All tests passing (31/31)
+- ✅ All tests passing (28/28)
 - ✅ Performance requirements met (~200ms)
 - ✅ Security requirements met (cost factor 12)
 - ✅ Timing attack resistance verified

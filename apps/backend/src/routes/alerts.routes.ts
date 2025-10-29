@@ -96,6 +96,7 @@ export function createAlertRoutes(
 ): Router {
   const router = Router();
   const twilioService = new TwilioVoiceService();
+  const twilioSMSService = new TwilioSMSService();
 
   /**
    * POST /v1/alerts/voice
@@ -649,7 +650,6 @@ export function createAlertRoutes(
         // Notify caregiver via SMS if phone number available
         if (alert?.caregiver_phone) {
           try {
-            const twilioSMSService = new TwilioSMSService();
             const clientName = `${alert.client_first_name} ${alert.client_last_name}`;
             const truncatedOutcome = sanitizeOutcomeForSMS(outcomeTrimmed);
             const message = `Alert resolved for ${clientName}. Outcome: ${truncatedOutcome}`;
@@ -694,8 +694,7 @@ export function createAlertRoutes(
       } catch (error) {
         const authRequest = req as AuthenticatedRequest;
         const requestIdHeader = req.headers['x-request-id'];
-        const outcomeValue =
-          typeof req.body?.outcome === 'string' ? req.body.outcome : undefined;
+        const outcomeValue = typeof req.body?.outcome === 'string' ? req.body.outcome : undefined;
         const sanitizedBody = {
           outcomePresent: outcomeValue ? outcomeValue.length > 0 : Boolean(req.body?.outcome),
           outcomeLength: outcomeValue?.length,

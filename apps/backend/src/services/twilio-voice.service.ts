@@ -148,6 +148,17 @@ export class TwilioVoiceService {
   }
 
   /**
+   * Force refresh the Twilio client and credentials.
+   * Clears cached client and credentials so the next call will recreate them.
+   * Useful for forcing credential rotation without waiting for automatic detection.
+   */
+  forceRefreshClient(): void {
+    this.client = null;
+    this.credentials = undefined;
+    this.credentialsPromise = undefined;
+  }
+
+  /**
    * Initiate a voice call to a coordinator.
    */
   async initiateCall(
@@ -230,7 +241,7 @@ export class TwilioVoiceService {
 
       const result: CallResult = {
         callSid: call.sid,
-        status: this.normalizeStatus(String(call.status ?? 'queued')),
+        status: this.normalizeStatus(String(call.status), call.sid),
         to: call.to ?? to,
         from: call.from ?? fromNumber,
         initiatedAt: new Date(),
@@ -291,11 +302,12 @@ export class TwilioVoiceService {
    * Process call status webhook from Twilio.
    */
   processCallStatusWebhook(webhookData: Record<string, unknown>): CallEvent {
+    const callSid = String(webhookData.CallSid || '');
     const statusRaw = String(webhookData.CallStatus || '');
-    const status = this.normalizeStatus(statusRaw);
+    const status = this.normalizeStatus(statusRaw, callSid);
 
     const event: CallEvent = {
-      callSid: String(webhookData.CallSid || ''),
+      callSid,
       status,
       to: String(webhookData.To || ''),
       from: String(webhookData.From || ''),
@@ -349,7 +361,7 @@ export class TwilioVoiceService {
     }
   }
 
-  private normalizeStatus(status: string): CallStatus {
+  private normalizeStatus(status: string, callSid?: string): CallStatus {
     const allowedStatuses: CallStatus[] = [
       'queued',
       'ringing',
@@ -362,24 +374,39 @@ export class TwilioVoiceService {
       'canceled',
     ];
 
-    return (allowedStatuses.find((value) => value === status) ?? 'queued') as CallStatus;
+    const normalized = allowedStatuses.find((value) => value === status);
+
+    if (!normalized) {
+      logError('Unexpected Twilio call status value', undefined, {
+        service: 'twilio-voice',
+        rawStatus: status,
+        callSid,
+        fallbackStatus: 'queued',
+      });
+      return 'queued';
+    }
+
+    return normalized;
   }
 
   private async ensureClient(): Promise<Twilio> {
-    if (this.client) {
-      return this.client;
+    const credentials = await this.ensureCredentials();
+
+    // Check if credentials have changed and recreate client if needed
+    if (
+      !this.client ||
+      !this.credentials ||
+      this.credentials.accountSid !== credentials.accountSid ||
+      this.credentials.authToken !== credentials.authToken
+    ) {
+      this.client = new Twilio(credentials.accountSid, credentials.authToken);
+      this.credentials = credentials;
     }
 
-    const credentials = await this.ensureCredentials();
-    this.client = new Twilio(credentials.accountSid, credentials.authToken);
     return this.client;
   }
 
   private async ensureCredentials(): Promise<TwilioVoiceCredentials> {
-    if (this.credentials) {
-      return this.credentials;
-    }
-
     if (this.credentialsPromise) {
       return this.credentialsPromise;
     }
@@ -388,7 +415,6 @@ export class TwilioVoiceService {
     this.credentialsPromise = pendingCredentials;
 
     const credentials = await pendingCredentials;
-    this.credentials = credentials;
     this.authToken = credentials.authToken;
     this.accountSid = credentials.accountSid;
     this.fromNumber = credentials.phoneNumber;

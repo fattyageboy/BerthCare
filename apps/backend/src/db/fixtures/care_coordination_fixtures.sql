@@ -8,11 +8,9 @@
 -- Instructions:
 -- 1. Apply all migrations first (001-009)
 -- 2. Run this fixture file: psql -U postgres -d berthcare -f care_coordination_fixtures.sql
--- 3. Save the returned IDs from RETURNING clauses for use in subsequent INSERTs
--- 4. Replace <zone_id>, <caregiver_user_id>, etc. with actual returned values
 --
--- Note: This file demonstrates the fixture creation process. In practice,
--- you may want to use a transaction and variables to capture RETURNING values.
+-- Note: This script uses a PL/pgSQL DO block to automatically capture and reuse
+-- generated IDs across all INSERT statements. No manual copy/paste required.
 -- ============================================================================
 
 -- ============================================================================
@@ -46,7 +44,7 @@
 --   - id UUID PRIMARY KEY
 --   - user_id UUID NOT NULL UNIQUE (references users)
 --   - zone_id UUID NOT NULL (references zones)
---   - phone_number VARCHAR(20) NOT NULL
+--   - phone_number VARCHAR(30) NOT NULL
 --   - is_active BOOLEAN NOT NULL DEFAULT true
 --
 -- care_alerts (from migration 008):
@@ -58,110 +56,192 @@
 --   - status care_alert_status NOT NULL DEFAULT 'initiated'
 -- ============================================================================
 
-BEGIN;
+DO $$
+DECLARE
+    v_zone_id UUID;
+    v_caregiver_user_id UUID;
+    v_coordinator_user_id UUID;
+    v_client_id UUID;
+    v_coordinator_id UUID;
+BEGIN
+    -- ============================================================================
+    -- Step 1: Create a test zone
+    -- ============================================================================
+    INSERT INTO zones (id, name, region)
+    VALUES (
+        gen_random_uuid(),
+        'Test Zone - Care Coordination',
+        'Test Region'
+    )
+    RETURNING id INTO v_zone_id;
 
--- ============================================================================
--- Step 1: Create a test zone
--- ============================================================================
+    RAISE NOTICE 'Created zone with ID: %', v_zone_id;
 
-INSERT INTO zones (id, name, region)
-VALUES (gen_random_uuid(), 'Test Zone - Care Coordination', 'Test Region')
-RETURNING id AS zone_id;
+    -- ============================================================================
+    -- Step 2: Create test users (caregiver and coordinator)
+    -- ============================================================================
+    INSERT INTO users (
+        id,
+        email,
+        password_hash,
+        first_name,
+        last_name,
+        role,
+        zone_id,
+        is_active
+    )
+    VALUES (
+        gen_random_uuid(),
+        'caregiver.test@example.com',
+        '$2b$12$dummyhashfortest',
+        'Test',
+        'Caregiver',
+        'caregiver',
+        v_zone_id,
+        true
+    )
+    RETURNING id INTO v_caregiver_user_id;
 
--- IMPORTANT: Save the returned zone_id from above
--- Example: zone_id = '12345678-1234-1234-1234-123456789012'
--- Replace '<zone_id>' below with this value
+    RAISE NOTICE 'Created caregiver user with ID: %', v_caregiver_user_id;
 
--- ============================================================================
--- Step 2: Create test users (caregiver and coordinator)
--- ============================================================================
+    INSERT INTO users (
+        id,
+        email,
+        password_hash,
+        first_name,
+        last_name,
+        role,
+        zone_id,
+        is_active
+    )
+    VALUES (
+        gen_random_uuid(),
+        'coordinator.test@example.com',
+        '$2b$12$dummyhashfortest',
+        'Test',
+        'Coordinator',
+        'coordinator',
+        v_zone_id,
+        true
+    )
+    RETURNING id INTO v_coordinator_user_id;
 
-INSERT INTO users (id, email, password_hash, first_name, last_name, role, zone_id, is_active)
-VALUES
-  (gen_random_uuid(), 'caregiver.test@example.com', '$2b$12$dummyhashfortest', 'Test', 'Caregiver', 'caregiver', '<zone_id>', true),
-  (gen_random_uuid(), 'coordinator.test@example.com', '$2b$12$dummyhashfortest', 'Test', 'Coordinator', 'coordinator', '<zone_id>', true)
-RETURNING id, role, email;
+    RAISE NOTICE 'Created coordinator user with ID: %', v_coordinator_user_id;
 
--- IMPORTANT: Save the returned user IDs from above
--- Example: caregiver_user_id = '23456789-2345-2345-2345-234567890123'
---          coordinator_user_id = '34567890-3456-3456-3456-345678901234'
--- Replace '<caregiver_user_id>' and '<coordinator_user_id>' below with these values
+    -- ============================================================================
+    -- Step 3: Create a test client
+    -- ============================================================================
+    INSERT INTO clients (
+        id,
+        first_name,
+        last_name,
+        date_of_birth,
+        zone_id
+    )
+    VALUES (
+        gen_random_uuid(),
+        'Test',
+        'Client',
+        '1950-01-01',
+        v_zone_id
+    )
+    RETURNING id INTO v_client_id;
 
--- ============================================================================
--- Step 3: Create a test client
--- ============================================================================
+    RAISE NOTICE 'Created client with ID: %', v_client_id;
 
-INSERT INTO clients (id, first_name, last_name, date_of_birth, zone_id)
-VALUES (gen_random_uuid(), 'Test', 'Client', '1950-01-01', '<zone_id>')
-RETURNING id AS client_id;
+    -- ============================================================================
+    -- Step 4: Create a test coordinator record
+    -- ============================================================================
+    INSERT INTO coordinators (
+        id,
+        user_id,
+        zone_id,
+        phone_number,
+        is_active
+    )
+    VALUES (
+        gen_random_uuid(),
+        v_coordinator_user_id,
+        v_zone_id,
+        '+15551234567',
+        true
+    )
+    RETURNING id INTO v_coordinator_id;
 
--- IMPORTANT: Save the returned client_id from above
--- Example: client_id = '45678901-4567-4567-4567-456789012345'
--- Replace '<client_id>' below with this value
+    RAISE NOTICE 'Created coordinator record with ID: %', v_coordinator_id;
 
--- ============================================================================
--- Step 4: Create a test coordinator record
--- ============================================================================
+    -- ============================================================================
+    -- Step 5: Create test care alerts
+    -- ============================================================================
 
-INSERT INTO coordinators (id, user_id, zone_id, phone_number, is_active)
-VALUES (gen_random_uuid(), '<coordinator_user_id>', '<zone_id>', '+15551234567', true)
-RETURNING id AS coordinator_id;
+    -- Alert 1: Initiated medical concern
+    INSERT INTO care_alerts (
+        client_id,
+        staff_id,
+        coordinator_id,
+        alert_type,
+        status
+    )
+    VALUES (
+        v_client_id,
+        v_caregiver_user_id,
+        v_coordinator_user_id,
+        'medical_concern',
+        'initiated'
+    );
 
--- IMPORTANT: Save the returned coordinator_id from above
--- Example: coordinator_id = '56789012-5678-5678-5678-567890123456'
+    RAISE NOTICE 'Created care alert 1: medical_concern (initiated)';
 
--- ============================================================================
--- Step 5: Create test care alerts
--- ============================================================================
+    -- Alert 2: Resolved medication issue
+    INSERT INTO care_alerts (
+        client_id,
+        staff_id,
+        coordinator_id,
+        alert_type,
+        status,
+        outcome,
+        initiated_at,
+        answered_at,
+        resolved_at
+    )
+    VALUES (
+        v_client_id,
+        v_caregiver_user_id,
+        v_coordinator_user_id,
+        'medication_issue',
+        'resolved',
+        'Medication dosage adjusted per doctor instructions',
+        CURRENT_TIMESTAMP - INTERVAL '1 hour',
+        CURRENT_TIMESTAMP - INTERVAL '58 minutes',
+        CURRENT_TIMESTAMP - INTERVAL '45 minutes'
+    );
 
--- Alert 1: Initiated medical concern
-INSERT INTO care_alerts (
-  client_id, staff_id, coordinator_id,
-  alert_type, status
-) VALUES (
-  '<client_id>',
-  '<caregiver_user_id>',
-  '<coordinator_user_id>',
-  'medical_concern',
-  'initiated'
-)
-RETURNING id, alert_type, status, initiated_at;
+    RAISE NOTICE 'Created care alert 2: medication_issue (resolved)';
 
--- Alert 2: Resolved medication issue
-INSERT INTO care_alerts (
-  client_id, staff_id, coordinator_id,
-  alert_type, status, outcome,
-  initiated_at, answered_at, resolved_at
-) VALUES (
-  '<client_id>',
-  '<caregiver_user_id>',
-  '<coordinator_user_id>',
-  'medication_issue',
-  'resolved',
-  'Medication dosage adjusted per doctor instructions',
-  CURRENT_TIMESTAMP - INTERVAL '1 hour',
-  CURRENT_TIMESTAMP - INTERVAL '58 minutes',
-  CURRENT_TIMESTAMP - INTERVAL '45 minutes'
-)
-RETURNING id, alert_type, status, outcome;
+    -- Alert 3: Escalated safety concern
+    INSERT INTO care_alerts (
+        client_id,
+        staff_id,
+        coordinator_id,
+        alert_type,
+        status,
+        initiated_at,
+        escalated_at
+    )
+    VALUES (
+        v_client_id,
+        v_caregiver_user_id,
+        v_coordinator_user_id,
+        'safety_concern',
+        'escalated',
+        CURRENT_TIMESTAMP - INTERVAL '30 minutes',
+        CURRENT_TIMESTAMP - INTERVAL '25 minutes'
+    );
 
--- Alert 3: Escalated safety concern
-INSERT INTO care_alerts (
-  client_id, staff_id, coordinator_id,
-  alert_type, status,
-  initiated_at, escalated_at
-) VALUES (
-  '<client_id>',
-  '<caregiver_user_id>',
-  '<coordinator_user_id>',
-  'safety_concern',
-  'escalated',
-  CURRENT_TIMESTAMP - INTERVAL '30 minutes',
-  CURRENT_TIMESTAMP - INTERVAL '25 minutes'
-)
-RETURNING id, alert_type, status, escalated_at;
+    RAISE NOTICE 'Created care alert 3: safety_concern (escalated)';
 
-COMMIT;
+    RAISE NOTICE 'All test fixtures created successfully!';
+END $$;
 
 -- ============================================================================
 -- ALTERNATIVE: Query existing records instead of creating fixtures
@@ -169,11 +249,30 @@ COMMIT;
 -- If you already have data in your database, you can query existing records:
 
 -- Find existing IDs to use for testing
-SELECT
-  (SELECT id FROM zones LIMIT 1) AS zone_id,
-  (SELECT id FROM users WHERE role = 'caregiver' LIMIT 1) AS caregiver_id,
-  (SELECT id FROM users WHERE role = 'coordinator' LIMIT 1) AS coordinator_id,
-  (SELECT id FROM clients LIMIT 1) AS client_id;
+SELECT (
+        SELECT id
+        FROM zones
+        LIMIT 1
+    ) AS zone_id,
+    (
+        SELECT id
+        FROM users
+        WHERE
+            role = 'caregiver'
+        LIMIT 1
+    ) AS caregiver_id,
+    (
+        SELECT id
+        FROM users
+        WHERE
+            role = 'coordinator'
+        LIMIT 1
+    ) AS coordinator_id,
+    (
+        SELECT id
+        FROM clients
+        LIMIT 1
+    ) AS client_id;
 
 -- Use the IDs from the query above in your INSERT statements
 

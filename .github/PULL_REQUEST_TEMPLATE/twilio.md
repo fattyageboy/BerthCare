@@ -64,18 +64,66 @@ This PR implements Twilio integration for BerthCare, enabling voice alerts, SMS 
 - [ ] Add Twilio service configuration
 - [ ] Implement connection pooling
 - [ ] Add health check for Twilio connectivity
+- [ ] Create database schema for phone numbers (user associations, verification status, opt-in/opt-out preferences)
+- [ ] Create database schema for message history (SMS/voice records, timestamps, delivery status, content)
+- [ ] Create database schema for webhook event logs (event type, payload, processing status, retry attempts)
+- [ ] Define data retention policy for message history (GDPR/compliance requirements, archival strategy)
+- [ ] Define data archival policy for old communications (cold storage, deletion timelines)
+- [ ] Add database indexes for delivery status queries (failed messages, pending retries)
+- [ ] Add database indexes for audit trail queries (user communication history, compliance reports)
+- [ ] Add database indexes for webhook event lookups (event ID, timestamp, processing status)
+- [ ] Create database migration scripts with version control
+- [ ] Document rollback procedures for schema changes
+- [ ] Test migration on staging database before production deployment
 
 ---
 
 ### 🔒 Security & Compliance
 
-- [ ] Secure credential storage (environment variables/secrets manager)
-- [ ] Implement webhook signature validation
-- [ ] Add rate limiting to prevent abuse
-- [ ] Ensure GDPR compliance for phone number storage
-- [ ] Implement data retention policies
-- [ ] Add audit logging for all communications
-- [ ] Handle PII appropriately in logs
+#### Encryption & PII Protection
+
+- [ ] Implement app-level field encryption for stored phone numbers using AWS KMS-backed keys
+- [ ] Configure database column-level encryption for message content with key alias rotation support
+- [ ] Document key management procedures (key creation, access policies, backup/recovery) in security runbook
+- [ ] Encrypt phone numbers at rest using AES-256-GCM with per-record data encryption keys (DEKs)
+- [ ] Store only encrypted phone numbers in database; decrypt only in memory for API calls
+- [ ] Implement webhook signature validation using Twilio's X-Twilio-Signature header verification
+
+#### Credential Management & Rotation
+
+- [ ] Store Twilio credentials (Account SID, Auth Token) in AWS Secrets Manager with automatic rotation enabled
+- [ ] Define credential rotation policy: rotate Auth Token every 90 days minimum
+- [ ] Implement automated rotation via Secrets Manager Lambda rotation function
+- [ ] Document emergency rotation steps (compromise response, immediate rotation trigger, service restart)
+- [ ] Add monitoring alerts for credential expiration (30-day, 7-day warnings)
+- [ ] Test credential rotation in staging without service disruption
+
+#### Audit Logging & Compliance
+
+- [ ] Define audit log scope: log message ID, recipient country code, delivery status, timestamp, retry count
+- [ ] Explicitly forbid logging: full phone numbers, message body content, user PII
+- [ ] Implement structured audit logs with consistent schema (JSON format, indexed fields)
+- [ ] Add GDPR-compliant data retention: 90 days for operational logs, 7 years for compliance audit trails
+- [ ] Create audit log queries for compliance reports (delivery success rates, failed messages by country)
+- [ ] Implement rate limiting to prevent abuse (per-user, per-IP, per-endpoint thresholds)
+
+#### Log Sanitization & Redaction
+
+- [ ] Redact phone numbers in logs: store only last 4 digits (e.g., `***-***-1234`) or tokenized IDs
+- [ ] Hash phone numbers using HMAC-SHA256 with secret salt for correlation without exposing PII
+- [ ] Sanitize webhook payloads before logging: remove `From`, `To`, `Body` fields, keep only `MessageSid`, `Status`
+- [ ] Example acceptable format: `{"message_id": "SM...", "status": "delivered", "recipient_token": "hash_abc123", "country": "US"}`
+- [ ] Implement log scrubbing middleware to automatically redact PII patterns (phone regex, email patterns)
+- [ ] Add unit tests to verify no PII leaks in log output (test with sample phone numbers, message content)
+
+#### Acceptance Criteria & Verification
+
+- [ ] Verify encryption: query database directly and confirm phone numbers are encrypted (not plaintext)
+- [ ] Verify rotation: trigger manual credential rotation and confirm service continues without errors
+- [ ] Verify audit logging: review logs and confirm only allowed fields are present (no phone numbers, no message bodies)
+- [ ] Verify redaction: search all logs for phone number patterns and confirm zero matches of full numbers
+- [ ] Conduct security review with compliance team before production deployment
+- [ ] Perform penetration testing on webhook endpoints (signature bypass attempts, replay attacks)
 
 ---
 
@@ -187,6 +235,19 @@ TWILIO_WEBHOOK_BASE_URL=
 
 **Status**: 🚧 Draft - Work in Progress
 
-**Estimated Completion**: 0.1 days
+**Estimated Completion**: 10-15 days (2-3 weeks)
+
+**Breakdown by Deliverable**:
+
+- Voice Alerts: 2-3 days (service setup, templates, callbacks, retry logic, testing)
+- SMS Notifications: 2-3 days (service setup, templates, delivery tracking, queue, testing)
+- Webhooks: 2-3 days (endpoints, signature verification, event handling, logging)
+- Infrastructure & Persistence: 2-3 days (database schemas, migrations, indexes, retention policies)
+- Security & Compliance: 1-2 days (credential management, GDPR compliance, audit logging)
+- Testing: 2-3 days (unit, integration, load testing, end-to-end validation)
+- Documentation: 1 day (API docs, configuration guides, troubleshooting)
+- Deployment & Monitoring: 1-2 days (staging/production setup, observability, rollout)
+
+**Related Tickets**: #6
 
 **Assignee**: Backend Dev Team

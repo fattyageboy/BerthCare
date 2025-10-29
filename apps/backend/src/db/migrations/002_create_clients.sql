@@ -25,11 +25,11 @@ latitude DECIMAL(10, 8) NOT NULL CHECK (latitude BETWEEN -90 AND 90),
 longitude DECIMAL(11, 8) NOT NULL CHECK (
     longitude BETWEEN -180 AND 180
 ),
-phone VARCHAR(20),
+phone VARCHAR(30),
 
 -- Emergency contact information
 emergency_contact_name VARCHAR(200) NOT NULL,
-emergency_contact_phone VARCHAR(20) NOT NULL,
+emergency_contact_phone VARCHAR(30) NOT NULL,
 emergency_contact_relationship VARCHAR(100) NOT NULL,
 
 -- Zone assignment for data isolation and caregiver routing

@@ -217,9 +217,14 @@ export function requireRole(allowedRoles: UserRole[]) {
  * Adds token to Redis blacklist with expiration derived from token's exp claim.
  * This prevents the token from being used even if it hasn't expired yet.
  *
+ * Security Notes:
+ * - Validates exp claim is a valid number before using it
+ * - Uses 7-day fallback TTL for tokens without exp or with malformed exp
+ * - Longer fallback prevents security gap where revoked tokens become usable after short blacklist expiry
+ *
  * @param redisClient - Redis client for token blacklist
  * @param token - JWT token to blacklist
- * @param expirySeconds - Optional TTL override in seconds (default: derived from token exp)
+ * @param expirySeconds - Optional TTL override in seconds (default: derived from token exp, fallback: 7 days)
  *
  * @example
  * // Logout endpoint (TTL auto-derived from token)
@@ -244,19 +249,32 @@ export async function blacklistToken(
       const decoded = decodeToken(token);
 
       if (decoded?.exp) {
-        const nowInSeconds = Math.floor(Date.now() / 1000);
-        ttl = Math.ceil(decoded.exp - nowInSeconds);
+        // Validate exp claim is a valid number
+        if (typeof decoded.exp !== 'number' || !Number.isFinite(decoded.exp)) {
+          logError(
+            'Token exp claim is not a valid number, using fallback TTL',
+            new Error('Invalid exp')
+          );
+          ttl = 604800; // Fallback to 7 days for malformed exp
+        } else {
+          const nowInSeconds = Math.floor(Date.now() / 1000);
+          ttl = Math.ceil(decoded.exp - nowInSeconds);
 
-        // Don't blacklist if token is already expired
-        if (ttl <= 0) {
-          logInfo('Token already expired, skipping blacklist', {
-            ttlSeconds: ttl,
-          });
-          return;
+          // Don't blacklist if token is already expired
+          if (ttl <= 0) {
+            logInfo('Token already expired, skipping blacklist', {
+              ttlSeconds: ttl,
+            });
+            return;
+          }
         }
       } else if (decoded) {
-        logError('Token missing exp claim, using fallback TTL', new Error('No exp in JWT'));
-        ttl = 3600; // Fallback to 1 hour
+        // Use longer fallback TTL for tokens without exp claim to prevent security gap
+        logError(
+          'Token missing exp claim, using fallback TTL of 7 days',
+          new Error('No exp in JWT')
+        );
+        ttl = 604800; // Fallback to 7 days (tokens without exp are likely long-lived)
       } else {
         throw new Error('Unable to decode token');
       }
@@ -265,7 +283,7 @@ export async function blacklistToken(
         'Failed to decode token for TTL calculation',
         error instanceof Error ? error : new Error(String(error))
       );
-      ttl = 3600; // Fallback to 1 hour on decode error
+      ttl = 604800; // Fallback to 7 days on decode error
     }
   }
 

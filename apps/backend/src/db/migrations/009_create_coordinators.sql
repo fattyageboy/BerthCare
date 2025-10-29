@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS coordinators (
     zone_id UUID NOT NULL REFERENCES zones(id) ON DELETE RESTRICT,
     
     -- Contact information for voice alerts
-    phone_number VARCHAR(20) NOT NULL,
+    phone_number VARCHAR(30) NOT NULL,
     
     -- Backup coordinator for escalation
     backup_coordinator_id UUID REFERENCES coordinators(id) ON DELETE SET NULL,

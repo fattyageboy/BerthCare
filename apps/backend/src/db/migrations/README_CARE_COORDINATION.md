@@ -183,7 +183,7 @@ coordinators (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL UNIQUE → users(id) ON DELETE CASCADE,
   zone_id UUID NOT NULL → zones(id) ON DELETE RESTRICT,
-  phone_number VARCHAR(20) NOT NULL,
+  phone_number VARCHAR(30) NOT NULL,
   backup_coordinator_id UUID → coordinators(id) ON DELETE SET NULL,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

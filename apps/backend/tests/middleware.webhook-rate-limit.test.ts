@@ -10,33 +10,34 @@ import { Request, Response } from 'express';
 // Track hits per key for realistic rate limiting simulation
 const hitCounts = new Map<string, number>();
 
-jest.mock('redis', () => {
-  const mockClient = {
-    connect: jest.fn().mockResolvedValue(undefined),
-    quit: jest.fn().mockResolvedValue(undefined),
-    sendCommand: jest.fn((args: string[]) => {
-      // Mock script loading for rate-limit-redis
-      if (args[0] === 'SCRIPT' && args[1] === 'LOAD') {
-        return Promise.resolve('mock-sha');
-      }
-      // Mock EVALSHA for rate limiting
-      if (args[0] === 'EVALSHA') {
-        const key = args[2]; // The rate limit key (IP-based)
-        const currentHits = hitCounts.get(key) || 0;
-        const newHits = currentHits + 1;
-        hitCounts.set(key, newHits);
-        // Return [totalHits, timeToExpire]
-        return Promise.resolve([newHits, 60000]);
-      }
-      return Promise.resolve(['OK']);
-    }),
-    on: jest.fn(),
-  };
-
-  return {
-    createClient: jest.fn(() => mockClient),
-  };
+// Create mock client that can be accessed in tests
+const mockSendCommand = jest.fn((args: string[]) => {
+  // Mock script loading for rate-limit-redis
+  if (args[0] === 'SCRIPT' && args[1] === 'LOAD') {
+    return Promise.resolve('mock-sha');
+  }
+  // Mock EVALSHA for rate limiting
+  if (args[0] === 'EVALSHA') {
+    const key = args[2]; // The rate limit key (IP-based)
+    const currentHits = hitCounts.get(key) || 0;
+    const newHits = currentHits + 1;
+    hitCounts.set(key, newHits);
+    // Return [totalHits, timeToExpire]
+    return Promise.resolve([newHits, 60000]);
+  }
+  return Promise.resolve(['OK']);
 });
+
+const mockClient = {
+  connect: jest.fn().mockResolvedValue(undefined),
+  quit: jest.fn().mockResolvedValue(undefined),
+  sendCommand: mockSendCommand,
+  on: jest.fn(),
+};
+
+jest.mock('redis', () => ({
+  createClient: jest.fn(() => mockClient),
+}));
 
 import {
   getWebhookRateLimiter,
@@ -235,38 +236,59 @@ describe('Webhook Rate Limiter', () => {
   });
 
   describe('Redis Fallback Behavior', () => {
-    it('should use in-memory store as fallback (tested via initialization)', async () => {
-      // The middleware is designed to fall back to in-memory store if Redis fails
-      // This is tested implicitly by the fact that all rate limiting tests work
-      // even with a mocked Redis client that may not behave exactly like real Redis
-
-      const limiter = await getWebhookRateLimiter();
-      expect(limiter).toBeDefined();
-
-      // Verify the limiter works regardless of Redis state
-      const req = createMockRequest('192.168.1.10');
-      const res = createMockResponse();
-      const next = jest.fn();
-
-      await limiter(req as Request, res as Response, next);
-      expect(next).toHaveBeenCalled();
-    });
-
-    it('should handle Redis errors gracefully', async () => {
-      // The middleware logs errors but continues to function
-      // This test verifies the limiter remains operational
+    it('should handle Redis command errors gracefully during rate limiting', async () => {
+      // Simulate Redis command failure
+      mockSendCommand.mockImplementationOnce(
+        () => Promise.reject(new Error('Redis command failed')) as Promise<string[]>
+      );
 
       const limiter = await getWebhookRateLimiter();
       const req = createMockRequest('192.168.1.11');
       const res = createMockResponse();
       const next = jest.fn();
 
-      // Multiple requests should work even if Redis has issues
+      // Should handle error gracefully and allow request through (fail-open behavior)
+      await limiter(req as Request, res as Response, next);
+
+      // Verify request was allowed despite Redis error
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should continue functioning after Redis errors', async () => {
+      // Simulate intermittent Redis failures
+      let callCount = 0;
+      const originalImpl = mockSendCommand.getMockImplementation();
+
+      (mockSendCommand.mockImplementation as jest.Mock).mockImplementation((args: string[]) => {
+        callCount++;
+        // Fail every other call
+        if (callCount % 2 === 0) {
+          return Promise.reject(new Error('Intermittent Redis error'));
+        }
+        // Use original implementation for successful calls
+        if (originalImpl) {
+          return originalImpl(args);
+        }
+        return Promise.resolve(['OK']);
+      });
+
+      const limiter = await getWebhookRateLimiter();
+      const req = createMockRequest('192.168.1.12');
+      const res = createMockResponse();
+      const next = jest.fn();
+
+      // Make multiple requests - should handle errors gracefully
       for (let i = 0; i < 10; i++) {
         await limiter(req as Request, res as Response, next);
       }
 
+      // All requests should be processed (fail-open on errors)
       expect(next).toHaveBeenCalledTimes(10);
+
+      // Restore original implementation
+      if (originalImpl) {
+        mockSendCommand.mockImplementation(originalImpl);
+      }
     });
   });
 

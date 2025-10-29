@@ -53,6 +53,7 @@ export interface SMSEvent {
   to: string;
   from: string;
   body?: string;
+  bodyLength?: number;
   timestamp: Date;
   errorCode?: string;
   errorMessage?: string;
@@ -173,6 +174,17 @@ export class TwilioSMSService {
   }
 
   /**
+   * Force refresh the Twilio client and credentials.
+   * Clears cached client and credentials so the next call will recreate them.
+   * Useful for forcing credential rotation without waiting for automatic detection.
+   */
+  forceRefreshClient(): void {
+    this.client = null;
+    this.credentials = undefined;
+    this.credentialsPromise = undefined;
+  }
+
+  /**
    * Send SMS message.
    * @param to Recipient number (E.164)
    * @param message Message body (<=1600 chars)
@@ -232,7 +244,7 @@ export class TwilioSMSService {
         status: result.status,
         to: this.maskPhoneNumber(result.to),
         from: this.maskPhoneNumber(result.from),
-        body: message,
+        bodyLength: message?.length ?? 0,
         timestamp: result.sentAt,
       });
 
@@ -337,6 +349,7 @@ export class TwilioSMSService {
       ...event,
       to: this.maskPhoneNumber(event.to),
       from: this.maskPhoneNumber(event.from),
+      body: undefined,
     };
 
     this.logSMSEvent(maskedEvent);
@@ -512,20 +525,23 @@ export class TwilioSMSService {
   }
 
   private async ensureClient(): Promise<Twilio> {
-    if (this.client) {
-      return this.client;
+    const credentials = await this.ensureCredentials();
+
+    // Check if credentials have changed and recreate client if needed
+    if (
+      !this.client ||
+      !this.credentials ||
+      this.credentials.accountSid !== credentials.accountSid ||
+      this.credentials.authToken !== credentials.authToken
+    ) {
+      this.client = new Twilio(credentials.accountSid, credentials.authToken);
+      this.credentials = credentials;
     }
 
-    const credentials = await this.ensureCredentials();
-    this.client = new Twilio(credentials.accountSid, credentials.authToken);
     return this.client;
   }
 
   private async ensureCredentials(): Promise<TwilioSMSCredentials> {
-    if (this.credentials) {
-      return this.credentials;
-    }
-
     if (this.credentialsPromise) {
       return this.credentialsPromise;
     }
@@ -535,7 +551,6 @@ export class TwilioSMSService {
     });
 
     const credentials = await this.credentialsPromise;
-    this.credentials = credentials;
     this.authToken = credentials.authToken;
     this.accountSid = credentials.accountSid;
     this.fromNumber = credentials.phoneNumber;

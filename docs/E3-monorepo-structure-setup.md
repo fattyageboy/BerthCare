@@ -344,7 +344,7 @@ nx build backend
 
 ```bash
 # Rebuild TypeScript paths
-nx reset
+npx nx reset
 pnpm install
 ```
 
@@ -354,7 +354,7 @@ pnpm install
 
 ```bash
 # Clear Nx cache
-nx reset
+npx nx reset
 
 # Verify cache directory
 ls -la .nx/cache

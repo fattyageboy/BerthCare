@@ -580,8 +580,8 @@ export function createAuthRoutes(
           logError('Token missing exp claim', new Error('No exp claim in JWT'));
         }
       } catch (error) {
-        // Token is invalid, but we still blacklist it (timing attack prevention)
-        // We won't be able to revoke refresh tokens without userId
+        // Token decode failed - we cannot determine TTL or userId
+        // Timing attack prevention is handled by rate limiting and consistent response times
         logError(
           'Token decode failed during logout',
           error instanceof Error ? error : new Error(String(error))

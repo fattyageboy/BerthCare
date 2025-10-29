@@ -13,6 +13,7 @@ import { env } from '../config/env';
 import { logDebug, logError } from '../config/logger';
 
 const SECRET_CACHE_DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const SECRET_CACHE_MAX_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const SECRET_CACHE_CLEANUP_DEFAULT_INTERVAL_MS = 60 * 1000; // 1 minute
 const SECRET_CACHE_MAX_SIZE = 100;
 
@@ -99,6 +100,16 @@ export async function fetchJsonSecret<T = Record<string, unknown>>(
   } else {
     // Round to nearest integer for consistency
     cacheTtlMs = Math.round(cacheTtlMs);
+
+    // Clamp to maximum TTL
+    if (cacheTtlMs > SECRET_CACHE_MAX_TTL_MS) {
+      logDebug('cacheTtlMs exceeds maximum, clamping to max', {
+        service: 'secrets-manager',
+        providedValue: cacheTtlMs,
+        maxValue: SECRET_CACHE_MAX_TTL_MS,
+      });
+      cacheTtlMs = SECRET_CACHE_MAX_TTL_MS;
+    }
   }
 
   const cached = secretCache.get(secretId) as SecretCacheEntry<T> | undefined;
@@ -185,6 +196,16 @@ export function startSecretCacheCleanup(
 ): void {
   if (cacheCleanupTimer) {
     return;
+  }
+
+  // Validate intervalMs
+  if (typeof intervalMs !== 'number' || !Number.isFinite(intervalMs) || intervalMs <= 0) {
+    logDebug('Invalid intervalMs provided, using default', {
+      service: 'secrets-manager',
+      providedValue: intervalMs,
+      defaultValue: SECRET_CACHE_CLEANUP_DEFAULT_INTERVAL_MS,
+    });
+    intervalMs = SECRET_CACHE_CLEANUP_DEFAULT_INTERVAL_MS;
   }
 
   cacheCleanupTimer = setInterval(() => {
