@@ -132,6 +132,7 @@ async function migrateUp(migrationNumber?: string): Promise<void> {
     { version: '001', filename: '001_create_users_auth.sql' },
     { version: '002', filename: '002_create_clients.sql' },
     { version: '003', filename: '003_create_care_plans.sql' },
+    { version: '004', filename: '004_create_family_contacts.sql' },
   ];
 
   if (migrationNumber) {
@@ -186,7 +187,7 @@ async function migrateDown(migrationNumber: string): Promise<void> {
   }
 
   // Define ordered list of all migrations
-  const orderedMigrations = ['000', '001', '002', '003'];
+  const orderedMigrations = ['000', '001', '002', '003', '004'];
 
   // Check for dependent migrations (migrations applied after the target)
   const targetIndex = orderedMigrations.indexOf(migrationNumber);
@@ -215,6 +216,7 @@ async function migrateDown(migrationNumber: string): Promise<void> {
     '001': '001_create_users_auth_rollback.sql',
     '002': '002_create_clients_rollback.sql',
     '003': '003_create_care_plans_rollback.sql',
+    '004': '004_create_family_contacts_rollback.sql',
   };
 
   const filename = rollbackFiles[migrationNumber];
